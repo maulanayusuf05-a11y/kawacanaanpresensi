@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import { KawacanaanEmblem } from '../components/KawacanaanEmblem';
 import { EducationIllustration } from '../components/EducationIllustration';
 import {
+  supabase,
   signInWithEmail,
   signInWithGoogle,
   resetPassword,
@@ -25,7 +26,8 @@ export const LoginView: React.FC = () => {
     showToast,
     schoolProfile,
     registrationRequired,
-    openOnboarding
+    openOnboarding,
+    loadData
   } = useApp();
 
   // Mode: 'login' | 'forgot-password'
@@ -128,6 +130,14 @@ export const LoginView: React.FC = () => {
     setIsGoogleLoading(true);
 
     try {
+      // Periksa apakah sesi Supabase aktif sudah ada sebelumnya
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (sessionData?.session?.user) {
+        await loadData(sessionData.session.user.id);
+        setIsGoogleLoading(false);
+        return;
+      }
+
       const { error } = await signInWithGoogle();
 
       if (error) {

@@ -689,147 +689,125 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ onCompleted }) =
             {/* ========================================================================= */}
             {/* 1. SEKSI KREDENSIAL AKUN SUPABASE AUTH GURU (JIKA BUKAN SISWA)            */}
             {/* ========================================================================= */}
-            {(selectedRole === 'homeroom' || selectedRole === 'subject') && (
-              !hasGoogleSession ? (
-                <div className="p-4 sm:p-5 rounded-2xl bg-indigo-50/40 border border-indigo-100 space-y-4">
-                  <div className="flex items-center gap-2 text-indigo-950 pb-2 border-b border-indigo-100/60">
-                    <ShieldCheck size={18} className="text-indigo-600 shrink-0" />
-                    <div>
-                      <h4 className="font-black text-sm text-slate-900">
-                        1. Identitas Akun Masuk (Supabase Auth)
-                      </h4>
-                      <p className="text-[11px] text-slate-500">
-                        Gunakan informasi ini untuk masuk ke aplikasi Kawacanaan Presensi nantinya.
-                      </p>
-                    </div>
+            {(selectedRole === 'homeroom' || selectedRole === 'subject') && !hasGoogleSession && (
+              <div className="p-4 sm:p-5 rounded-2xl bg-indigo-50/40 border border-indigo-100 space-y-4">
+                <div className="flex items-center gap-2 text-indigo-950 pb-2 border-b border-indigo-100/60">
+                  <ShieldCheck size={18} className="text-indigo-600 shrink-0" />
+                  <div>
+                    <h4 className="font-black text-sm text-slate-900">
+                      1. Identitas Akun Masuk (Supabase Auth)
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      Gunakan informasi ini untuk masuk ke aplikasi Kawacanaan Presensi nantinya.
+                    </p>
                   </div>
+                </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                    {/* Nama Lengkap */}
-                    <div className="sm:col-span-2">
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                        Nama Lengkap & Gelar: <span className="text-rose-500">*</span>
-                      </label>
-                      <div className="relative">
-                        <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                        <input
-                          type="text"
-                          value={accountFullName}
-                          onChange={(e) => handleFullNameChange(e.target.value)}
-                          placeholder="Contoh: Dra. Hj. Siti Rahmawati, M.Pd."
-                          className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-900 bg-white focus:border-indigo-600 outline-none"
-                          id="input-onboarding-fullname"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Username */}
-                    <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                        Username (ID Login): <span className="text-rose-500">*</span>
-                      </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  {/* Nama Lengkap */}
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                      Nama Lengkap & Gelar: <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                       <input
                         type="text"
-                        value={accountUsername}
-                        onChange={(e) => {
-                          setUsernameManuallyEdited(true);
-                          setAccountUsername(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ''));
-                        }}
-                        placeholder="Contoh: sitirahmawati / guru.siti"
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-900 bg-white focus:border-indigo-600 outline-none"
-                        id="input-onboarding-username"
+                        value={accountFullName}
+                        onChange={(e) => handleFullNameChange(e.target.value)}
+                        placeholder="Contoh: Dra. Hj. Siti Rahmawati, M.Pd."
+                        className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-900 bg-white focus:border-indigo-600 outline-none"
+                        id="input-onboarding-fullname"
                       />
-                      <p className="text-[10px] text-slate-500 mt-1">
-                        Hanya huruf kecil, angka, titik, atau tanda hubung.
-                      </p>
                     </div>
+                  </div>
 
-                    {/* Email */}
-                    <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                        Alamat Email (Opsional):
-                      </label>
-                      <div className="relative">
-                        <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                        <input
-                          type="email"
-                          value={accountEmail}
-                          onChange={(e) => setAccountEmail(e.target.value)}
-                          placeholder="email@sekolah.sch.id / pribadi"
-                          className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-900 bg-white focus:border-indigo-600 outline-none"
-                          id="input-onboarding-email"
-                        />
-                      </div>
-                      <p className="text-[10px] text-slate-500 mt-1">
-                        Untuk pemulihan kata sandi & notifikasi akun.
-                      </p>
+                  {/* Username */}
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                      Username (ID Login): <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={accountUsername}
+                      onChange={(e) => {
+                        setUsernameManuallyEdited(true);
+                        setAccountUsername(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ''));
+                      }}
+                      placeholder="Contoh: sitirahmawati / guru.siti"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-900 bg-white focus:border-indigo-600 outline-none"
+                      id="input-onboarding-username"
+                    />
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      Hanya huruf kecil, angka, titik, atau tanda hubung.
+                    </p>
+                  </div>
+
+                  {/* Email */}
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                      Alamat Email (Opsional):
+                    </label>
+                    <div className="relative">
+                      <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="email"
+                        value={accountEmail}
+                        onChange={(e) => setAccountEmail(e.target.value)}
+                        placeholder="email@sekolah.sch.id / pribadi"
+                        className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-900 bg-white focus:border-indigo-600 outline-none"
+                        id="input-onboarding-email"
+                      />
                     </div>
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      Untuk pemulihan kata sandi & notifikasi akun.
+                    </p>
+                  </div>
 
-                    {/* Kata Sandi */}
-                    <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                        Kata Sandi (Password): <span className="text-rose-500">*</span>
-                      </label>
-                      <div className="relative">
-                        <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                        <input
-                          type={showPassword ? 'text' : 'password'}
-                          value={accountPassword}
-                          onChange={(e) => setAccountPassword(e.target.value)}
-                          placeholder="Minimal 6 karakter..."
-                          className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-900 bg-white focus:border-indigo-600 outline-none"
-                          id="input-onboarding-password"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
-                        >
-                          {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                        </button>
-                      </div>
+                  {/* Kata Sandi */}
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                      Kata Sandi (Password): <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        value={accountPassword}
+                        onChange={(e) => setAccountPassword(e.target.value)}
+                        placeholder="Minimal 6 karakter..."
+                        className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-900 bg-white focus:border-indigo-600 outline-none"
+                        id="input-onboarding-password"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                      >
+                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
                     </div>
+                  </div>
 
-                    {/* Konfirmasi Kata Sandi */}
-                    <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                        Konfirmasi Kata Sandi: <span className="text-rose-500">*</span>
-                      </label>
-                      <div className="relative">
-                        <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                        <input
-                          type={showPassword ? 'text' : 'password'}
-                          value={accountConfirmPassword}
-                          onChange={(e) => setAccountConfirmPassword(e.target.value)}
-                          placeholder="Ketik ulang kata sandi..."
-                          className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-900 bg-white focus:border-indigo-600 outline-none"
-                          id="input-onboarding-confirm-password"
-                        />
-                      </div>
+                  {/* Konfirmasi Kata Sandi */}
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                      Konfirmasi Kata Sandi: <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        value={accountConfirmPassword}
+                        onChange={(e) => setAccountConfirmPassword(e.target.value)}
+                        placeholder="Ketik ulang kata sandi..."
+                        className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-900 bg-white focus:border-indigo-600 outline-none"
+                        id="input-onboarding-confirm-password"
+                      />
                     </div>
                   </div>
                 </div>
-              ) : (
-                /* Banner Akun Google */
-                <div className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold shrink-0">
-                      G
-                    </div>
-                    <div>
-                      <div className="text-xs font-black text-slate-900 uppercase tracking-tight">
-                        Terhubung dengan Google SSO
-                      </div>
-                      <div className="text-xs text-slate-600">
-                        {currentUserEmail} • {currentUserName}
-                      </div>
-                    </div>
-                  </div>
-                  <span className="px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-800 font-bold text-[10px] uppercase">
-                    Otomatis Terverifikasi
-                  </span>
-                </div>
-              )
+              </div>
             )}
 
             {/* ========================================================================= */}
@@ -839,7 +817,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ onCompleted }) =
               <div className="space-y-6">
                 <div>
                   <h3 className="text-base font-black text-slate-900">
-                    2. Pilihan Model Ruang Kerja
+                    {hasGoogleSession ? 'Pilihan Model Ruang Kerja' : '2. Pilihan Model Ruang Kerja'}
                   </h3>
                   <p className="text-xs text-slate-500 mt-0.5">
                     Pilih apakah Anda ingin bergabung ke instansi sekolah yang sudah ada atau membuat ruang kerja mandiri.
@@ -919,406 +897,361 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ onCompleted }) =
                   </button>
                 </div>
 
-                {/* Data Pendidik Terpadu */}
-                <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200 space-y-3.5">
-                  <div className="font-bold text-xs uppercase tracking-wider text-slate-700">
-                    Informasi Data Guru / Pendidik:
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-                    {/* NIP / NUPTK */}
-                    <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                        NIP / NUPTK:
-                      </label>
-                      <input
-                        type="text"
-                        value={teacherNip}
-                        onChange={(e) => setTeacherNip(e.target.value)}
-                        placeholder="198507122010011005 (atau -)"
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-900 bg-slate-50 focus:bg-white focus:border-indigo-600 outline-none"
-                      />
+                {/* Data Pendidik Terpadu (Hanya untuk pendaftaran manual tanpa Google SSO) */}
+                {!hasGoogleSession && (
+                  <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200 space-y-3.5">
+                    <div className="font-bold text-xs uppercase tracking-wider text-slate-700">
+                      Informasi Data Guru / Pendidik:
                     </div>
 
-                    {/* Jenis Kelamin */}
-                    <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                        Jenis Kelamin:
-                      </label>
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setTeacherGender('L')}
-                          className={`flex-1 py-2.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                            teacherGender === 'L'
-                              ? 'bg-blue-50 border-blue-600 text-blue-700'
-                              : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-                          }`}
-                        >
-                          Laki-laki (L)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setTeacherGender('P')}
-                          className={`flex-1 py-2.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                            teacherGender === 'P'
-                              ? 'bg-rose-50 border-rose-600 text-rose-700'
-                              : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-                          }`}
-                        >
-                          Perempuan (P)
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* No HP / WhatsApp */}
-                    <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                        No. WhatsApp:
-                      </label>
-                      <div className="relative">
-                        <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                      {/* NIP / NUPTK */}
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                          NIP / NUPTK:
+                        </label>
                         <input
-                          type="tel"
-                          value={teacherPhone}
-                          onChange={(e) => setTeacherPhone(e.target.value)}
-                          placeholder="08123456789"
-                          className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-900 bg-slate-50 focus:bg-white focus:border-indigo-600 outline-none"
+                          type="text"
+                          value={teacherNip}
+                          onChange={(e) => setTeacherNip(e.target.value)}
+                          placeholder="198507122010011005 (atau -)"
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-900 bg-slate-50 focus:bg-white focus:border-indigo-600 outline-none"
                         />
                       </div>
-                    </div>
-                  </div>
-                </div>
 
-                {/* FORM INPUT SESUAI PATH */}
-                <div className="space-y-4 pt-2">
-                  {/* Jika Bergabung ke Sekolah */}
-                  {selectedPath === 'school' && (
-                    <div className="space-y-4">
-                      {/* Step A: Cari & Pilih Sekolah */}
-                      <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
-                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
-                          Cari Sekolah Melalui NPSN atau Nama Sekolah:
+                      {/* Jenis Kelamin */}
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                          Jenis Kelamin:
                         </label>
                         <div className="flex gap-2">
-                          <input
-                            type="text"
-                            value={schoolQuery}
-                            onChange={(e) => setSchoolQuery(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleSearchSchool();
-                            }}
-                            placeholder="Ketik NPSN 8 digit atau nama sekolah (contoh: 20100123 atau SDN Cibubur)..."
-                            className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-medium text-slate-900 bg-white focus:border-indigo-600 outline-none"
-                          />
                           <button
                             type="button"
-                            onClick={() => handleSearchSchool()}
-                            disabled={isSearchingSchool || !schoolQuery.trim()}
-                            className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+                            onClick={() => setTeacherGender('L')}
+                            className={`flex-1 py-2.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                              teacherGender === 'L'
+                                ? 'bg-blue-50 border-blue-600 text-blue-700'
+                                : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                            }`}
                           >
-                            {isSearchingSchool ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
-                            <span>Cari</span>
+                            Laki-laki (L)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setTeacherGender('P')}
+                            className={`flex-1 py-2.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                              teacherGender === 'P'
+                                ? 'bg-rose-50 border-rose-600 text-rose-700'
+                                : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                            }`}
+                          >
+                            Perempuan (P)
                           </button>
                         </div>
-
-                        {/* Hasil Pencarian Sekolah */}
-                        {searchedSchools.length > 0 && (
-                          <div className="space-y-2 pt-1">
-                            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                              Pilih Sekolah Terdaftar:
-                            </label>
-                            <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto">
-                              {searchedSchools.map((s) => (
-                                <button
-                                  key={s.id}
-                                  type="button"
-                                  onClick={() => {
-                                    setSelectedSchool(s);
-                                    if (s.classes?.length > 0) {
-                                      setSelectedClassId(s.classes[0].id);
-                                      setSchoolJoinClassMode('select');
-                                    } else {
-                                      setSelectedClassId('__NEW_CLASS__');
-                                      setSchoolJoinClassMode('new');
-                                    }
-                                  }}
-                                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between ${
-                                    selectedSchool?.id === s.id
-                                      ? 'bg-indigo-50 border-indigo-600 text-indigo-900'
-                                      : 'bg-white border-slate-200 hover:border-slate-300'
-                                  }`}
-                                >
-                                  <div>
-                                    <div className="font-bold text-xs sm:text-sm text-slate-900">{s.name}</div>
-                                    <div className="text-[11px] text-slate-500 mt-0.5">
-                                      NPSN: {s.npsn || '-'} • {s.alamat || 'Alamat Sekolah'}
-                                    </div>
-                                  </div>
-                                  {selectedSchool?.id === s.id && (
-                                    <CheckCircle2 size={18} className="text-indigo-600 shrink-0" />
-                                  )}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
                       </div>
 
-                      {/* Step B: Formulir Terpadu Pendidik & Penugasan Kelas */}
-                      {selectedSchool && (
-                        <div className="p-4 sm:p-5 rounded-2xl bg-white border-2 border-indigo-200 shadow-sm space-y-4 animate-in fade-in">
-                          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                            <div>
-                              <div className="text-[11px] uppercase font-bold text-indigo-600 tracking-wider">
-                                Sekolah Terpilih
-                              </div>
-                              <h4 className="font-black text-sm sm:text-base text-slate-900">
-                                {selectedSchool.name}
-                              </h4>
-                              <p className="text-[11px] text-slate-500 mt-0.5">
-                                NPSN: {selectedSchool.npsn || '-'}
-                              </p>
-                            </div>
-                            <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-[11px] font-bold">
-                              Siap Dihubungkan
-                            </span>
+                      {/* No HP / WhatsApp */}
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                          No. WhatsApp:
+                        </label>
+                        <div className="relative">
+                          <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="tel"
+                            value={teacherPhone}
+                            onChange={(e) => setTeacherPhone(e.target.value)}
+                            placeholder="08123456789"
+                            className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-900 bg-slate-50 focus:bg-white focus:border-indigo-600 outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* FORM INPUT SESUAI PATH (Hanya untuk pendaftaran manual tanpa Google SSO) */}
+                {!hasGoogleSession && (
+                  <div className="space-y-4 pt-2">
+                    {/* Jika Bergabung ke Sekolah */}
+                    {selectedPath === 'school' && (
+                      <div className="space-y-4">
+                        {/* Step A: Cari & Pilih Sekolah */}
+                        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                          <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                            Cari Sekolah Melalui NPSN atau Nama Sekolah:
+                          </label>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={schoolQuery}
+                              onChange={(e) => setSchoolQuery(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSearchSchool();
+                              }}
+                              placeholder="Ketik NPSN 8 digit atau nama sekolah (contoh: 20100123 atau SDN Cibubur)..."
+                              className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-medium text-slate-900 bg-white focus:border-indigo-600 outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleSearchSchool()}
+                              disabled={isSearchingSchool || !schoolQuery.trim()}
+                              className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+                            >
+                              {isSearchingSchool ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+                              <span>Cari</span>
+                            </button>
                           </div>
 
-                          {/* Penugasan Kelas / Rombel untuk Wali Kelas */}
-                          {selectedRole === 'homeroom' && (
-                            <div className="space-y-3">
-                              <div className="flex items-center justify-between">
-                                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
-                                  Penetapan Rombel / Kelas yang Diampu: <span className="text-rose-500">*</span>
-                                </label>
-                                {selectedSchool.classes && selectedSchool.classes.length > 0 && (
-                                  <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
+                          {/* Hasil Pencarian Sekolah */}
+                          {searchedSchools.length > 0 && (
+                            <div className="space-y-2 pt-1">
+                              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                                Pilih Sekolah Terdaftar:
+                              </label>
+                              <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto">
+                                {searchedSchools.map((s) => (
+                                  <button
+                                    key={s.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedSchool(s);
+                                      if (s.classes?.length > 0) {
+                                        setSelectedClassId(s.classes[0].id);
                                         setSchoolJoinClassMode('select');
-                                        if (selectedSchool.classes?.length > 0) {
-                                          setSelectedClassId(selectedSchool.classes[0].id);
-                                        }
-                                      }}
-                                      className={`px-2.5 py-1 text-[11px] font-bold rounded-md transition cursor-pointer ${
-                                        schoolJoinClassMode === 'select'
-                                          ? 'bg-white text-indigo-700 shadow-xs'
-                                          : 'text-slate-600 hover:text-slate-900'
-                                      }`}
-                                    >
-                                      Pilih yang Ada
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setSchoolJoinClassMode('new');
-                                        setSelectedClassId('__NEW_CLASS__');
-                                      }}
-                                      className={`px-2.5 py-1 text-[11px] font-bold rounded-md transition cursor-pointer ${
-                                        schoolJoinClassMode === 'new'
-                                          ? 'bg-white text-indigo-700 shadow-xs'
-                                          : 'text-slate-600 hover:text-slate-900'
-                                      }`}
-                                    >
-                                      + Buat Rombel Baru
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-
-                              {selectedSchool.classes && selectedSchool.classes.length > 0 && schoolJoinClassMode === 'select' ? (
-                                <div className="space-y-2">
-                                  <select
-                                    value={selectedClassId}
-                                    onChange={(e) => {
-                                      if (e.target.value === '__NEW_CLASS__') {
-                                        setSchoolJoinClassMode('new');
-                                        setSelectedClassId('__NEW_CLASS__');
                                       } else {
-                                        setSelectedClassId(e.target.value);
+                                        setSelectedClassId('__NEW_CLASS__');
+                                        setSchoolJoinClassMode('new');
                                       }
                                     }}
-                                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold bg-slate-50 focus:bg-white text-slate-900 focus:border-indigo-600 outline-none cursor-pointer"
+                                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between ${
+                                      selectedSchool?.id === s.id
+                                        ? 'bg-indigo-50 border-indigo-600 text-indigo-900'
+                                        : 'bg-white border-slate-200 hover:border-slate-300'
+                                    }`}
                                   >
-                                    {selectedSchool.classes.map((c: any) => (
-                                      <option key={c.id} value={c.id}>
-                                        {c.name}
-                                      </option>
-                                    ))}
-                                    <option value="__NEW_CLASS__">➕ Kelas Anda Belum Ada? Buat Rombel Baru...</option>
-                                  </select>
-                                  <p className="text-[11px] text-slate-500">
-                                    Pilih kelas yang tersedia di sekolah, atau buat baru jika belum terdaftar.
-                                  </p>
-                                </div>
-                              ) : (
-                                <div className="space-y-3 p-3.5 rounded-xl bg-indigo-50/60 border border-indigo-100">
-                                  <div className="flex items-start gap-2 text-indigo-900 text-xs">
-                                    <Sparkles size={16} className="text-indigo-600 shrink-0 mt-0.5" />
                                     <div>
-                                      <span className="font-bold">
-                                        Buat Rombel Kelas Mandiri (Otomatis Aktif)
-                                      </span>
-                                      <p className="text-[11px] text-indigo-700/90 mt-0.5">
-                                        Data rombel langsung aktif dan Anda terdaftar sebagai Wali Kelas di sekolah tersebut.
-                                      </p>
+                                      <div className="font-bold text-xs sm:text-sm text-slate-900">{s.name}</div>
+                                      <div className="text-[11px] text-slate-500 mt-0.5">
+                                        NPSN: {s.npsn || '-'} • {s.alamat || 'Alamat Sekolah'}
+                                      </div>
                                     </div>
-                                  </div>
-
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                                    <div>
-                                      <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
-                                        Kelas:
-                                      </label>
-                                      <select
-                                        value={schoolNewGrade}
-                                        onChange={(e) => {
-                                          const g = Number(e.target.value);
-                                          setSchoolNewGrade(g);
-                                          setSchoolNewClassName(`Kelas ${g}`);
-                                        }}
-                                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold bg-white text-slate-900 focus:border-indigo-600 outline-none cursor-pointer"
-                                      >
-                                        {[1, 2, 3, 4, 5, 6].map((g) => (
-                                          <option key={g} value={g}>
-                                            Kelas {g} SD
-                                          </option>
-                                        ))}
-                                      </select>
-                                    </div>
-
-                                    <div>
-                                      <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
-                                        Nama Rombel Kelas:
-                                      </label>
-                                      <input
-                                        type="text"
-                                        value={schoolNewClassName}
-                                        onChange={(e) => setSchoolNewClassName(e.target.value)}
-                                        placeholder="Contoh: Kelas 5, Kelas 5A, 5B..."
-                                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold bg-white text-slate-900 focus:border-indigo-600 outline-none"
-                                      />
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {/* Jika Guru Mapel */}
-                          {selectedRole === 'subject' && (
-                            <div className="pt-3 border-t border-slate-100 space-y-2">
-                              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
-                                Mata Pelajaran yang Diampu: <span className="text-rose-500">*</span>
-                              </label>
-                              <input
-                                type="text"
-                                value={subjectName}
-                                onChange={(e) => setSubjectName(e.target.value)}
-                                placeholder="Contoh: PJOK, Pendidikan Agama Islam, Bahasa Inggris..."
-                                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold bg-slate-50 focus:bg-white text-slate-900 focus:border-indigo-600 outline-none"
-                              />
-                              <div className="flex flex-wrap gap-1.5 pt-1">
-                                {[
-                                  'Pendidikan Jasmani, Olahraga, dan Kesehatan (PJOK)',
-                                  'Pendidikan Agama Islam (PAI)',
-                                  'Pendidikan Agama Kristen',
-                                  'Bahasa Inggris',
-                                  'Seni Budaya & Prakarya',
-                                  'Informatika / Komputer',
-                                ].map((s) => (
-                                  <button
-                                    key={s}
-                                    type="button"
-                                    onClick={() => setSubjectName(s)}
-                                    className="px-2 py-1 rounded-md bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-700 text-[10px] font-semibold transition cursor-pointer"
-                                  >
-                                    {s}
+                                    {selectedSchool?.id === s.id && (
+                                      <CheckCircle2 size={18} className="text-indigo-600 shrink-0" />
+                                    )}
                                   </button>
                                 ))}
                               </div>
                             </div>
                           )}
                         </div>
-                      )}
-                    </div>
-                  )}
 
-                  {/* Jika Kelola Sendiri (Personal Workspace) */}
-                  {selectedPath === 'personal' && (
-                    <div className="space-y-4 p-4 sm:p-5 rounded-2xl bg-indigo-50/50 border border-indigo-100">
-                      <div>
-                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                          Nama Ruang Kerja Personal:
-                        </label>
-                        <input
-                          type="text"
-                          value={customWorkspaceName}
-                          onChange={(e) => setCustomWorkspaceName(e.target.value)}
-                          placeholder={
-                            selectedRole === 'homeroom'
-                              ? `Contoh: Ruang Kelas 4A - ${accountFullName || 'Guru Kelas'}`
-                              : `Contoh: Ruang Mengajar PJOK - ${accountFullName || 'Guru Mapel'}`
-                          }
-                          className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-900 bg-white focus:border-indigo-600 outline-none"
-                        />
+                        {/* Step B: Formulir Terpadu Pendidik & Penugasan Kelas */}
+                        {selectedSchool && (
+                          <div className="p-4 sm:p-5 rounded-2xl bg-white border-2 border-indigo-200 shadow-sm space-y-4 animate-in fade-in">
+                            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                              <div>
+                                <div className="text-[11px] uppercase font-bold text-indigo-600 tracking-wider">
+                                  Sekolah Terpilih
+                                </div>
+                                <h4 className="font-black text-sm sm:text-base text-slate-900">
+                                  {selectedSchool.name}
+                                </h4>
+                                <p className="text-[11px] text-slate-500 mt-0.5">
+                                  NPSN: {selectedSchool.npsn || '-'}
+                                </p>
+                              </div>
+                              <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-[11px] font-bold">
+                                Siap Dihubungkan
+                              </span>
+                            </div>
+
+                            {/* Penugasan Kelas / Rombel untuk Wali Kelas */}
+                            {selectedRole === 'homeroom' && (
+                              <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                                    Penetapan Rombel / Kelas yang Diampu: <span className="text-rose-500">*</span>
+                                  </label>
+                                  {selectedSchool.classes && selectedSchool.classes.length > 0 && (
+                                    <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setSchoolJoinClassMode('select');
+                                          if (selectedSchool.classes?.length > 0) {
+                                            setSelectedClassId(selectedSchool.classes[0].id);
+                                          }
+                                        }}
+                                        className={`px-2.5 py-1 text-[11px] font-bold rounded-md transition cursor-pointer ${
+                                          schoolJoinClassMode === 'select'
+                                            ? 'bg-white text-indigo-700 shadow-xs'
+                                            : 'text-slate-600 hover:text-slate-900'
+                                        }`}
+                                      >
+                                        Pilih yang Ada
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setSchoolJoinClassMode('new');
+                                          setSelectedClassId('__NEW_CLASS__');
+                                        }}
+                                        className={`px-2.5 py-1 text-[11px] font-bold rounded-md transition cursor-pointer ${
+                                          schoolJoinClassMode === 'new'
+                                            ? 'bg-white text-indigo-700 shadow-xs'
+                                            : 'text-slate-600 hover:text-slate-900'
+                                        }`}
+                                      >
+                                        + Buat Rombel Baru
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {selectedSchool.classes && selectedSchool.classes.length > 0 && schoolJoinClassMode === 'select' ? (
+                                  <div className="space-y-2">
+                                    <select
+                                      value={selectedClassId}
+                                      onChange={(e) => {
+                                        if (e.target.value === '__NEW_CLASS__') {
+                                          setSchoolJoinClassMode('new');
+                                          setSelectedClassId('__NEW_CLASS__');
+                                        } else {
+                                          setSelectedClassId(e.target.value);
+                                        }
+                                      }}
+                                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold bg-slate-50 focus:bg-white text-slate-900 focus:border-indigo-600 outline-none cursor-pointer"
+                                    >
+                                      {selectedSchool.classes.map((c: any) => (
+                                        <option key={c.id} value={c.id}>
+                                          {c.name}
+                                        </option>
+                                      ))}
+                                      <option value="__NEW_CLASS__">➕ Kelas Anda Belum Ada? Buat Rombel Baru...</option>
+                                    </select>
+                                    <p className="text-[11px] text-slate-500">
+                                      Pilih kelas yang tersedia di sekolah, atau buat baru jika belum terdaftar.
+                                    </p>
+                                  </div>
+                                ) : (
+                                  <div className="space-y-3 p-3.5 rounded-xl bg-indigo-50/60 border border-indigo-100">
+                                    <div className="flex items-start gap-2 text-indigo-900 text-xs">
+                                      <Sparkles size={16} className="text-indigo-600 shrink-0 mt-0.5" />
+                                      <div>
+                                        <span className="font-bold">
+                                          Buat Rombel Kelas Mandiri (Otomatis Aktif)
+                                        </span>
+                                        <p className="text-[11px] text-indigo-700/90 mt-0.5">
+                                          Data rombel langsung aktif dan Anda terdaftar sebagai Wali Kelas di sekolah tersebut.
+                                        </p>
+                                      </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                                      <div>
+                                        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
+                                          Kelas:
+                                        </label>
+                                        <select
+                                          value={schoolNewGrade}
+                                          onChange={(e) => {
+                                            const g = Number(e.target.value);
+                                            setSchoolNewGrade(g);
+                                            setSchoolNewClassName(`Kelas ${g}`);
+                                          }}
+                                          className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold bg-white text-slate-900 focus:border-indigo-600 outline-none cursor-pointer"
+                                        >
+                                          {[1, 2, 3, 4, 5, 6].map((g) => (
+                                            <option key={g} value={g}>
+                                              Kelas {g} SD
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </div>
+
+                                      <div>
+                                        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
+                                          Nama Rombel Kelas:
+                                        </label>
+                                        <input
+                                          type="text"
+                                          value={schoolNewClassName}
+                                          onChange={(e) => setSchoolNewClassName(e.target.value)}
+                                          placeholder="Contoh: Kelas 5, Kelas 5A, 5B..."
+                                          className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold bg-white text-slate-900 focus:border-indigo-600 outline-none"
+                                        />
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Jika Guru Mapel */}
+                            {selectedRole === 'subject' && (
+                              <div className="pt-3 border-t border-slate-100 space-y-2">
+                                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                                  Mata Pelajaran yang Diampu: <span className="text-rose-500">*</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  value={subjectName}
+                                  onChange={(e) => setSubjectName(e.target.value)}
+                                  placeholder="Contoh: PJOK, Pendidikan Agama Islam, Bahasa Inggris..."
+                                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold bg-slate-50 focus:bg-white text-slate-900 focus:border-indigo-600 outline-none"
+                                />
+                                <div className="flex flex-wrap gap-1.5 pt-1">
+                                  {[
+                                    'Pendidikan Jasmani, Olahraga, dan Kesehatan (PJOK)',
+                                    'Pendidikan Agama Islam (PAI)',
+                                    'Pendidikan Agama Kristen',
+                                    'Bahasa Inggris',
+                                    'Seni Budaya & Prakarya',
+                                    'Informatika / Komputer',
+                                  ].map((s) => (
+                                    <button
+                                      key={s}
+                                      type="button"
+                                      onClick={() => setSubjectName(s)}
+                                      className="px-2 py-1 rounded-md bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-700 text-[10px] font-semibold transition cursor-pointer"
+                                    >
+                                      {s}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
+                    )}
 
-                      {selectedRole === 'homeroom' ? (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                              Kelas:
-                            </label>
-                            <select
-                              value={customGrade}
-                              onChange={(e) => {
-                                const g = Number(e.target.value);
-                                setCustomGrade(g);
-                                setCustomClassName(`Kelas ${g}`);
-                              }}
-                              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold bg-white text-slate-900 focus:border-indigo-600 outline-none cursor-pointer"
-                            >
-                              {[1, 2, 3, 4, 5, 6].map((g) => (
-                                <option key={g} value={g}>
-                                  Kelas {g} SD
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                              Nama Rombel:
-                            </label>
-                            <input
-                              type="text"
-                              value={customClassName}
-                              onChange={(e) => setCustomClassName(e.target.value)}
-                              placeholder="Contoh: Kelas 4A"
-                              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold bg-white text-slate-900 focus:border-indigo-600 outline-none"
-                            />
-                          </div>
+                    {/* Jika Kelola Sendiri (Personal Workspace) */}
+                    {selectedPath === 'personal' && (
+                      <div className="space-y-4 p-4 sm:p-5 rounded-2xl bg-indigo-50/50 border border-indigo-100">
+                        <div>
+                          <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                            Nama Ruang Kerja Personal:
+                          </label>
+                          <input
+                            type="text"
+                            value={customWorkspaceName}
+                            onChange={(e) => setCustomWorkspaceName(e.target.value)}
+                            placeholder={
+                              selectedRole === 'homeroom'
+                                ? `Contoh: Ruang Kelas 4A - ${accountFullName || 'Guru Kelas'}`
+                                : `Contoh: Ruang Mengajar PJOK - ${accountFullName || 'Guru Mapel'}`
+                            }
+                            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-900 bg-white focus:border-indigo-600 outline-none"
+                          />
                         </div>
-                      ) : (
-                        <div className="space-y-3">
-                          <div>
-                            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                              Mata Pelajaran Utama:
-                            </label>
-                            <input
-                              type="text"
-                              value={subjectName}
-                              onChange={(e) => setSubjectName(e.target.value)}
-                              placeholder="Contoh: Pendidikan Jasmani (PJOK)"
-                              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold bg-white text-slate-900 focus:border-indigo-600 outline-none"
-                            />
-                          </div>
+
+                        {selectedRole === 'homeroom' ? (
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div>
                               <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                                Kelas Binaan / Target Mengajar:
+                                Kelas:
                               </label>
                               <select
                                 value={customGrade}
@@ -1349,43 +1282,96 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ onCompleted }) =
                               />
                             </div>
                           </div>
-                        </div>
-                      )}
+                        ) : (
+                          <div className="space-y-3">
+                            <div>
+                              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                                Mata Pelajaran Utama:
+                              </label>
+                              <input
+                                type="text"
+                                value={subjectName}
+                                onChange={(e) => setSubjectName(e.target.value)}
+                                placeholder="Contoh: Pendidikan Jasmani (PJOK)"
+                                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold bg-white text-slate-900 focus:border-indigo-600 outline-none"
+                              />
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                                  Kelas Binaan / Target Mengajar:
+                                </label>
+                                <select
+                                  value={customGrade}
+                                  onChange={(e) => {
+                                    const g = Number(e.target.value);
+                                    setCustomGrade(g);
+                                    setCustomClassName(`Kelas ${g}`);
+                                  }}
+                                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold bg-white text-slate-900 focus:border-indigo-600 outline-none cursor-pointer"
+                                >
+                                  {[1, 2, 3, 4, 5, 6].map((g) => (
+                                    <option key={g} value={g}>
+                                      Kelas {g} SD
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                                  Nama Rombel:
+                                </label>
+                                <input
+                                  type="text"
+                                  value={customClassName}
+                                  onChange={(e) => setCustomClassName(e.target.value)}
+                                  placeholder="Contoh: Kelas 4A"
+                                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold bg-white text-slate-900 focus:border-indigo-600 outline-none"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )}
 
-                      {/* Info Langganan Personal */}
-                      <div className="p-3.5 rounded-xl bg-white border border-indigo-200 flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-2">
-                          <Zap size={16} className="text-indigo-600" />
-                          <span>
-                            Paket Langganan: <strong>Paket Mulai / Gratis</strong> (Personal Workspace)
+                        {/* Info Langganan Personal */}
+                        <div className="p-3.5 rounded-xl bg-white border border-indigo-200 flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-2">
+                            <Zap size={16} className="text-indigo-600" />
+                            <span>
+                              Paket Langganan: <strong>Paket Mulai / Gratis</strong> (Personal Workspace)
+                            </span>
+                          </div>
+                          <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px] uppercase">
+                            Gratis Rp0/bln
                           </span>
                         </div>
-                        <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px] uppercase">
-                          Gratis Rp0/bln
-                        </span>
                       </div>
-                    </div>
-                  )}
-                </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Tombol Simpan Guru */}
                 <button
                   type="button"
                   onClick={handleSubmitOnboarding}
-                  disabled={isSubmitting || (selectedPath === 'school' && !selectedSchool)}
+                  disabled={isSubmitting || (!hasGoogleSession && selectedPath === 'school' && !selectedSchool)}
                   className="w-full py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 active:scale-98 text-white font-black text-sm tracking-wide transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
                   id="btn-submit-onboarding-teacher"
                 >
                   {isSubmitting ? (
                     <>
                       <Loader2 size={18} className="animate-spin" />
-                      <span>Mendaftarkan Akun & Menyiapkan Ruang Kerja...</span>
+                      <span>{hasGoogleSession ? 'Menyiapkan Ruang Kerja...' : 'Mendaftarkan Akun & Menyiapkan Ruang Kerja...'}</span>
                     </>
                   ) : (
                     <>
                       <CheckCircle2 size={18} />
                       <span>
-                        {selectedRole === 'homeroom'
+                        {hasGoogleSession
+                          ? selectedRole === 'homeroom'
+                            ? 'Lanjutkan ke Ruang Kerja Wali Kelas'
+                            : 'Lanjutkan ke Ruang Kerja Guru Mapel'
+                          : selectedRole === 'homeroom'
                           ? 'Daftar & Masuk Dashboard Wali Kelas'
                           : 'Daftar & Masuk Dashboard Guru Mapel'}
                       </span>
@@ -1418,28 +1404,6 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ onCompleted }) =
                     Portal Siswa
                   </span>
                 </div>
-
-                {/* Banner Google SSO jika terhubung */}
-                {hasGoogleSession && (
-                  <div className="p-3.5 rounded-2xl bg-blue-50/70 border border-blue-200 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
-                        G
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-slate-900">
-                          Terhubung dengan Google SSO
-                        </div>
-                        <div className="text-[11px] text-slate-600">
-                          {currentUserEmail} • {currentUserName}
-                        </div>
-                      </div>
-                    </div>
-                    <span className="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 font-bold text-[10px] uppercase">
-                      Terverifikasi
-                    </span>
-                  </div>
-                )}
 
                 {/* 1. Identitas & Biodata Siswa */}
                 <div className="space-y-4">

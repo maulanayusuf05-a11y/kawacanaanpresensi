@@ -447,21 +447,25 @@ export default async function handler(req: any, res: any) {
       let targetSchoolId = body.schoolId || null;
 
       if (mode === 'personal' || !targetSchoolId) {
-        const wsName = String(body.workspaceName || `Ruang Kelas ${teacherName}`).trim();
+        const isPersonal = mode === 'personal';
+        const wsName = String(
+          body.workspaceName ||
+            (isPersonal ? `Ruang Kelas ${teacherName}` : `Ruang Kerja Sekolah ${teacherName}`)
+        ).trim();
         const trial = calculateGuruProTrialPeriod();
         const { data: newSchool, error: schoolErr } = await db.from('schools').insert({
           name: wsName,
-          plan: trial.plan,
+          plan: isPersonal ? trial.plan : 'sekolah',
           status: 'active',
-          workspace_type: 'personal',
-          is_personal: true,
+          workspace_type: isPersonal ? 'personal' : 'school',
+          is_personal: isPersonal,
           owner_id: callerUser.id,
           subscription_started_at: trial.startedAt,
           subscription_expires_at: trial.expiresAt,
-          notes: trial.notes,
-          max_teachers: trial.maxTeachers,
-          max_students: trial.maxStudents,
-          max_classes: trial.maxClasses,
+          notes: isPersonal ? trial.notes : 'Ruang Kerja Sekolah (Google SSO)',
+          max_teachers: isPersonal ? trial.maxTeachers : 100,
+          max_students: isPersonal ? trial.maxStudents : 1000,
+          max_classes: isPersonal ? trial.maxClasses : 50,
         }).select('id').single();
 
         if (schoolErr) throw schoolErr;
@@ -603,21 +607,25 @@ export default async function handler(req: any, res: any) {
       let targetSchoolId = body.schoolId || null;
 
       if (mode === 'personal' || !targetSchoolId) {
-        const wsName = String(body.workspaceName || `Ruang Mengajar ${subjectName} - ${teacherName}`).trim();
+        const isPersonal = mode === 'personal';
+        const wsName = String(
+          body.workspaceName ||
+            (isPersonal ? `Ruang Mengajar ${subjectName} - ${teacherName}` : `Ruang Kerja Sekolah ${teacherName}`)
+        ).trim();
         const trial = calculateGuruProTrialPeriod();
         const { data: newSchool, error: schoolErr } = await db.from('schools').insert({
           name: wsName,
-          plan: trial.plan,
+          plan: isPersonal ? trial.plan : 'sekolah',
           status: 'active',
-          workspace_type: 'personal',
-          is_personal: true,
+          workspace_type: isPersonal ? 'personal' : 'school',
+          is_personal: isPersonal,
           owner_id: callerUser.id,
           subscription_started_at: trial.startedAt,
           subscription_expires_at: trial.expiresAt,
-          notes: trial.notes,
-          max_teachers: trial.maxTeachers,
-          max_students: trial.maxStudents,
-          max_classes: trial.maxClasses,
+          notes: isPersonal ? trial.notes : 'Ruang Kerja Sekolah (Google SSO)',
+          max_teachers: isPersonal ? trial.maxTeachers : 100,
+          max_students: isPersonal ? trial.maxStudents : 1000,
+          max_classes: isPersonal ? trial.maxClasses : 50,
         }).select('id').single();
 
         if (schoolErr) throw schoolErr;
