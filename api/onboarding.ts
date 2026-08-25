@@ -814,6 +814,107 @@ export default async function handler(req: any, res: any) {
       });
     }
 
+    // -------------------------------------------------------------
+    // DELETE TEACHER (HAPUS DATA GURU & SINKRONISASI DATABASE)
+    // -------------------------------------------------------------
+    if (action === 'delete_teacher') {
+      const teacherId = body.teacherId || body.id;
+      const schoolId = body.schoolId || null;
+      const teacherName = body.teacherName || null;
+
+      if (!teacherId && !teacherName) {
+        return json(res, 400, { error: 'ID guru atau nama guru wajib disertakan.' });
+      }
+
+      // 1. Hapus dari tabel teachers
+      if (teacherId) {
+        await db.from('teachers').delete().eq('id', teacherId);
+      }
+      if (schoolId && teacherName) {
+        await db.from('teachers').delete().eq('school_id', schoolId).eq('nama', teacherName);
+      }
+
+      // 2. Hapus penugasan di classes
+      if (teacherId) {
+        await db.from('classes').update({ wali_kelas_id: null }).eq('wali_kelas_id', teacherId);
+      }
+      if (schoolId && teacherName) {
+        await db.from('school_profile').update({ nama_wali_kelas: '', nip_wali_kelas: '' }).eq('school_id', schoolId).eq('nama_wali_kelas', teacherName);
+      }
+
+      // 3. Hapus teacher_class_assignments
+      if (teacherId) {
+        await db.from('teacher_class_assignments').delete().eq('teacher_id', teacherId);
+      }
+
+      return json(res, 200, {
+        ok: true,
+        success: true,
+        message: 'Data guru berhasil dihapus dari database.',
+      });
+    }
+
+    // -------------------------------------------------------------
+    // SAVE TEACHER (TAMBAH / PERBARUI DATA GURU)
+    // -------------------------------------------------------------
+    if (action === 'save_teacher') {
+      const teacherId = body.teacherId || body.id;
+      const schoolId = body.schoolId || null;
+      const nama = String(body.nama || '').trim();
+      const nip = String(body.nip || '').trim();
+      const jenisKelamin = body.jenisKelamin || 'L';
+      const jabatan = String(body.jabatan || 'Wali Kelas').trim();
+      const statusKepegawaian = String(body.statusKepegawaian || '').trim();
+      const noHp = String(body.noHp || '').trim();
+
+      if (!nama) {
+        return json(res, 400, { error: 'Nama guru wajib diisi.' });
+      }
+
+      if (teacherId) {
+        const { data: updated, error: uErr } = await db
+          .from('teachers')
+          .update({
+            nama,
+            nip,
+            jenis_kelamin: jenisKelamin,
+            mata_pelajaran: jabatan,
+            status_kepegawaian: statusKepegawaian,
+            no_hp: noHp,
+          })
+          .eq('id', teacherId)
+          .select()
+          .single();
+
+        if (!uErr && updated) {
+          return json(res, 200, { ok: true, success: true, teacher: updated, teacherId: updated.id });
+        }
+      }
+
+      const { data: inserted, error: iErr } = await db
+        .from('teachers')
+        .insert({
+          nama,
+          nip,
+          jenis_kelamin: jenisKelamin,
+          mata_pelajaran: jabatan,
+          status_kepegawaian: statusKepegawaian,
+          no_hp: noHp,
+          school_id: schoolId,
+        })
+        .select()
+        .single();
+
+      if (iErr) throw iErr;
+
+      return json(res, 200, {
+        ok: true,
+        success: true,
+        teacher: inserted,
+        teacherId: inserted.id,
+      });
+    }
+
     return json(res, 400, { error: `Aksi ${action} tidak dikenali.` });
   } catch (err: any) {
     console.error('Onboarding handler error:', err);

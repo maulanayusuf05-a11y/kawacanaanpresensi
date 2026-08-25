@@ -255,27 +255,27 @@ export const DashboardView: React.FC = () => {
     const rawStatus = (currentUser?.subscriptionStatus || activeWorkspace?.subscriptionStatus || 'trial').toLowerCase();
     const rawExpiresAt = currentUser?.subscriptionExpiresAt || activeWorkspace?.subscriptionExpiresAt;
 
-    let planName = 'paket guru (trial)';
+    let planName = 'Paket Guru (TRIAL)';
     let isTrial = false;
 
     if (rawPlan.includes('guru_uji_coba') || rawPlan === 'teacher' || rawPlan === 'guru_pro' || rawPlan === 'guru' || isPersonalWorkspace) {
       if (rawStatus === 'trial' || rawPlan.includes('trial') || rawPlan.includes('uji_coba') || rawPlan === 'teacher' || rawStatus === 'active') {
-        planName = 'paket guru (trial)';
+        planName = 'Paket Guru (TRIAL)';
         isTrial = true;
       } else {
-        planName = 'paket guru';
+        planName = 'Paket Guru';
       }
     } else if (rawPlan.includes('sekolah_pro') || rawPlan.includes('sekolah')) {
       if (rawStatus === 'trial' || rawPlan.includes('trial') || rawPlan.includes('uji_coba')) {
-        planName = 'paket sekolah (trial)';
+        planName = 'Paket Sekolah (TRIAL)';
         isTrial = true;
       } else {
-        planName = 'paket sekolah';
+        planName = 'Paket Sekolah';
       }
     } else if (rawPlan.includes('sekolah_gratis')) {
-      planName = 'paket sekolah gratis';
+      planName = 'Paket Sekolah Gratis';
     } else if (rawPlan.includes('gratis') || rawPlan === 'mulai' || rawPlan === 'free') {
-      planName = 'paket guru gratis';
+      planName = 'Paket Guru Gratis';
     }
 
     // Format Expiry Date
@@ -328,8 +328,19 @@ export const DashboardView: React.FC = () => {
           </p>
         </div>
 
-        {/* Lencana dan Status di Sebelah Kanan */}
+        {/* Lencana dan Status di Sebelah Kanan (Sejajar) */}
         <div className="flex flex-wrap items-center md:justify-end gap-2 shrink-0">
+          {currentUser?.role !== 'SUPER_ADMIN' && (
+            <span
+              className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold border shrink-0 ${
+                isPersonalWorkspace
+                  ? 'bg-purple-50 text-purple-700 border-purple-200'
+                  : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+              }`}
+            >
+              {isPersonalWorkspace ? 'Ruang Kerja Individu' : 'Ruang Kerja Sekolah'}
+            </span>
+          )}
           <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
             {userScope.roleBadgeLabel}
           </span>

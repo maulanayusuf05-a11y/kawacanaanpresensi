@@ -51,27 +51,9 @@ export const DataGuruView: React.FC = () => {
   const [jenisKelamin, setJenisKelamin] = useState<'L' | 'P'>('L');
   const [guruType, setGuruType] = useState<'Wali Kelas' | 'Guru Mapel'>('Wali Kelas');
 
-  // Teacher record corresponding to current user
-  const ownTeacherRecord = useMemo(() => {
-    if (!currentUser) return null;
-    const uName = (currentUser.name || '').trim().toLowerCase();
-    const uUsername = (currentUser.username || '').trim().toLowerCase();
-    return (
-      teachers.find(
-        (t) =>
-          (t.id && t.id === currentUser.id) ||
-          (t.nip && t.nip !== '-' && t.nip.trim().toLowerCase() === uUsername) ||
-          (t.nama && t.nama.trim().toLowerCase() === uName)
-      ) || teachers[0] || null
-    );
-  }, [currentUser, teachers]);
-
   const baseTeacherList = useMemo(() => {
-    if (isPersonalWorkspace) {
-      return ownTeacherRecord ? [ownTeacherRecord] : teachers.slice(0, 1);
-    }
     return teachers;
-  }, [isPersonalWorkspace, ownTeacherRecord, teachers]);
+  }, [teachers]);
 
   const filteredTeachers = useMemo(() => {
     const q = searchTerm.toLowerCase();
@@ -237,11 +219,11 @@ export const DataGuruView: React.FC = () => {
           </div>
           <div>
             <h2 className="text-lg font-black text-slate-900">
-              {isPersonalWorkspace ? 'Data Guru (Profil Saya)' : 'Data Guru'}
+              Data Guru
             </h2>
             <p className="text-xs text-slate-500">
               {isPersonalWorkspace
-                ? 'Profil data guru Anda di Ruang Kerja Individu. Anda dapat memperbarui data pribadi dan penugasan Anda.'
+                ? 'Daftar data pendidik di Ruang Kerja Individu. Anda dapat menambahkan, mengedit, atau menghapus data pendidik.'
                 : 'Master pendidik sekolah. Penugasan Wali Kelas dan Guru Mapel bersifat eksklusif per tahun ajaran.'}
             </p>
           </div>
