@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 
 export const DataSekolahView: React.FC = () => {
-  const { schoolProfile, updateSchoolProfile, currentUser, showToast } = useApp();
+  const { schoolProfile, updateSchoolProfile, currentUser, showToast, activeWorkspace } = useApp();
   const [formData, setFormData] = useState<SchoolProfile>({
     ...schoolProfile,
     jenjang: 'SD/MI',
@@ -132,7 +132,14 @@ export const DataSekolahView: React.FC = () => {
     }
   };
 
-  const isReadOnly = currentUser?.role !== 'ADMIN' && currentUser?.role !== 'SUPER_ADMIN';
+  const isPersonalWorkspace =
+    activeWorkspace?.workspaceType === 'personal' ||
+    activeWorkspace?.workspaceType === 'individu' ||
+    (currentUser?.subscriptionPlan === 'mulai' && !currentUser?.schoolId);
+
+  const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN';
+  const canEditSchool = isPersonalWorkspace ? true : isAdmin;
+  const isReadOnly = !canEditSchool;
 
   return (
     <div className="w-full space-y-6 animate-in fade-in duration-200">
@@ -143,7 +150,7 @@ export const DataSekolahView: React.FC = () => {
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 border border-blue-400/30 text-blue-200 text-xs font-bold tracking-wide">
               <School size={14} className="text-blue-400" />
-              Data Referensi Pokok Satuan Pendidikan (SD/MI Sederajat)
+              {isPersonalWorkspace ? 'Ruang Kerja Individu · Identitas Satuan Pendidikan' : 'Data Referensi Pokok Satuan Pendidikan (SD/MI Sederajat)'}
             </div>
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white flex items-center gap-3">
               Identitas Sekolah
@@ -171,11 +178,20 @@ export const DataSekolahView: React.FC = () => {
         </div>
       </div>
 
+      {isPersonalWorkspace && (
+        <div className="flex items-center gap-3 p-4 bg-blue-50 border border-blue-200 text-blue-900 rounded-2xl text-xs font-medium">
+          <Info size={18} className="text-blue-600 shrink-0" />
+          <span>
+            <strong>Ruang Kerja Individu:</strong> Anda dapat mengatur identitas sekolah tempat Anda bertugas untuk keperluan format cetak laporan, banner kop surat, dan semester aktif kelas binaan Anda.
+          </span>
+        </div>
+      )}
+
       {isReadOnly && (
         <div className="flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl text-xs font-medium">
           <Info size={18} className="text-amber-600 shrink-0" />
           <span>
-            Mode Hanya Lihat: Anda sedang login dengan hak akses <strong>{currentUser?.role}</strong>. Hanya Administrator Sekolah yang dapat mengubah data identitas sekolah.
+            Mode Hanya Lihat: Anda sedang berada di Ruang Kerja Sekolah dengan hak akses <strong>{currentUser?.role}</strong>. Hanya Administrator Sekolah yang dapat mengubah identitas sekolah induk.
           </span>
         </div>
       )}

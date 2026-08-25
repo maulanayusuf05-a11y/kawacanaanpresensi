@@ -19,8 +19,18 @@ export const DataGuruView: React.FC = () => {
     deleteTeacher,
     addUser,
     showToast,
+    activeWorkspace,
   } = useApp();
+
+  const isPersonalWorkspace =
+    activeWorkspace?.workspaceType === 'personal' ||
+    activeWorkspace?.workspaceType === 'individu' ||
+    (currentUser?.subscriptionPlan === 'mulai' && !currentUser?.schoolId);
+
   const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN';
+  const canAdd = isAdmin && !isPersonalWorkspace;
+  const canEdit = isAdmin || isPersonalWorkspace;
+  const canDelete = isAdmin && !isPersonalWorkspace;
 
   const [searchTerm, setSearchTerm] = useState('');
   const [editing, setEditing] = useState<Teacher | null>(null);
@@ -41,9 +51,31 @@ export const DataGuruView: React.FC = () => {
   const [jenisKelamin, setJenisKelamin] = useState<'L' | 'P'>('L');
   const [guruType, setGuruType] = useState<'Wali Kelas' | 'Guru Mapel'>('Wali Kelas');
 
+  // Teacher record corresponding to current user
+  const ownTeacherRecord = useMemo(() => {
+    if (!currentUser) return null;
+    const uName = (currentUser.name || '').trim().toLowerCase();
+    const uUsername = (currentUser.username || '').trim().toLowerCase();
+    return (
+      teachers.find(
+        (t) =>
+          (t.id && t.id === currentUser.id) ||
+          (t.nip && t.nip !== '-' && t.nip.trim().toLowerCase() === uUsername) ||
+          (t.nama && t.nama.trim().toLowerCase() === uName)
+      ) || teachers[0] || null
+    );
+  }, [currentUser, teachers]);
+
+  const baseTeacherList = useMemo(() => {
+    if (isPersonalWorkspace) {
+      return ownTeacherRecord ? [ownTeacherRecord] : teachers.slice(0, 1);
+    }
+    return teachers;
+  }, [isPersonalWorkspace, ownTeacherRecord, teachers]);
+
   const filteredTeachers = useMemo(() => {
     const q = searchTerm.toLowerCase();
-    return teachers.filter(
+    return baseTeacherList.filter(
       (t) =>
         t.nama.toLowerCase().includes(q) ||
         t.nip.toLowerCase().includes(q) ||
@@ -51,7 +83,7 @@ export const DataGuruView: React.FC = () => {
         (t.jenisPTK && t.jenisPTK.toLowerCase().includes(q)) ||
         (t.mataPelajaran && t.mataPelajaran.toLowerCase().includes(q))
     );
-  }, [teachers, searchTerm]);
+  }, [baseTeacherList, searchTerm]);
 
   // Helper untuk mengecek akun guru
   const getTeacherAccount = (t: Teacher) => {
@@ -193,13 +225,17 @@ export const DataGuruView: React.FC = () => {
             <UsersRound size={20} />
           </div>
           <div>
-            <h2 className="text-lg font-black text-slate-900">Data Guru</h2>
+            <h2 className="text-lg font-black text-slate-900">
+              {isPersonalWorkspace ? 'Data Guru (Profil Saya)' : 'Data Guru'}
+            </h2>
             <p className="text-xs text-slate-500">
-              Master pendidik sekolah. Penugasan <strong>Wali Kelas</strong> dan <strong>Guru Mapel</strong> bersifat eksklusif per tahun ajaran.
+              {isPersonalWorkspace
+                ? 'Profil data guru Anda di Ruang Kerja Individu. Anda dapat memperbarui data pribadi dan penugasan Anda.'
+                : 'Master pendidik sekolah. Penugasan Wali Kelas dan Guru Mapel bersifat eksklusif per tahun ajaran.'}
             </p>
           </div>
         </div>
-        {isAdmin && (
+        {canAdd && (
           <button
             onClick={openAdd}
             id="btn-tambah-guru"
@@ -210,6 +246,15 @@ export const DataGuruView: React.FC = () => {
           </button>
         )}
       </div>
+
+      {isPersonalWorkspace && (
+        <div className="flex items-center gap-3 p-3.5 bg-blue-50 border border-blue-200 text-blue-900 rounded-xl text-xs font-medium">
+          <ShieldCheck size={18} className="text-blue-600 shrink-0" />
+          <span>
+            <strong>Ruang Kerja Individu:</strong> Hanya menampilkan data guru Anda sendiri. Anda dapat mengedit identitas dan penugasan Anda dengan menekan tombol <strong>Edit</strong>.
+          </span>
+        </div>
+      )}
 
       <div className="relative w-full sm:w-80">
         <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -232,7 +277,7 @@ export const DataGuruView: React.FC = () => {
               <th className="py-3.5 px-4 w-24 text-center">JK</th>
               <th className="py-3.5 px-4 w-36 text-center">PENUGASAN</th>
               <th className="py-3.5 px-4 w-36 text-center">STATUS AKUN</th>
-              {isAdmin && <th className="py-3.5 px-4 w-24 text-center rounded-r-xl">AKSI</th>}
+              {canEdit && <th className="py-3.5 px-4 w-24 text-center rounded-r-xl">AKSI</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 text-xs">
@@ -265,7 +310,7 @@ export const DataGuruView: React.FC = () => {
                           <CheckCircle2 size={11} />
                           {account.role}
                         </span>
-                      ) : (
+                      ) : !isPersonalWorkspace ? (
                         <button
                           type="button"
                           onClick={() => openCreateAccountModal(t)}
@@ -274,25 +319,29 @@ export const DataGuruView: React.FC = () => {
                           <UserPlus size={11} />
                           Buat Akun
                         </button>
+                      ) : (
+                        <span className="text-[10px] text-slate-400 font-medium">Akun Pengguna</span>
                       )}
                     </td>
-                    {isAdmin && (
+                    {canEdit && (
                       <td className="py-3.5 px-4 text-center">
                         <div className="flex items-center justify-center gap-1.5">
                           <button
                             onClick={() => openEdit(t)}
-                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
                             title="Edit Data Guru"
                           >
                             <Edit2 size={14} />
                           </button>
-                          <button
-                            onClick={() => setDeleting(t)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                            title="Hapus Data Guru"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                          {canDelete && (
+                            <button
+                              onClick={() => setDeleting(t)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              title="Hapus Data Guru"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     )}
@@ -301,7 +350,7 @@ export const DataGuruView: React.FC = () => {
               })
             ) : (
               <tr>
-                <td colSpan={isAdmin ? 7 : 6} className="py-12 text-center text-slate-400">
+                <td colSpan={canEdit ? 7 : 6} className="py-12 text-center text-slate-400">
                   Belum ada data guru yang sesuai
                 </td>
               </tr>

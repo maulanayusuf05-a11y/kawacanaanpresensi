@@ -223,10 +223,10 @@ export const DashboardView: React.FC = () => {
     if (!currentUser) return false;
     if (currentUser.role === 'ADMIN' || currentUser.role === 'SUPER_ADMIN') return true;
     if (currentUser.role === 'GURU' || currentUser.role === 'WALI KELAS' || currentUser.role === 'GURU MAPEL') {
-      return ['data-referensi', 'kalender-akademik', 'absensi', 'rekapitulasi', 'laporan'].includes(item.id);
+      return ['data-referensi', 'kalender-akademik', 'absensi', 'rekapitulasi', 'laporan', 'pengaturan'].includes(item.id);
     }
     if (currentUser.role === 'KEPALA SEKOLAH') {
-      return ['data-referensi', 'kalender-akademik', 'rekapitulasi', 'laporan'].includes(item.id);
+      return ['data-referensi', 'kalender-akademik', 'rekapitulasi', 'laporan', 'pengaturan'].includes(item.id);
     }
     return false;
   });

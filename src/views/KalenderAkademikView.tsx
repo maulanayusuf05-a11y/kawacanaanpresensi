@@ -60,9 +60,10 @@ export const KalenderAkademikView: React.FC = () => {
     showToast,
   } = useApp();
 
-  // Ruang Kerja Sekolah: hanya Admin Sekolah (ADMIN / SUPER_ADMIN) yang dapat mengisi dan mengubah kalender akademik
+  // Ruang Kerja Individu & Admin Sekolah memiliki akses penuh mengelola kalender akademik
   const isPersonalWorkspace =
     activeWorkspace?.workspaceType === 'personal' ||
+    activeWorkspace?.workspaceType === 'individu' ||
     (currentUser?.subscriptionPlan === 'mulai' && !currentUser?.schoolId);
 
   const isAdminSekolah = currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN';

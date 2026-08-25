@@ -44,18 +44,22 @@ export const DataKelasView: React.FC = () => {
   const isGuru = currentUser?.role === 'GURU' || currentUser?.role === 'GURU MAPEL';
   const isPersonalWorkspace =
     activeWorkspace?.workspaceType === 'personal' ||
+    activeWorkspace?.workspaceType === 'individu' ||
     currentUser?.subscriptionPlan === 'mulai' ||
     currentUser?.subscriptionPlan === 'free' ||
     currentUser?.subscriptionPlan === 'guru' ||
     currentUser?.subscriptionPlan === 'teacher' ||
     !currentUser?.schoolId;
 
-  // Daftar kelas binaan pengguna (untuk Wali Kelas)
+  // Daftar kelas binaan pengguna (untuk Wali Kelas / Ruang Kerja Individu)
   const myAssignedClasses = useMemo(() => {
-    if (isAdmin || isPersonalWorkspace) return classes;
+    if (isAdmin && !isPersonalWorkspace) return classes;
     const ids = new Set<string>();
     if (currentUser?.assignedClassIds && Array.isArray(currentUser.assignedClassIds)) {
       currentUser.assignedClassIds.forEach((id) => ids.add(id));
+    }
+    if (currentUser?.classIds && Array.isArray(currentUser.classIds)) {
+      currentUser.classIds.forEach((id) => ids.add(id));
     }
     classes.forEach((c) => {
       if (c.waliKelasId && currentUser?.id && c.waliKelasId === currentUser.id) {
@@ -73,26 +77,24 @@ export const DataKelasView: React.FC = () => {
       ids.add(activeWorkspace.classId);
     }
     const matched = classes.filter((c) => ids.has(c.id));
-    if (matched.length === 0 && (isWaliKelas || isGuru)) {
-      return classes;
+    if (matched.length === 0) {
+      return classes.slice(0, 1);
     }
     return matched;
-  }, [isAdmin, isPersonalWorkspace, classes, currentUser, activeWorkspace, isWaliKelas, isGuru]);
+  }, [isAdmin, isPersonalWorkspace, classes, currentUser, activeWorkspace]);
 
   const accessibleClassIds = useMemo(() => {
     return new Set(myAssignedClasses.map((c) => c.id));
   }, [myAssignedClasses]);
 
   const accessibleClasses = useMemo(() => {
-    if (isAdmin || isPersonalWorkspace) return classes;
-    if (isWaliKelas || isGuru) {
-      if (myAssignedClasses.length > 0 && myAssignedClasses.length < classes.length) {
-        return classes.filter((c) => accessibleClassIds.has(c.id));
-      }
-    }
-    return classes;
-  }, [isAdmin, isPersonalWorkspace, isWaliKelas, isGuru, classes, myAssignedClasses, accessibleClassIds]);
+    if (isAdmin && !isPersonalWorkspace) return classes;
+    return myAssignedClasses;
+  }, [isAdmin, isPersonalWorkspace, myAssignedClasses]);
 
+  const canAddClass = isAdmin && !isPersonalWorkspace;
+  const canEditClass = isAdmin || isPersonalWorkspace || isWaliKelas;
+  const canDeleteClass = isAdmin && !isPersonalWorkspace;
   const canManageKelas = isAdmin || isPersonalWorkspace || isWaliKelas;
 
   // Search & Pagination
@@ -325,11 +327,20 @@ export const DataKelasView: React.FC = () => {
               <GraduationCap size={24} />
             </div>
             <div>
-              <h2 className="text-lg font-black text-slate-900">Data Rombongan Belajar (Kelas)</h2>
+              <h2 className="text-lg font-black text-slate-900">
+                {isPersonalWorkspace ? 'Data Kelas Binaan Saya' : 'Data Rombongan Belajar (Kelas)'}
+              </h2>
               <p className="text-xs text-slate-500">
-                Kelola data kelas, penetapan wali kelas, dan rekapitulasi jumlah siswa otomatis.
+                {isPersonalWorkspace
+                  ? 'Data rombongan belajar Anda di Ruang Kerja Individu. Anda dapat melihat dan mengelola siswa kelas ini.'
+                  : 'Kelola data kelas, penetapan wali kelas, dan rekapitulasi jumlah siswa otomatis.'}
               </p>
-              {isWaliKelas && !isAdmin && !isPersonalWorkspace && (
+              {isPersonalWorkspace ? (
+                <div className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-800 border border-blue-200 text-[11px] font-bold">
+                  <ShieldCheck size={13} className="text-blue-600" />
+                  <span>Ruang Kerja Individu: Menampilkan kelas binaan Anda ({myAssignedClasses.map((c) => c.name).join(', ')})</span>
+                </div>
+              ) : isWaliKelas && !isAdmin && (
                 <div className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-bold">
                   <ShieldCheck size={13} className="text-emerald-600" />
                   <span>Akses Wali Kelas: Mengelola Kelas Binaan Anda ({myAssignedClasses.map((c) => c.name).join(', ') || 'Belum ditugaskan'})</span>
@@ -337,7 +348,7 @@ export const DataKelasView: React.FC = () => {
               )}
             </div>
           </div>
-          {canManageKelas && (
+          {canAddClass && (
             <button
               onClick={openAdd}
               id="btn-tambah-kelas"
@@ -478,7 +489,7 @@ export const DataKelasView: React.FC = () => {
                               >
                                 <Edit2 size={15} />
                               </button>
-                              {totalCount > 0 && (
+                              {canDeleteClass && totalCount > 0 && (
                                 <button
                                   onClick={() => setPurgeClassModal(c)}
                                   className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
@@ -487,13 +498,15 @@ export const DataKelasView: React.FC = () => {
                                   <UserX size={15} />
                                 </button>
                               )}
-                              <button
-                                onClick={() => setDeleting(c)}
-                                className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                                title="Hapus Kelas"
-                              >
-                                <Trash2 size={15} />
-                              </button>
+                              {canDeleteClass && (
+                                <button
+                                  onClick={() => setDeleting(c)}
+                                  className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                  title="Hapus Kelas"
+                                >
+                                  <Trash2 size={15} />
+                                </button>
+                              )}
                             </>
                           )}
                         </div>
