@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext';
 import { AttendanceType } from '../types';
 import { SchoolLogo } from './SchoolLogo';
 import { Printer, X, Download } from 'lucide-react';
-import { formatSubjectTeacherTitle } from '../utils/formatTeacherTitle';
+import { formatSubjectTeacherTitle, formatHomeroomTeacherTitle } from '../utils/formatTeacherTitle';
 
 interface ReportPrintModalProps {
   isOpen: boolean;
@@ -1033,7 +1033,7 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
               <p className="font-bold">
                 {attendanceType === 'SUBJECT'
                   ? formatSubjectTeacherTitle(subjectName)
-                  : `Guru Kelas ${activeClassName} / Wali Kelas`}
+                  : formatHomeroomTeacherTitle(activeClassName)}
               </p>
               <div className="h-14 sm:h-20" />
               <p className="font-bold underline text-sm uppercase">

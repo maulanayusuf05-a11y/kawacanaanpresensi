@@ -544,7 +544,82 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
  },[currentUser?.id]);
 
  const apiUser=async(action:string,payload:any={})=>{const {data}=await supabase.auth.getSession();const r=await fetch('/api/admin-users',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${data.session?.access_token||''}`},body:JSON.stringify({action,...payload})});const body=await r.json().catch(()=>({}));if(!r.ok)throw new Error(body.error||'Operasi akun gagal');return body};
- const updateSchoolProfile=async(p:SchoolProfile)=>{const fullAlamat=formatFullAlamat(p)||p.alamat||'';const extPayload={full:fullAlamat,jenjang:p.jenjang||'SD',jalan:p.jalan||'',desaKelurahan:p.desaKelurahan||'',kecamatan:p.kecamatan||'',kabupatenKota:p.kabupatenKota||'',provinsi:p.provinsi||'',kodePos:p.kodePos||'',teleponFax:p.teleponFax||'',email:p.email||'',website:p.website||''};const serializedAlamat=`__EXTJSON__:${JSON.stringify(extPayload)}`;const {error}=await supabase.from('school_profile').upsert({school_id:currentUser?.schoolId||null,nama_sekolah:p.namaSekolah,npsn:p.npsn,alamat:serializedAlamat,tahun_pelajaran:p.tahunPelajaran||'2026/2027',semester:p.semester||'1',kelas:p.kelas||'',nama_kepala_sekolah:p.namaKepalaSekolah,nip_kepala_sekolah:p.nipKepalaSekolah,nama_wali_kelas:p.namaWaliKelas||'',nip_wali_kelas:p.nipWaliKelas||''},{onConflict:'school_id'});if(error)return showToast(error.message,'error');setSchoolProfile({...p,alamat:fullAlamat});showToast('Identitas Sekolah berhasil disimpan')};
+  const updateSchoolProfile = async (p: SchoolProfile) => {
+    const fullAlamat = formatFullAlamat(p) || p.alamat || '';
+    const extPayload = {
+      full: fullAlamat,
+      jenjang: p.jenjang || 'SD',
+      jalan: p.jalan || '',
+      desaKelurahan: p.desaKelurahan || '',
+      kecamatan: p.kecamatan || '',
+      kabupatenKota: p.kabupatenKota || '',
+      provinsi: p.provinsi || '',
+      kodePos: p.kodePos || '',
+      teleponFax: p.teleponFax || '',
+      email: p.email || '',
+      website: p.website || ''
+    };
+    const serializedAlamat = `__EXTJSON__:${JSON.stringify(extPayload)}`;
+    const schoolId = currentUser?.schoolId || activeWorkspace?.workspaceId || null;
+
+    // 1. Simpan dan sinkronisasi ke tabel school_profile dan schools (Superadmin) via API service-role
+    let apiSuccess = false;
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token || '';
+      const res = await fetch('/api/onboarding', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          action: 'save_school_profile',
+          schoolId,
+          namaSekolah: p.namaSekolah,
+          npsn: p.npsn,
+          jenjang: p.jenjang || 'SD/MI',
+          alamat: serializedAlamat,
+          tahunPelajaran: p.tahunPelajaran || '2026/2027',
+          semester: p.semester || '1',
+          kelas: p.kelas || '',
+          namaKepalaSekolah: p.namaKepalaSekolah || '',
+          nipKepalaSekolah: p.nipKepalaSekolah || '',
+          namaWaliKelas: p.namaWaliKelas || '',
+          nipWaliKelas: p.nipWaliKelas || '',
+        })
+      });
+      const jsonRes = await res.json().catch(() => ({}));
+      if (res.ok && (jsonRes.ok || jsonRes.success)) {
+        apiSuccess = true;
+      }
+    } catch (_) {}
+
+    // 2. Fallback upsert langsung jika API tidak merespons
+    if (!apiSuccess && schoolId) {
+      const { error } = await supabase.from('school_profile').upsert({
+        school_id: schoolId,
+        nama_sekolah: p.namaSekolah,
+        npsn: p.npsn,
+        alamat: serializedAlamat,
+        tahun_pelajaran: p.tahunPelajaran || '2026/2027',
+        semester: p.semester || '1',
+        kelas: p.kelas || '',
+        nama_kepala_sekolah: p.namaKepalaSekolah,
+        nip_kepala_sekolah: p.nipKepalaSekolah,
+        nama_wali_kelas: p.namaWaliKelas || '',
+        nip_wali_kelas: p.nipWaliKelas || ''
+      }, { onConflict: 'school_id' });
+      if (error) return showToast(error.message, 'error');
+    }
+
+    // 3. Update local states
+    setSchoolProfile({ ...p, alamat: fullAlamat });
+    if (p.namaSekolah && activeWorkspace) {
+      setActiveWorkspace(prev => prev ? { ...prev, workspaceName: p.namaSekolah } : null);
+    }
+    showToast('Identitas Sekolah berhasil disimpan');
+  };
  const updateSystemConfig=async(c:SystemConfig)=>{const {error}=await supabase.from('system_config').upsert({school_id:currentUser?.schoolId||null,app_title:c.appTitle,app_subtitle:c.appSubtitle,footer_copyright:c.footerCopyright,school_logo_url:c.schoolLogoUrl||'',letterhead_type:c.letterheadType||'standard_text',letterhead_image_url:c.letterheadImageUrl||'',show_letterhead:c.showLetterhead??true,default_check_in_time:c.defaultCheckInTime,default_check_out_time:c.defaultCheckOutTime,report_place:c.reportPlace,report_date:c.reportDate,active_study_days:c.activeStudyDays||activeStudyDays,student_self_attendance_enabled:c.studentSelfAttendanceEnabled,check_in_start_time:c.checkInStartTime,check_in_deadline_time:c.checkInDeadlineTime,check_out_start_time:c.checkOutStartTime,auto_mark_late:c.autoMarkLate},{onConflict:'school_id'});if(error)return showToast(error.message,'error');setSystemConfig(c);setActiveStudyDays(c.activeStudyDays||activeStudyDays);showToast('Pengaturan Sistem berhasil diperbarui')};
  const resolveWaliKelas = async (inputWaliId: string | null) => {
     if (!inputWaliId) return { dbWaliId: null, waliName: null, internalId: null };

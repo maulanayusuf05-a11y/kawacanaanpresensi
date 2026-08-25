@@ -326,7 +326,8 @@ export default async function handler(req: any, res: any) {
       let finalSchoolId = schoolId;
 
       if (mode === 'personal' || !finalSchoolId) {
-        const wsName = String(body.workspaceName || `Ruang Kelas ${fullName}`).trim();
+        const isPersonal = mode === 'personal';
+        const wsName = isPersonal ? 'Ruang Kerja Individu' : String(body.workspaceName || `Ruang Kerja ${fullName}`).trim();
         const trial = calculateGuruProTrialPeriod();
         const { data: newSchool, error: schoolErr } = await db.from('schools').insert({
           name: wsName,
@@ -346,9 +347,11 @@ export default async function handler(req: any, res: any) {
         if (schoolErr) throw schoolErr;
         finalSchoolId = newSchool.id;
 
+        // Untuk Ruang Kerja Individu baru, nama satuan pendidikan tetap KOSONG (tidak diisi otomatis oleh sistem)
         await db.from('school_profile').upsert({
           school_id: finalSchoolId,
-          nama_sekolah: wsName,
+          nama_sekolah: isPersonal ? '' : wsName,
+          npsn: '',
           jenjang: 'SD',
           nama_wali_kelas: role === 'WALI KELAS' ? fullName : '',
           nip_wali_kelas: role === 'WALI KELAS' ? nip : '',
@@ -360,7 +363,7 @@ export default async function handler(req: any, res: any) {
         await db.from('system_config').upsert({
           school_id: finalSchoolId,
           app_title: 'Kawacanaan Presensi',
-          app_subtitle: wsName,
+          app_subtitle: isPersonal ? '' : wsName,
         }, { onConflict: 'school_id' });
 
         // Ruang kerja individu (personal): Jangan buat kelas default.
@@ -459,10 +462,9 @@ export default async function handler(req: any, res: any) {
 
       if (mode === 'personal' || !targetSchoolId) {
         const isPersonal = mode === 'personal';
-        const wsName = String(
-          body.workspaceName ||
-            (isPersonal ? `Ruang Kelas ${teacherName}` : `Ruang Kerja Sekolah ${teacherName}`)
-        ).trim();
+        const wsName = isPersonal
+          ? 'Ruang Kerja Individu'
+          : String(body.workspaceName || `Ruang Kerja Sekolah ${teacherName}`).trim();
         const trial = calculateGuruProTrialPeriod();
         const { data: newSchool, error: schoolErr } = await db.from('schools').insert({
           name: wsName,
@@ -482,9 +484,11 @@ export default async function handler(req: any, res: any) {
         if (schoolErr) throw schoolErr;
         targetSchoolId = newSchool.id;
 
+        // Ruang kerja individu: nama satuan pendidikan dibiarkan kosong agar diisi sendiri oleh guru/wali kelas
         await db.from('school_profile').upsert({
           school_id: targetSchoolId,
-          nama_sekolah: wsName,
+          nama_sekolah: isPersonal ? '' : wsName,
+          npsn: '',
           jenjang: 'SD',
           nama_wali_kelas: teacherName,
           nip_wali_kelas: nip,
@@ -496,7 +500,7 @@ export default async function handler(req: any, res: any) {
         await db.from('system_config').upsert({
           school_id: targetSchoolId,
           app_title: 'Kawacanaan Presensi',
-          app_subtitle: wsName,
+          app_subtitle: isPersonal ? '' : wsName,
         }, { onConflict: 'school_id' });
 
         // Ruang kerja individu (personal): Jangan buat kelas default.
@@ -624,10 +628,9 @@ export default async function handler(req: any, res: any) {
 
       if (mode === 'personal' || !targetSchoolId) {
         const isPersonal = mode === 'personal';
-        const wsName = String(
-          body.workspaceName ||
-            (isPersonal ? `Ruang Mengajar ${subjectName} - ${teacherName}` : `Ruang Kerja Sekolah ${teacherName}`)
-        ).trim();
+        const wsName = isPersonal
+          ? 'Ruang Kerja Individu'
+          : String(body.workspaceName || `Ruang Kerja Sekolah ${teacherName}`).trim();
         const trial = calculateGuruProTrialPeriod();
         const { data: newSchool, error: schoolErr } = await db.from('schools').insert({
           name: wsName,
@@ -649,7 +652,8 @@ export default async function handler(req: any, res: any) {
 
         await db.from('school_profile').upsert({
           school_id: targetSchoolId,
-          nama_sekolah: wsName,
+          nama_sekolah: isPersonal ? '' : wsName,
+          npsn: '',
           jenjang: 'SD',
           tahun_pelajaran: '2026/2027',
           semester: '1',
@@ -659,7 +663,7 @@ export default async function handler(req: any, res: any) {
         await db.from('system_config').upsert({
           school_id: targetSchoolId,
           app_title: 'Kawacanaan Presensi',
-          app_subtitle: wsName,
+          app_subtitle: isPersonal ? '' : wsName,
         }, { onConflict: 'school_id' });
 
         // Ruang kerja individu (personal): Jangan buat kelas default.
@@ -912,6 +916,69 @@ export default async function handler(req: any, res: any) {
         success: true,
         teacher: inserted,
         teacherId: inserted.id,
+      });
+    }
+
+    // -------------------------------------------------------------
+    // SAVE / UPDATE SCHOOL PROFILE & SYNC TO SCHOOLS & SUPERADMIN
+    // -------------------------------------------------------------
+    if (action === 'save_school_profile' || action === 'update_school_profile') {
+      let schoolId = body.schoolId || null;
+      if (!schoolId && callerUser?.id) {
+        const { data: prof } = await db.from('profiles').select('school_id').eq('id', callerUser.id).maybeSingle();
+        schoolId = prof?.school_id || null;
+      }
+      if (!schoolId) {
+        return json(res, 400, { error: 'ID ruang kerja/sekolah wajib disertakan.' });
+      }
+
+      const namaSekolah = String(body.namaSekolah || body.nama_sekolah || '').trim();
+      const npsn = String(body.npsn || '').trim();
+      const jenjang = String(body.jenjang || 'SD/MI').trim();
+      const alamat = body.alamat || '';
+      const tahunPelajaran = String(body.tahunPelajaran || body.tahun_pelajaran || '2026/2027').trim();
+      const semester = String(body.semester || '1').trim();
+      const kelas = String(body.kelas || '').trim();
+      const namaKepalaSekolah = String(body.namaKepalaSekolah || body.nama_kepala_sekolah || '').trim();
+      const nipKepalaSekolah = String(body.nipKepalaSekolah || body.nip_kepala_sekolah || '').trim();
+      const namaWaliKelas = String(body.namaWaliKelas || body.nama_wali_kelas || '').trim();
+      const nipWaliKelas = String(body.nipWaliKelas || body.nip_wali_kelas || '').trim();
+
+      // 1. Simpan ke tabel school_profile
+      const { data: sp, error: spErr } = await db.from('school_profile').upsert({
+        school_id: schoolId,
+        nama_sekolah: namaSekolah,
+        npsn: npsn || null,
+        jenjang,
+        alamat,
+        tahun_pelajaran: tahunPelajaran,
+        semester,
+        kelas,
+        nama_kepala_sekolah: namaKepalaSekolah,
+        nip_kepala_sekolah: nipKepalaSekolah,
+        nama_wali_kelas: namaWaliKelas,
+        nip_wali_kelas: nipWaliKelas,
+      }, { onConflict: 'school_id' }).select().single();
+
+      if (spErr) throw spErr;
+
+      // 2. Terintegrasi penuh dengan data Superadmin di tabel `schools`
+      const schoolUpdate: any = {};
+      if (namaSekolah) {
+        schoolUpdate.name = namaSekolah;
+      }
+      if (npsn) {
+        schoolUpdate.npsn = npsn;
+      }
+      if (Object.keys(schoolUpdate).length > 0) {
+        await db.from('schools').update(schoolUpdate).eq('id', schoolId);
+      }
+
+      return json(res, 200, {
+        ok: true,
+        success: true,
+        message: 'Identitas satuan pendidikan berhasil disimpan dan terintegrasi.',
+        profile: sp,
       });
     }
 

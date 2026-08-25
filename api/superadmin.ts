@@ -226,13 +226,19 @@ export default async function handler(req:any,res:any){
     }
 
     if(action==='list'){
-      const [{data:schools,error:sErr},{data:students},{data:profiles},{data:classes}]=await Promise.all([
-        admin.from('schools').select('id,name,npsn,code,plan,status,subscription_started_at,subscription_expires_at,max_teachers,max_students,max_classes,notes,created_at,updated_at').order('created_at',{ascending:false}),
+      const [{data:schools,error:sErr},{data:students},{data:profiles},{data:classes},{data:schoolProfiles}]=await Promise.all([
+        admin.from('schools').select('id,name,npsn,code,plan,status,subscription_started_at,subscription_expires_at,max_teachers,max_students,max_classes,notes,workspace_type,is_personal,created_at,updated_at').order('created_at',{ascending:false}),
         admin.from('students').select('school_id'),
         admin.from('profiles').select('school_id, role').neq('role','SUPER_ADMIN'),
         admin.from('classes').select('school_id'),
+        admin.from('school_profile').select('school_id, nama_sekolah, npsn, jenjang'),
       ]);
       if(sErr) throw sErr;
+
+      const profileMap = new Map<string, any>();
+      (schoolProfiles || []).forEach((sp: any) => {
+        if (sp.school_id) profileMap.set(sp.school_id, sp);
+      });
 
       const studentCounts: Record<string, number> = {};
       (students||[]).forEach((st:any)=>{ if(st.school_id) studentCounts[st.school_id]=(studentCounts[st.school_id]||0)+1; });
@@ -254,8 +260,15 @@ export default async function handler(req:any,res:any){
         const isPersonal = s.workspace_type === 'personal' || (Boolean(s.code?.startsWith('PER-')) && !s.npsn);
         const workspaceType = isPersonal ? 'personal' : 'school';
 
+        const sp = profileMap.get(s.id);
+        const userFilledSchoolName = sp?.nama_sekolah && String(sp.nama_sekolah).trim() ? String(sp.nama_sekolah).trim() : null;
+        const resolvedName = userFilledSchoolName || s.name || (isPersonal ? 'Ruang Kerja Individu' : 'Ruang Kerja Sekolah');
+        const resolvedNpsn = sp?.npsn || s.npsn || null;
+
         return {
           ...s,
+          name: resolvedName,
+          npsn: resolvedNpsn,
           school_id: s.id,
           plan: normPlan,
           raw_plan: s.plan,
@@ -272,13 +285,24 @@ export default async function handler(req:any,res:any){
     }
 
     if(action==='dashboard'){
-      const [{data:schools},{data:students},{data:classes},{data:users}]=await Promise.all([
-        admin.from('schools').select('id,name,npsn,plan,status,subscription_expires_at,max_teachers,max_students,max_classes,created_at'),
+      const [{data:schools},{data:students},{data:classes},{data:users},{data:schoolProfiles}]=await Promise.all([
+        admin.from('schools').select('id,name,npsn,plan,status,subscription_expires_at,max_teachers,max_students,max_classes,workspace_type,is_personal,created_at'),
         admin.from('students').select('id, school_id'),
         admin.from('classes').select('id, school_id'),
         admin.from('profiles').select('id, role, school_id').neq('role','SUPER_ADMIN'),
+        admin.from('school_profile').select('school_id, nama_sekolah, npsn'),
       ]);
-      const rows=(schools||[]).map((s:any)=>({...s,school_id:s.id}));
+      const spMap = new Map((schoolProfiles || []).map((sp: any) => [sp.school_id, sp]));
+      const rows=(schools||[]).map((s:any)=>{
+        const sp = spMap.get(s.id);
+        const userFilledSchoolName = sp?.nama_sekolah && String(sp.nama_sekolah).trim() ? String(sp.nama_sekolah).trim() : null;
+        return {
+          ...s,
+          name: userFilledSchoolName || s.name || 'Ruang Kerja',
+          npsn: sp?.npsn || s.npsn || null,
+          school_id: s.id
+        };
+      });
       
       const planStats = {
         mulai: 0,
@@ -508,19 +532,26 @@ export default async function handler(req:any,res:any){
         q=q.eq('school_id',schoolId);
       }
       if(action==='list_admins') q=q.in('role',['ADMIN','KEPALA SEKOLAH','GURU','WALI KELAS']);
-      const {data,error}=await q.order('created_at',{ascending:false});
+      const [{data,error},{data:schoolProfiles}]=await Promise.all([
+        q.order('created_at',{ascending:false}),
+        admin.from('school_profile').select('school_id, nama_sekolah, npsn'),
+      ]);
       if(error) throw error;
+      const spMap = new Map((schoolProfiles || []).map((sp: any) => [sp.school_id, sp]));
+
       const formatted = (data||[]).map((u:any)=>{
         const sch = u.schools as any;
+        const sp = spMap.get(u.school_id);
+        const userFilledSchoolName = sp?.nama_sekolah && String(sp.nama_sekolah).trim() ? String(sp.nama_sekolah).trim() : null;
         const isCideng = (sch?.name || '').toLowerCase().includes('cideng') || sch?.npsn === '20100123';
         const isPersonal = !isCideng && (sch?.workspace_type === 'personal' || (Boolean(sch?.code?.startsWith('PER-')) && !sch?.npsn));
         return {
           ...u,
-          school_name: sch?.name || (isPersonal ? 'Ruang Kerja Individu' : 'Ruang Kerja Sekolah'),
+          school_name: userFilledSchoolName || sch?.name || (isPersonal ? 'Ruang Kerja Individu' : 'Ruang Kerja Sekolah'),
           school_plan: sch?.plan || 'mulai',
           workspace_type: isPersonal ? 'personal' : 'school',
           workspace_type_label: isPersonal ? 'Ruang Kerja Individu' : 'Ruang Kerja Sekolah',
-          npsn: sch?.npsn || null,
+          npsn: sp?.npsn || sch?.npsn || null,
         };
       });
       return json(res,200,{ok:true,users:formatted,admins:formatted});

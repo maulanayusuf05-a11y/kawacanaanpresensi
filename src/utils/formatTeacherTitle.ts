@@ -121,3 +121,37 @@ export function formatSubjectTeacherTitle(rawSubjectName?: string | null): strin
 
   return `Guru ${cleanName}`;
 }
+
+/**
+ * Utility untuk memformat gelar/jabatan tanda tangan Guru Kelas / Wali Kelas
+ * pada hasil cetak laporan / printout absensi sekolah dasar.
+ *
+ * Mencegah kata "Kelas" menjadi double/duplikat (misal: "Guru Kelas Kelas 5" -> "Guru Kelas 5").
+ *
+ * Contoh:
+ * - "Kelas 5" -> "Guru Kelas 5 / Wali Kelas"
+ * - "5" -> "Guru Kelas 5 / Wali Kelas"
+ * - "Kelas 5A" -> "Guru Kelas 5A / Wali Kelas"
+ * - "Semua Kelas" atau null -> "Guru Kelas / Wali Kelas"
+ */
+export function formatHomeroomTeacherTitle(rawClassName?: string | null): string {
+  if (!rawClassName || !rawClassName.trim()) {
+    return 'Guru Kelas / Wali Kelas';
+  }
+
+  const name = rawClassName.trim();
+  const lower = name.toLowerCase();
+
+  if (lower === 'semua kelas' || lower === 'semua' || lower === 'all') {
+    return 'Guru Kelas / Wali Kelas';
+  }
+
+  // Bersihkan prefiks kata "Kelas" atau "kelas" yang sudah ada
+  const cleanClassName = name.replace(/^kelas\s*/i, '').trim();
+
+  if (!cleanClassName) {
+    return 'Guru Kelas / Wali Kelas';
+  }
+
+  return `Guru Kelas ${cleanClassName} / Wali Kelas`;
+}
