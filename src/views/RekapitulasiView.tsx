@@ -392,73 +392,77 @@ export const RekapitulasiView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-200 font-sans pb-16">
-      {/* Top Back Navigation to Dashboard */}
-      <div className="flex items-center justify-between">
+    <div className="w-full max-w-6xl 2xl:max-w-7xl mx-auto px-3.5 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-4 sm:space-y-6 animate-in fade-in duration-200 pb-20">
+      {/* Top Navigation */}
+      <div>
         <button
           onClick={() => setActiveView('dashboard')}
           className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-xs min-h-[38px] cursor-pointer"
           id="btn-back-dashboard-rekap"
         >
           <ArrowLeft size={14} />
-          <span>Kembali ke Dashboard</span>
+          <span>Dashboard</span>
         </button>
       </div>
 
-      {/* Header View */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            {userScope.isWaliKelas ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-800 font-extrabold text-xs border border-amber-200">
-                <Lock size={12} />
-                <span>Kewenangan: Wali Kelas {userScope.assignedWaliClassName} • {schoolProfile.namaSekolah}</span>
-              </span>
-            ) : userScope.isGuruMapel ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 text-indigo-800 font-extrabold text-xs border border-indigo-200">
-                <ShieldCheck size={12} />
-                <span>Kewenangan: Guru {specializedSubjects[0]?.name || 'Mapel'} • {schoolProfile.namaSekolah}</span>
-              </span>
-            ) : (
-              <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold text-xs border border-blue-200">
+      {/* Main Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center shrink-0 shadow-xs">
+            <BarChart3 size={22} />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 mb-0.5">
+              {userScope.isWaliKelas ? (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-800 font-bold text-[11px] border border-blue-200">
+                  <Lock size={11} />
+                  <span>Wali Kelas {userScope.assignedWaliClassName}</span>
+                </span>
+              ) : userScope.isGuruMapel ? (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-800 font-bold text-[11px] border border-indigo-200">
+                  <ShieldCheck size={11} />
+                  <span>Guru {specializedSubjects[0]?.name || 'Mapel'}</span>
+                </span>
+              ) : null}
+              <span className="text-[11px] text-slate-500 font-medium">
                 {schoolProfile.namaSekolah}
               </span>
-            )}
+            </div>
+            <h1 className="text-lg sm:text-xl lg:text-2xl font-black text-slate-900">
+              Rekapitulasi Kehadiran Siswa
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-500">
+              {userScope.isWaliKelas
+                ? `Laporan dan ringkasan presensi harian siswa khusus Kelas ${userScope.assignedWaliClassName || ''}`
+                : userScope.isGuruMapel
+                ? `Laporan dan ringkasan presensi mata pelajaran untuk rombel yang Anda ajar`
+                : 'Pilih jenis rekapitulasi (Bulanan atau Semester) untuk melihat ringkasan presensi sekolah'}
+            </p>
           </div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-            Rekapitulasi Kehadiran Siswa
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 font-medium">
-            {userScope.isWaliKelas
-              ? `Laporan dan ringkasan presensi harian siswa khusus Kelas ${userScope.assignedWaliClassName || ''}`
-              : userScope.isGuruMapel
-              ? `Laporan dan ringkasan presensi mata pelajaran untuk rombel yang Anda ajar`
-              : 'Pilih jenis rekapitulasi (Bulanan atau Semester) untuk melihat ringkasan presensi sekolah'}
-          </p>
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 shrink-0">
           <button
             onClick={() => setActiveView('laporan')}
-            className="px-4 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-xl border border-blue-200 transition-all flex items-center gap-2 cursor-pointer shadow-xs"
+            className="px-3.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-xl border border-blue-200 transition-all flex items-center gap-2 cursor-pointer shadow-xs min-h-[38px]"
           >
             <Printer size={15} />
-            <span>Format Cetak Lengkap</span>
+            <span>Format Cetak</span>
           </button>
 
           <button
             onClick={handlePrint}
-            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer min-h-[38px]"
           >
             <Download size={15} />
-            <span>Cetak {rekapMode === 'bulanan' ? 'Rekap Bulanan' : 'Rekap Semester'}</span>
+            <span>Cetak {rekapMode === 'bulanan' ? 'Bulanan' : 'Semester'}</span>
           </button>
         </div>
       </div>
 
       {/* Mode Switcher Tabs (Rekap Bulanan vs Rekap Semester) & Category (Wali Kelas vs Guru Mapel) */}
-      <div className="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200 shadow-sm space-y-4">
+      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-sm space-y-4">
         <div className="flex flex-col md:flex-row items-center justify-between gap-3">
           {/* Bulanan vs Semester Switcher */}
           <div className="bg-slate-200/80 p-1.5 rounded-2xl flex items-center gap-1.5 border border-slate-200 shadow-inner w-full md:w-auto">
@@ -589,12 +593,12 @@ export const RekapitulasiView: React.FC = () => {
       {/* 1. REKAP BULANAN VIEW */}
       {/* ============================================================== */}
       {rekapMode === 'bulanan' && (
-        <div className="space-y-5 animate-in fade-in duration-150">
+        <div className="space-y-4 sm:space-y-5 animate-in fade-in duration-150">
           {/* Filter Bar & Summary Cards */}
-          <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm space-y-4">
+          <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center font-bold shrink-0">
                   <CalendarDays size={20} />
                 </div>
                 <div>
@@ -634,27 +638,27 @@ export const RekapitulasiView: React.FC = () => {
 
             {/* 4 Counters + Average Percentage */}
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-center">
-              <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3">
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
                 <span className="text-[10px] font-bold text-blue-800 block uppercase">RATA-RATA HADIR</span>
                 <span className="text-xl font-black text-blue-900">{monthlyOverallStats.avgPercentage}%</span>
                 <span className="text-[10px] text-blue-700 block font-medium">Persentase Kelas</span>
               </div>
-              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
                 <span className="text-[10px] font-bold text-emerald-800 block uppercase">TOTAL HADIR (H)</span>
                 <span className="text-xl font-black text-emerald-900">{monthlyOverallStats.totalH}</span>
                 <span className="text-[10px] text-emerald-700 block font-medium">Presensi Masuk</span>
               </div>
-              <div className="bg-sky-50 border border-sky-200 rounded-2xl p-3">
+              <div className="bg-sky-50 border border-sky-200 rounded-xl p-3">
                 <span className="text-[10px] font-bold text-sky-800 block uppercase">TOTAL SAKIT (S)</span>
                 <span className="text-xl font-black text-sky-900">{monthlyOverallStats.totalS}</span>
                 <span className="text-[10px] text-sky-700 block font-medium">Surat Dokter</span>
               </div>
-              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3">
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
                 <span className="text-[10px] font-bold text-amber-800 block uppercase">TOTAL IZIN (I)</span>
                 <span className="text-xl font-black text-amber-900">{monthlyOverallStats.totalI}</span>
                 <span className="text-[10px] text-amber-700 block font-medium">Izin Tertulis</span>
               </div>
-              <div className="col-span-2 sm:col-span-1 bg-rose-50 border border-rose-200 rounded-2xl p-3">
+              <div className="col-span-2 sm:col-span-1 bg-rose-50 border border-rose-200 rounded-xl p-3">
                 <span className="text-[10px] font-bold text-rose-800 block uppercase">TOTAL ALFA (A)</span>
                 <span className="text-xl font-black text-rose-900">{monthlyOverallStats.totalA}</span>
                 <span className="text-[10px] text-rose-700 block font-medium">Tanpa Keterangan</span>
@@ -663,7 +667,7 @@ export const RekapitulasiView: React.FC = () => {
           </div>
 
           {/* Search and Table of Students */}
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden space-y-3 p-4 sm:p-5">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden space-y-3 p-4 sm:p-5">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
               <div className="relative w-full sm:w-80">
                 <Search size={16} className="absolute left-3.5 top-3 text-slate-400" />
@@ -681,7 +685,7 @@ export const RekapitulasiView: React.FC = () => {
             </div>
 
             {/* Table */}
-            <div className="overflow-x-auto rounded-2xl border border-slate-200">
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
               <table className="w-full text-left text-xs border-collapse">
                 <thead className="bg-slate-50 text-slate-700 font-extrabold uppercase text-[10px] tracking-wider border-b border-slate-200">
                   <tr>
@@ -751,12 +755,12 @@ export const RekapitulasiView: React.FC = () => {
       {/* 2. REKAP SEMESTER VIEW */}
       {/* ============================================================== */}
       {rekapMode === 'semester' && (
-        <div className="space-y-5 animate-in fade-in duration-150">
+        <div className="space-y-4 sm:space-y-5 animate-in fade-in duration-150">
           {/* Filter Bar & Summary Cards */}
-          <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm space-y-4">
+          <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-600 flex items-center justify-center font-bold shrink-0">
                   <BarChart3 size={20} />
                 </div>
                 <div>
@@ -793,27 +797,27 @@ export const RekapitulasiView: React.FC = () => {
 
             {/* 4 Counters + Average Percentage */}
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-center">
-              <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-3">
+              <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3">
                 <span className="text-[10px] font-bold text-indigo-800 block uppercase">RATA-RATA SEMESTER</span>
                 <span className="text-xl font-black text-indigo-900">{semesterOverallStats.avgPercentage}%</span>
                 <span className="text-[10px] text-indigo-700 block font-medium">Persentase Kelas</span>
               </div>
-              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
                 <span className="text-[10px] font-bold text-emerald-800 block uppercase">TOTAL HADIR</span>
                 <span className="text-xl font-black text-emerald-900">{semesterOverallStats.totalH}</span>
                 <span className="text-[10px] text-emerald-700 block font-medium">6 Bulan Terakumulasi</span>
               </div>
-              <div className="bg-sky-50 border border-sky-200 rounded-2xl p-3">
+              <div className="bg-sky-50 border border-sky-200 rounded-xl p-3">
                 <span className="text-[10px] font-bold text-sky-800 block uppercase">TOTAL SAKIT</span>
                 <span className="text-xl font-black text-sky-900">{semesterOverallStats.totalS}</span>
                 <span className="text-[10px] text-sky-700 block font-medium">6 Bulan Terakumulasi</span>
               </div>
-              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3">
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
                 <span className="text-[10px] font-bold text-amber-800 block uppercase">TOTAL IZIN</span>
                 <span className="text-xl font-black text-amber-900">{semesterOverallStats.totalI}</span>
                 <span className="text-[10px] text-amber-700 block font-medium">6 Bulan Terakumulasi</span>
               </div>
-              <div className="col-span-2 sm:col-span-1 bg-rose-50 border border-rose-200 rounded-2xl p-3">
+              <div className="col-span-2 sm:col-span-1 bg-rose-50 border border-rose-200 rounded-xl p-3">
                 <span className="text-[10px] font-bold text-rose-800 block uppercase">TOTAL ALFA</span>
                 <span className="text-xl font-black text-rose-900">{semesterOverallStats.totalA}</span>
                 <span className="text-[10px] text-rose-700 block font-medium">6 Bulan Terakumulasi</span>
@@ -822,7 +826,7 @@ export const RekapitulasiView: React.FC = () => {
           </div>
 
           {/* Search and Table of Semester Breakdown */}
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden space-y-3 p-4 sm:p-5">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden space-y-3 p-4 sm:p-5">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
               <div className="relative w-full sm:w-80">
                 <Search size={16} className="absolute left-3.5 top-3 text-slate-400" />
@@ -840,7 +844,7 @@ export const RekapitulasiView: React.FC = () => {
             </div>
 
             {/* Table with 6 Months Breakdown & Complete Percentages */}
-            <div className="overflow-x-auto rounded-2xl border border-slate-200">
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
               <table className="w-full text-left text-xs border-collapse">
                 <thead className="bg-slate-50 text-slate-700 font-extrabold uppercase text-[10px] tracking-wider border-b border-slate-200">
                   <tr>

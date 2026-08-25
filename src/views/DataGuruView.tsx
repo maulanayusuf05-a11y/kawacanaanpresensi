@@ -96,11 +96,13 @@ export const DataGuruView: React.FC = () => {
     );
   };
 
+  const defaultPersonalRole = currentUser?.role === 'GURU_MAPEL' ? 'Guru Mapel' : 'Wali Kelas';
+
   const resetForm = () => {
     setNama('');
     setNip('');
     setJenisKelamin('L');
-    setGuruType('Wali Kelas');
+    setGuruType(isPersonalWorkspace ? defaultPersonalRole : 'Wali Kelas');
   };
 
   const openAdd = () => {
@@ -114,8 +116,12 @@ export const DataGuruView: React.FC = () => {
     setNama(t.nama);
     setNip(t.nip);
     setJenisKelamin(t.jenisKelamin);
-    const existingType = t.jabatan || t.jenisPTK || t.mataPelajaran || 'Wali Kelas';
-    setGuruType(existingType.toLowerCase().includes('mapel') ? 'Guru Mapel' : 'Wali Kelas');
+    if (isPersonalWorkspace) {
+      setGuruType(defaultPersonalRole);
+    } else {
+      const existingType = t.jabatan || t.jenisPTK || t.mataPelajaran || 'Wali Kelas';
+      setGuruType(existingType.toLowerCase().includes('mapel') ? 'Guru Mapel' : 'Wali Kelas');
+    }
     setOpen(true);
   };
 
@@ -415,14 +421,23 @@ export const DataGuruView: React.FC = () => {
 
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Penugasan Jabatan</label>
-                  <select
-                    value={guruType}
-                    onChange={(e) => setGuruType(e.target.value as 'Wali Kelas' | 'Guru Mapel')}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 font-medium focus:bg-white focus:border-blue-600 outline-none"
-                  >
-                    <option value="Wali Kelas">Wali Kelas</option>
-                    <option value="Guru Mapel">Guru Mapel</option>
-                  </select>
+                  {isPersonalWorkspace ? (
+                    <div className="px-3.5 py-2 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 font-bold text-xs flex items-center justify-between min-h-[42px]">
+                      <span>{defaultPersonalRole}</span>
+                      <span className="text-[10px] bg-blue-200 text-blue-800 px-2 py-0.5 rounded font-black">
+                        Terkunci Sesuai Akun
+                      </span>
+                    </div>
+                  ) : (
+                    <select
+                      value={guruType}
+                      onChange={(e) => setGuruType(e.target.value as 'Wali Kelas' | 'Guru Mapel')}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 font-medium focus:bg-white focus:border-blue-600 outline-none"
+                    >
+                      <option value="Wali Kelas">Wali Kelas</option>
+                      <option value="Guru Mapel">Guru Mapel</option>
+                    </select>
+                  )}
                 </div>
               </div>
 

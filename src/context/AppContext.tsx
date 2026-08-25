@@ -480,10 +480,12 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
 
    await loadDataForSchool(chosenWorkspace.workspaceId, baseProfile, chosenWorkspace.role);
 
-   if (chosenWorkspace.role === 'SISWA') {
-     setActiveView('portal-siswa');
-   } else {
-     setActiveView('dashboard');
+   if (activeViewRef.current === 'login') {
+     if (chosenWorkspace.role === 'SISWA') {
+       setActiveView('portal-siswa');
+     } else {
+       setActiveView('dashboard');
+     }
    }
  };
  useEffect(()=>{

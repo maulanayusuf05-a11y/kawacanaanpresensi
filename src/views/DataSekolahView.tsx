@@ -63,11 +63,11 @@ export const DataSekolahView: React.FC = () => {
       const res = await fetch(`/api/school-lookup?npsn=${encodeURIComponent(targetNpsn)}`);
       const result = await res.json();
 
-      if (!res.ok || !result.ok || !result.data) {
+      if (!res.ok || (!result.ok && !result.data && !result.namaSekolah)) {
         throw new Error(result.error || 'Data sekolah tidak ditemukan di Kemendikdasmen.');
       }
 
-      const d = result.data;
+      const d = result.data || result;
       setFormData((prev) => ({
         ...prev,
         namaSekolah: d.namaSekolah || prev.namaSekolah,
@@ -79,14 +79,14 @@ export const DataSekolahView: React.FC = () => {
         kabupatenKota: d.kabupatenKota || prev.kabupatenKota,
         provinsi: d.provinsi || prev.provinsi,
         kodePos: d.kodePos || prev.kodePos,
-        teleponFax: d.telepon || prev.teleponFax,
+        teleponFax: d.teleponFax || d.telepon || prev.teleponFax,
         email: d.email || prev.email,
         website: d.website || prev.website,
-        namaKepalaSekolah: d.kepalaSekolah || prev.namaKepalaSekolah,
+        namaKepalaSekolah: d.kepalaSekolah || d.namaKepalaSekolah || prev.namaKepalaSekolah,
       }));
 
       setLookupSuccess(true);
-      showToast(`Data identitas & alamat ${d.namaSekolah} berhasil ditarik dari Kemendikdasmen.`, 'success');
+      showToast(`Data identitas & alamat ${d.namaSekolah || targetNpsn} berhasil ditarik dari Kemendikdasmen.`, 'success');
     } catch (err: any) {
       setLookupSuccess(false);
       showToast(err.message || 'Gagal menyinkronkan data Kemendikdasmen.', 'error');

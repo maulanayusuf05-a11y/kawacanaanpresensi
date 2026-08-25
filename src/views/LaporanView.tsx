@@ -319,7 +319,7 @@ export const LaporanView: React.FC = () => {
               <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs font-bold text-blue-950 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Lock size={14} className="text-blue-600" />
-                  <span>Format Absensi Wali Kelas (Harian)</span>
+                  <span>Presensi Wali Kelas</span>
                 </div>
                 <span className="text-[10px] bg-blue-200 text-blue-800 px-2 py-0.5 rounded font-black">
                   Terkunci

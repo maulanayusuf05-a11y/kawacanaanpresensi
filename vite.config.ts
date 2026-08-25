@@ -29,11 +29,7 @@ function apiDevMiddleware(): Plugin {
             const handlerModule = await import(targetModule);
             const handler = handlerModule.default;
 
-            let bodyStr = '';
-            req.on('data', (chunk: Buffer) => {
-              bodyStr += chunk;
-            });
-            req.on('end', async () => {
+            const processRequest = async (bodyStr: string) => {
               try {
                 (req as any).body = bodyStr ? JSON.parse(bodyStr) : {};
               } catch {
@@ -55,6 +51,14 @@ function apiDevMiddleware(): Plugin {
                 res.statusCode = code;
                 return res;
               };
+              (res as any).json = (data: any) => {
+                if (!res.headersSent) {
+                  res.setHeader('Content-Type', 'application/json');
+                }
+                res.end(JSON.stringify(data));
+                return res;
+              };
+
               try {
                 await handler(req, res);
               } catch (err: any) {
@@ -64,7 +68,19 @@ function apiDevMiddleware(): Plugin {
                   res.end(JSON.stringify({ error: err?.message || 'Server error' }));
                 }
               }
-            });
+            };
+
+            if (req.method === 'GET' || req.method === 'HEAD') {
+              await processRequest('');
+            } else {
+              let bodyStr = '';
+              req.on('data', (chunk: Buffer) => {
+                bodyStr += chunk;
+              });
+              req.on('end', async () => {
+                await processRequest(bodyStr);
+              });
+            }
             return;
           } catch (err: any) {
             if (!res.writableEnded) {

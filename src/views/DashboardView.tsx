@@ -312,49 +312,39 @@ export const DashboardView: React.FC = () => {
   return (
     <div className="w-full max-w-7xl 2xl:max-w-[1500px] mx-auto px-3.5 sm:px-6 lg:px-8 py-3.5 sm:py-5 space-y-3.5 sm:space-y-4 animate-in fade-in duration-300">
       {/* Top Title Card */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-4.5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3.5">
-        <div className="min-w-0">
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="min-w-0 space-y-1.5 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-lg sm:text-xl lg:text-2xl font-black text-slate-900 tracking-tight truncate">
+            <h1 className="text-lg sm:text-xl lg:text-2xl font-black text-slate-900 tracking-tight">
               Panel Kontrol Utama
             </h1>
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
+            <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
               {userScope.roleBadgeLabel}
             </span>
             {/* Lencana Paket */}
             {currentUser?.role !== 'SUPER_ADMIN' && (
-              <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[11px] font-black bg-gradient-to-r from-amber-50 to-orange-50 text-amber-900 border border-amber-300/80 shadow-xs shrink-0">
-                <Sparkles size={12} className="text-amber-600 animate-pulse" />
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black bg-gradient-to-r from-amber-50 to-orange-50 text-amber-900 border border-amber-300/80 shadow-xs shrink-0">
+                <Sparkles size={13} className="text-amber-600 animate-pulse" />
                 <span>{packageInfo.planName}</span>
               </div>
             )}
+            {/* Masa Berlaku Paket */}
+            {currentUser?.role !== 'SUPER_ADMIN' && packageInfo.expiryFormatted && (
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50/70 border border-amber-200 text-amber-900 text-xs font-semibold shadow-xs shrink-0">
+                <Clock size={13} className="text-amber-600 shrink-0" />
+                <span>
+                  Masa Berlaku: <strong className="font-extrabold text-amber-950">s.d. {packageInfo.expiryFormatted}</strong>
+                </span>
+              </div>
+            )}
           </div>
-          <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+          <p className="text-xs text-slate-500 leading-relaxed">
             {userScope.isWaliKelas
               ? `Pengawasan kehadiran dan administrasi kelas binaan ${userScope.assignedWaliClassName || 'Wali Kelas'}.`
               : userScope.isGuruMapel
               ? `Pengawasan kehadiran mata pelajaran ${userScope.primarySubject?.name || 'Mata Pelajaran'} (${userScope.accessibleClasses.length} Rombel).`
               : `Pantau aktivitas harian dan analisis kehadiran siswa ${schoolProfile.namaSekolah ? `${schoolProfile.namaSekolah} ` : ''}secara real-time.`}
           </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
-          {/* Masa Berlaku Paket */}
-          {currentUser?.role !== 'SUPER_ADMIN' && packageInfo.expiryFormatted && (
-            <div className="px-3 py-1.5 rounded-xl bg-amber-50/70 border border-amber-200 text-amber-900 text-xs font-semibold flex items-center gap-1.5 shadow-xs">
-              <Clock size={14} className="text-amber-600 shrink-0" />
-              <span>
-                Masa Berlaku: <strong className="font-extrabold text-amber-950">s.d. {packageInfo.expiryFormatted}</strong>
-              </span>
-            </div>
-          )}
-
-          {isTeacherOrWali && (
-            <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold flex items-center gap-2">
-              <CalendarCheck size={15} className="text-emerald-600" />
-              <span>Hari Efektif: <strong className="text-slate-900">{effectiveDaysThisMonth} Hari</strong></span>
-            </div>
-          )}
         </div>
       </div>
 
