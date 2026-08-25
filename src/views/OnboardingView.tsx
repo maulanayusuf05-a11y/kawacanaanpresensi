@@ -468,12 +468,13 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ onCompleted }) =
           throw new Error(result.error || 'Gagal menyelesaikan onboarding ruang kerja.');
         }
 
+        const effectiveUserId = result.userId || currentUserId || sessionData.session?.user?.id;
         showToast(result.message || 'Pendaftaran berhasil! Membuka aplikasi...', 'success');
 
         if (onCompleted) {
-          onCompleted(currentUserId);
+          await onCompleted(effectiveUserId);
         } else if (loadUserDataAfterOnboarding) {
-          await loadUserDataAfterOnboarding(currentUserId);
+          await loadUserDataAfterOnboarding(effectiveUserId);
         } else {
           window.location.reload();
         }

@@ -219,33 +219,55 @@ export default async function handler(req: any, res: any) {
       }
 
       const { data: profile } = await db.from('profiles').select('*').eq('id', userId).maybeSingle();
-      if (!profile) {
-        return json(res, 200, { ok: true, success: true, workspaces: [] });
+      
+      const workspaces: any[] = [];
+      let targetSchoolId = profile?.school_id || null;
+
+      // Jika di profile belum ada school_id, periksa apakah ada sekolah/ruang kerja yang di-own oleh userId
+      if (!targetSchoolId) {
+        const { data: ownedSchool } = await db
+          .from('schools')
+          .select('id')
+          .eq('owner_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (ownedSchool) {
+          targetSchoolId = ownedSchool.id;
+          // Sinkronkan ke profiles jika profile ada
+          if (profile) {
+            await db.from('profiles').update({ school_id: targetSchoolId }).eq('id', userId);
+          }
+        }
       }
 
-      const workspaces: any[] = [];
-      if (profile.school_id) {
-        const { data: school } = await db.from('schools').select('*').eq('id', profile.school_id).maybeSingle();
-        const { data: sp } = await db.from('school_profile').select('*').eq('school_id', profile.school_id).maybeSingle();
+      if (targetSchoolId) {
+        const { data: school } = await db.from('schools').select('*').eq('id', targetSchoolId).maybeSingle();
+        const { data: sp } = await db.from('school_profile').select('*').eq('school_id', targetSchoolId).maybeSingle();
 
         const isPersonal =
-          (profile as any).workspace_type === 'personal' ||
-          (profile as any).registration_mode === 'personal' ||
+          (profile as any)?.workspace_type === 'personal' ||
+          (profile as any)?.registration_mode === 'personal' ||
           (school as any)?.workspace_type === 'personal' ||
           (school as any)?.is_personal === true ||
-          school?.plan === 'mulai';
+          school?.plan === 'mulai' ||
+          school?.plan === 'teacher' ||
+          school?.plan === 'guru';
+
+        const userRole = profile?.role || 'WALI KELAS';
 
         workspaces.push({
-          id: `ws-mem-${profile.id}`,
-          userId: profile.id,
-          workspaceId: profile.school_id,
-          role: profile.role,
+          id: `ws-mem-${userId}`,
+          userId: userId,
+          workspaceId: targetSchoolId,
+          role: userRole,
           workspaceName: school?.name || sp?.nama_sekolah || (isPersonal ? 'Ruang Kerja Individu' : 'Ruang Kerja Sekolah'),
           workspaceType: isPersonal ? 'personal' : 'school',
           registrationMode: isPersonal ? 'personal' : 'school',
           npsn: school?.npsn || sp?.npsn || null,
-          subscriptionPlan: school?.plan || (isPersonal ? 'mulai' : 'sekolah'),
-          joinedAt: profile.created_at || new Date().toISOString(),
+          subscriptionPlan: school?.plan || (isPersonal ? 'teacher' : 'sekolah'),
+          joinedAt: profile?.created_at || new Date().toISOString(),
         });
       }
 
@@ -508,21 +530,40 @@ export default async function handler(req: any, res: any) {
         }
       }
 
-      // Upsert profile
-      await db.from('profiles').upsert({
+      // Upsert profile dengan penanganan robust
+      const { data: existingProf } = await db.from('profiles').select('id, username').eq('id', callerUser.id).maybeSingle();
+      const finalUsername = existingProf?.username || defaultUsername;
+
+      const profilePayload: any = {
         id: callerUser.id,
         school_id: targetSchoolId,
         name: teacherName,
-        username: defaultUsername,
+        username: finalUsername,
         email: userEmail,
         role: 'WALI KELAS',
-        workspace_type: mode === 'personal' ? 'personal' : 'school',
-        registration_mode: mode === 'personal' ? 'personal' : 'school',
         is_active: true,
-        is_google_auth: true,
-        auth_provider: 'google',
         must_change_password: false,
-      });
+      };
+
+      const { error: profErr } = await db.from('profiles').upsert(profilePayload, { onConflict: 'id' });
+      if (profErr) {
+        console.error('Error upserting profile in onboard_homeroom:', profErr);
+        await db.from('profiles').update({
+          school_id: targetSchoolId,
+          name: teacherName,
+          role: 'WALI KELAS',
+          is_active: true,
+        }).eq('id', callerUser.id);
+      }
+
+      try {
+        await db.from('profiles').update({
+          workspace_type: mode === 'personal' ? 'personal' : 'school',
+          registration_mode: mode === 'personal' ? 'personal' : 'school',
+          is_google_auth: true,
+          auth_provider: 'google',
+        }).eq('id', callerUser.id);
+      } catch (_) {}
 
       // Upsert teacher record
       await db.from('teachers').upsert({
@@ -615,21 +656,40 @@ export default async function handler(req: any, res: any) {
         }
       }
 
-      // Upsert profile
-      await db.from('profiles').upsert({
+      // Upsert profile dengan penanganan robust
+      const { data: existingProf } = await db.from('profiles').select('id, username').eq('id', callerUser.id).maybeSingle();
+      const finalUsername = existingProf?.username || defaultUsername;
+
+      const profilePayload: any = {
         id: callerUser.id,
         school_id: targetSchoolId,
         name: teacherName,
-        username: defaultUsername,
+        username: finalUsername,
         email: userEmail,
         role: 'GURU MAPEL',
-        workspace_type: mode === 'personal' ? 'personal' : 'school',
-        registration_mode: mode === 'personal' ? 'personal' : 'school',
         is_active: true,
-        is_google_auth: true,
-        auth_provider: 'google',
         must_change_password: false,
-      });
+      };
+
+      const { error: profErr } = await db.from('profiles').upsert(profilePayload, { onConflict: 'id' });
+      if (profErr) {
+        console.error('Error upserting profile in onboard_subject_teacher:', profErr);
+        await db.from('profiles').update({
+          school_id: targetSchoolId,
+          name: teacherName,
+          role: 'GURU MAPEL',
+          is_active: true,
+        }).eq('id', callerUser.id);
+      }
+
+      try {
+        await db.from('profiles').update({
+          workspace_type: mode === 'personal' ? 'personal' : 'school',
+          registration_mode: mode === 'personal' ? 'personal' : 'school',
+          is_google_auth: true,
+          auth_provider: 'google',
+        }).eq('id', callerUser.id);
+      } catch (_) {}
 
       // Upsert teacher record
       await db.from('teachers').upsert({

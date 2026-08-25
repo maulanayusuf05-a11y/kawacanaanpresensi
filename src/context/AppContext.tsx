@@ -202,11 +202,15 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
  const removeToast=(id:string)=>setToasts(p=>p.filter(t=>t.id!==id));
 
  const loadDataForSchool = async (schoolId: string, baseProfile: any, targetRole: UserRole) => {
-   const {data:tenantSchool}=await supabase.from('schools').select('name,npsn,plan,status,subscription_expires_at,max_teachers,max_students,max_classes').eq('id',schoolId).single();
-   const hydratedBase={...baseProfile,school_id:schoolId,role:targetRole,subscription_plan:tenantSchool?.plan,subscription_status:tenantSchool?.status,subscription_expires_at:tenantSchool?.subscription_expires_at,max_teachers:tenantSchool?.max_teachers,max_students:tenantSchool?.max_students,max_classes:tenantSchool?.max_classes};
+   let tenantSchool: any = null;
+   try {
+     const res = await supabase.from('schools').select('name,npsn,plan,status,subscription_expires_at,max_teachers,max_students,max_classes').eq('id',schoolId).maybeSingle();
+     tenantSchool = res.data;
+   } catch (_) {}
+   const hydratedBase={...baseProfile,school_id:schoolId,role:targetRole,subscription_plan:tenantSchool?.plan || 'teacher',subscription_status:tenantSchool?.status || 'active',subscription_expires_at:tenantSchool?.subscription_expires_at,max_teachers:tenantSchool?.max_teachers,max_students:tenantSchool?.max_students,max_classes:tenantSchool?.max_classes};
    
    const [,stu,school,config,events,effective,attendance,allProfiles,classRows,teacherAssignments,teacherRows]=await Promise.all([
-    supabase.from('profiles').select('*').eq('id',baseProfile.id).single(), 
+    supabase.from('profiles').select('*').eq('id',baseProfile.id).maybeSingle(), 
     supabase.from('students').select('*, classes:class_id(id,name,grade,academic_year)').eq('school_id',schoolId).order('nama'), 
     supabase.from('school_profile').select('*').eq('school_id',schoolId).maybeSingle(), 
     supabase.from('system_config').select('*').eq('school_id',schoolId).maybeSingle(), 
@@ -353,19 +357,56 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
  };
 
  const loadData=async(userId:string)=>{
+   if (!userId) {
+     const { data: sessionData } = await supabase.auth.getSession();
+     userId = sessionData.session?.user?.id || '';
+   }
+   if (!userId) {
+     setIsOnboarding(false);
+     setActiveView('login');
+     return;
+   }
+
    const requestId=++loadRequestRef.current;
-   const {data:baseProfile,error:baseError}=await supabase.from('profiles').select('*').eq('id',userId).maybeSingle();
+
+   // Ambil daftar ruang kerja / membership user terlebih dahulu via backend API (bypass RLS)
+   let memberships: WorkspaceMembership[] = [];
+   try {
+     const res = await fetch('/api/onboarding', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({ action: 'get_user_workspaces', user_id: userId })
+     });
+     const json = await res.json();
+     if (json.success && Array.isArray(json.workspaces)) {
+       memberships = json.workspaces;
+     }
+   } catch (_) {}
+
+   let {data:baseProfile,error:baseError}=await supabase.from('profiles').select('*').eq('id',userId).maybeSingle();
    
-   // Jika profil belum ada di database (misal baru login lewat Google pertama kali)
-   if (!baseProfile) {
-     // User baru: Arahkan ke Onboarding secara mulus tanpa dipaksa membuat akun Admin
+   // Jika profil belum ada di Supabase client tapi memberships ditemukan (mis. baru selesai onboarding), buat objek baseProfile
+   if (!baseProfile && memberships.length > 0) {
+     const chosen = memberships[0];
+     baseProfile = {
+       id: userId,
+       school_id: chosen.workspaceId,
+       role: chosen.role || 'WALI KELAS',
+       name: 'Pengguna',
+       username: 'user_' + userId.slice(0, 8),
+       is_active: true,
+     };
+   }
+
+   // Jika profil belum ada dan belum punya ruang kerja sama sekali -> Arahkan ke Onboarding
+   if (!baseProfile && memberships.length === 0) {
      setIsOnboarding(true);
      setIsSelectingWorkspace(false);
      setRegistrationRequired(false);
      return;
    }
 
-   if(baseProfile.is_active===false){ 
+   if(baseProfile && baseProfile.is_active===false){ 
      await supabase.auth.signOut(); 
      setCurrentUser(null); 
      setActiveView('login'); 
@@ -373,7 +414,7 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
      return; 
    }
 
-   if(baseProfile.role==='SUPER_ADMIN'){
+   if(baseProfile && baseProfile.role==='SUPER_ADMIN'){
      const {data:platform}=await supabase.from('platform_settings').select('security').eq('id',1).maybeSingle();
      if(platform?.security?.mfaRequiredForSuperAdmin){
        const {data:factors}=await supabase.auth.mfa.listFactors();
@@ -391,22 +432,8 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
      return;
    }
 
-   // Ambil daftar ruang kerja / membership user
-   let memberships: WorkspaceMembership[] = [];
-   try {
-     const res = await fetch('/api/onboarding', {
-       method: 'POST',
-       headers: { 'Content-Type': 'application/json' },
-       body: JSON.stringify({ action: 'get_user_workspaces', user_id: userId })
-     });
-     const json = await res.json();
-     if (json.success && Array.isArray(json.workspaces)) {
-       memberships = json.workspaces;
-     }
-   } catch (_) {}
-
    // Fallback jika belum ada record multi-workspace di endpoint: bangun dari baseProfile
-   if (memberships.length === 0 && baseProfile.school_id) {
+   if (memberships.length === 0 && baseProfile && baseProfile.school_id) {
      const { data: schoolRow } = await supabase.from('schools').select('name, npsn, plan, workspace_type, is_personal').eq('id', baseProfile.school_id).maybeSingle();
      const isPersonal =
        (baseProfile as any).workspace_type === 'personal' ||
@@ -416,7 +443,7 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
        schoolRow?.plan === 'mulai';
 
      memberships.push({
-       id: `ws-mem-${baseProfile.id}`,
+       id: 'ws-mem-' + baseProfile.id,
        userId: baseProfile.id,
        workspaceId: baseProfile.school_id,
        role: baseProfile.role as UserRole,
@@ -453,13 +480,10 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
 
    await loadDataForSchool(chosenWorkspace.workspaceId, baseProfile, chosenWorkspace.role);
 
-   // Hanya pindah ke tampilan default jika saat ini pengguna berada di layar 'login'
-   if(requestId===loadRequestRef.current && activeViewRef.current === 'login'){
-     if (chosenWorkspace.role === 'SISWA') {
-       setActiveView('portal-siswa');
-     } else {
-       setActiveView('dashboard');
-     }
+   if (chosenWorkspace.role === 'SISWA') {
+     setActiveView('portal-siswa');
+   } else {
+     setActiveView('dashboard');
    }
  };
  useEffect(()=>{
