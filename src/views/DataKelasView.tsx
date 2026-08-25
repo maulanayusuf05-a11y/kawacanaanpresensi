@@ -78,7 +78,7 @@ export const DataKelasView: React.FC = () => {
     }
     const matched = classes.filter((c) => ids.has(c.id));
     if (matched.length === 0) {
-      return classes.slice(0, 1);
+      return isPersonalWorkspace ? classes : classes.slice(0, 1);
     }
     return matched;
   }, [isAdmin, isPersonalWorkspace, classes, currentUser, activeWorkspace]);
@@ -90,23 +90,10 @@ export const DataKelasView: React.FC = () => {
   const accessibleClasses = useMemo(() => {
     if (isAdmin && !isPersonalWorkspace) return classes;
     if (isPersonalWorkspace) {
-      if (classes.length > 0) return classes;
-      const fallbackClassName = schoolProfile?.kelas || currentUser?.classNames?.[0] || 'Kelas 4A';
-      const matchGrade = fallbackClassName.match(/\d+/);
-      const fallbackGrade = matchGrade ? parseInt(matchGrade[0], 10) : 4;
-      return [
-        {
-          id: 'onboarding-class-default',
-          name: fallbackClassName,
-          grade: fallbackGrade,
-          academicYear: schoolProfile?.tahunPelajaran || '2026/2027',
-          waliKelasId: currentUser?.id || null,
-          waliKelasName: currentUser?.name || null,
-        },
-      ];
+      return classes;
     }
     return myAssignedClasses;
-  }, [isAdmin, isPersonalWorkspace, classes, myAssignedClasses, schoolProfile, currentUser]);
+  }, [isAdmin, isPersonalWorkspace, classes, myAssignedClasses]);
 
   const canAddClass = isAdmin || isPersonalWorkspace;
   const canEditClass = isAdmin || isPersonalWorkspace || isWaliKelas;
@@ -360,7 +347,12 @@ export const DataKelasView: React.FC = () => {
               {isPersonalWorkspace ? (
                 <div className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-800 border border-blue-200 text-[11px] font-bold">
                   <ShieldCheck size={13} className="text-blue-600" />
-                  <span>Ruang Kerja Individu: Menampilkan kelas binaan Anda ({myAssignedClasses.map((c) => c.name).join(', ')})</span>
+                  <span>
+                    Ruang Kerja Individu:{' '}
+                    {myAssignedClasses.length > 0
+                      ? `Menampilkan kelas binaan Anda (${myAssignedClasses.map((c) => c.name).join(', ')})`
+                      : 'Belum ada kelas yang didaftarkan. Silakan klik Tambah Kelas untuk menginput rombel binaan Anda.'}
+                  </span>
                 </div>
               ) : isWaliKelas && !isAdmin && (
                 <div className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-bold">

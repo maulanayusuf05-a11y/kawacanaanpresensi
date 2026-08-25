@@ -354,6 +354,7 @@ export default async function handler(req: any, res: any) {
           nip_wali_kelas: role === 'WALI KELAS' ? nip : '',
           tahun_pelajaran: '2026/2027',
           semester: '1',
+          kelas: '',
         }, { onConflict: 'school_id' });
 
         await db.from('system_config').upsert({
@@ -362,22 +363,26 @@ export default async function handler(req: any, res: any) {
           app_subtitle: wsName,
         }, { onConflict: 'school_id' });
 
-        const clsName = String(body.className || 'Kelas 4A').trim();
-        const clsGrade = Number(body.grade || 4);
-        const { data: newCls } = await db.from('classes').insert({
-          school_id: finalSchoolId,
-          name: clsName,
-          grade: clsGrade,
-          academic_year: '2026/2027',
-          wali_kelas_id: role === 'WALI KELAS' ? newUserId : null,
-        }).select('id').single();
-
-        if (newCls) {
-          await db.from('teacher_class_assignments').insert({
+        // Ruang kerja individu (personal): Jangan buat kelas default.
+        // Biarkan data kelas kosong agar pengguna dapat menginputnya sendiri di Data Referensi -> Data Kelas.
+        if (mode !== 'personal' && body.className) {
+          const clsName = String(body.className).trim();
+          const clsGrade = Number(body.grade || 1);
+          const { data: newCls } = await db.from('classes').insert({
             school_id: finalSchoolId,
-            teacher_id: newUserId,
-            class_id: newCls.id,
-          });
+            name: clsName,
+            grade: clsGrade,
+            academic_year: '2026/2027',
+            wali_kelas_id: role === 'WALI KELAS' ? newUserId : null,
+          }).select('id').single();
+
+          if (newCls) {
+            await db.from('teacher_class_assignments').insert({
+              school_id: finalSchoolId,
+              teacher_id: newUserId,
+              class_id: newCls.id,
+            });
+          }
         }
       }
 
@@ -485,6 +490,7 @@ export default async function handler(req: any, res: any) {
           nip_wali_kelas: nip,
           tahun_pelajaran: '2026/2027',
           semester: '1',
+          kelas: '',
         }, { onConflict: 'school_id' });
 
         await db.from('system_config').upsert({
@@ -493,22 +499,26 @@ export default async function handler(req: any, res: any) {
           app_subtitle: wsName,
         }, { onConflict: 'school_id' });
 
-        const clsName = String(body.className || 'Kelas 4A').trim();
-        const clsGrade = Number(body.grade || 4);
-        const { data: newCls } = await db.from('classes').insert({
-          school_id: targetSchoolId,
-          name: clsName,
-          grade: clsGrade,
-          academic_year: '2026/2027',
-          wali_kelas_id: callerUser.id,
-        }).select('id').single();
-
-        if (newCls) {
-          await db.from('teacher_class_assignments').insert({
+        // Ruang kerja individu (personal): Jangan buat kelas default.
+        // Biarkan data kelas kosong agar pengguna menginput sendiri di Data Referensi -> Data Kelas.
+        if (!isPersonal && body.className) {
+          const clsName = String(body.className).trim();
+          const clsGrade = Number(body.grade || 1);
+          const { data: newCls } = await db.from('classes').insert({
             school_id: targetSchoolId,
-            teacher_id: callerUser.id,
-            class_id: newCls.id,
-          });
+            name: clsName,
+            grade: clsGrade,
+            academic_year: '2026/2027',
+            wali_kelas_id: callerUser.id,
+          }).select('id').single();
+
+          if (newCls) {
+            await db.from('teacher_class_assignments').insert({
+              school_id: targetSchoolId,
+              teacher_id: callerUser.id,
+              class_id: newCls.id,
+            });
+          }
         }
       } else {
         // Mode School
@@ -643,6 +653,7 @@ export default async function handler(req: any, res: any) {
           jenjang: 'SD',
           tahun_pelajaran: '2026/2027',
           semester: '1',
+          kelas: '',
         }, { onConflict: 'school_id' });
 
         await db.from('system_config').upsert({
@@ -651,22 +662,26 @@ export default async function handler(req: any, res: any) {
           app_subtitle: wsName,
         }, { onConflict: 'school_id' });
 
-        const clsName = String(body.className || 'Kelas 4A').trim();
-        const clsGrade = Number(body.grade || 4);
+        // Ruang kerja individu (personal): Jangan buat kelas default.
+        // Biarkan data kelas kosong agar pengguna menginput sendiri di Data Referensi -> Data Kelas.
+        if (!isPersonal && body.className) {
+          const clsName = String(body.className).trim();
+          const clsGrade = Number(body.grade || 1);
 
-        const { data: newCls } = await db.from('classes').insert({
-          school_id: targetSchoolId,
-          name: clsName,
-          grade: clsGrade,
-          academic_year: '2026/2027',
-        }).select('id').single();
-
-        if (newCls) {
-          await db.from('teacher_class_assignments').insert({
+          const { data: newCls } = await db.from('classes').insert({
             school_id: targetSchoolId,
-            teacher_id: callerUser.id,
-            class_id: newCls.id,
-          });
+            name: clsName,
+            grade: clsGrade,
+            academic_year: '2026/2027',
+          }).select('id').single();
+
+          if (newCls) {
+            await db.from('teacher_class_assignments').insert({
+              school_id: targetSchoolId,
+              teacher_id: callerUser.id,
+              class_id: newCls.id,
+            });
+          }
         }
       }
 

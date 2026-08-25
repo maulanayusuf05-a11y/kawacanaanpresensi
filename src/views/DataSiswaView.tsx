@@ -149,23 +149,8 @@ export const DataSiswaView: React.FC = () => {
     if (myAssignedClasses && myAssignedClasses.length > 0) {
       return myAssignedClasses;
     }
-    if (classes && classes.length > 0) {
-      return classes;
-    }
-    const fallbackClassName = schoolProfile?.kelas || currentUser?.classNames?.[0] || 'Kelas 4A';
-    const matchGrade = fallbackClassName.match(/\d+/);
-    const fallbackGrade = matchGrade ? parseInt(matchGrade[0], 10) : 4;
-    return [
-      {
-        id: 'onboarding-class-default',
-        name: fallbackClassName,
-        grade: fallbackGrade,
-        academicYear: schoolProfile?.tahunPelajaran || '2026/2027',
-        waliKelasId: currentUser?.id || null,
-        waliKelasName: currentUser?.name || null,
-      },
-    ];
-  }, [myAssignedClasses, classes, schoolProfile, currentUser]);
+    return classes || [];
+  }, [myAssignedClasses, classes]);
 
   // Filter and sort students (dari kumpulan accessibleStudents)
   const filteredStudents = useMemo(() => {

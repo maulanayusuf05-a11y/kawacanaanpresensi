@@ -334,13 +334,13 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ onCompleted }) =
                 ? isCreatingNewInSchool
                   ? schoolNewClassName || `Kelas ${schoolNewGrade || 5}`
                   : undefined
-                : customClassName || 'Kelas 4A',
+                : undefined,
             grade:
               selectedPath === 'school'
                 ? isCreatingNewInSchool
                   ? schoolNewGrade || 5
                   : undefined
-                : customGrade || 4,
+                : undefined,
             subjectName: subjectName || 'Pendidikan Jasmani / Agama',
             workspaceName:
               customWorkspaceName ||
@@ -425,8 +425,6 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ onCompleted }) =
               phone: teacherPhone || '-',
               employmentStatus: teacherEmploymentStatus,
               workspaceName: customWorkspaceName || `Ruang Kelas ${accountFullName || currentUserName || 'Wali Kelas'}`,
-              className: customClassName || 'Kelas 4',
-              grade: customGrade || 4,
             };
           }
         } else if (selectedRole === 'subject') {
