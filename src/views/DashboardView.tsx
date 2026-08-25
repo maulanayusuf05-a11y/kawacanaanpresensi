@@ -16,11 +16,16 @@ import {
   CalendarCheck,
   GraduationCap,
   BookOpen,
+  Sparkles,
+  Zap,
+  ShieldCheck,
+  Clock,
 } from 'lucide-react';
 
 export const DashboardView: React.FC = () => {
   const {
     currentUser,
+    activeWorkspace,
     users,
     classes,
     subjects,
@@ -234,6 +239,68 @@ export const DashboardView: React.FC = () => {
   // Role-specific widgets definition
   const isTeacherOrWali = userScope.isWaliKelas || userScope.isGuruMapel;
 
+  const isPersonalWorkspace =
+    activeWorkspace?.workspaceType === 'personal' ||
+    activeWorkspace?.workspaceType === 'individu' ||
+    currentUser?.subscriptionPlan === 'guru_uji_coba' ||
+    currentUser?.subscriptionPlan === 'teacher' ||
+    currentUser?.subscriptionPlan === 'guru_pro' ||
+    currentUser?.subscriptionPlan === 'mulai' ||
+    currentUser?.subscriptionPlan === 'guru_gratis' ||
+    (!currentUser?.schoolId && currentUser?.role !== 'SUPER_ADMIN');
+
+  // Package & Subscription Expiration Details
+  const packageInfo = React.useMemo(() => {
+    const rawPlan = (currentUser?.subscriptionPlan || activeWorkspace?.subscriptionPlan || 'teacher').toLowerCase();
+    const rawStatus = (currentUser?.subscriptionStatus || activeWorkspace?.subscriptionStatus || 'trial').toLowerCase();
+    const rawExpiresAt = currentUser?.subscriptionExpiresAt || activeWorkspace?.subscriptionExpiresAt;
+
+    let planName = 'Paket Guru Pro (Trial)';
+    let isTrial = false;
+
+    if (rawPlan.includes('guru_uji_coba') || rawPlan === 'teacher' || rawPlan === 'guru_pro' || isPersonalWorkspace) {
+      if (rawStatus === 'trial' || rawPlan.includes('trial') || rawPlan.includes('uji_coba') || rawPlan === 'teacher' || rawStatus === 'active') {
+        planName = 'Paket Guru Pro (Trial)';
+        isTrial = true;
+      } else {
+        planName = 'Paket Guru Pro';
+      }
+    } else if (rawPlan.includes('sekolah_pro')) {
+      planName = 'Paket Sekolah Pro';
+    } else if (rawPlan.includes('sekolah_uji_coba')) {
+      planName = 'Paket Sekolah Uji Coba';
+      isTrial = true;
+    } else if (rawPlan.includes('sekolah_gratis')) {
+      planName = 'Paket Sekolah Gratis';
+    } else if (rawPlan.includes('gratis') || rawPlan === 'mulai' || rawPlan === 'free') {
+      planName = 'Paket Guru Gratis';
+    }
+
+    // Format Expiry Date
+    let expiryFormatted = '';
+    if (rawExpiresAt) {
+      try {
+        const d = new Date(rawExpiresAt);
+        if (!isNaN(d.getTime())) {
+          expiryFormatted = `${d.getDate()} ${monthNames[d.getMonth()]} ${d.getFullYear()}`;
+        }
+      } catch (_) {}
+    }
+
+    if (!expiryFormatted && isPersonalWorkspace) {
+      // Aturan sistem: Masa trial Guru Pro berlaku s.d akhir bulan berikutnya
+      const endOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+      expiryFormatted = `${endOfNextMonth.getDate()} ${monthNames[endOfNextMonth.getMonth()]} ${endOfNextMonth.getFullYear()}`;
+    }
+
+    return {
+      planName,
+      isTrial,
+      expiryFormatted,
+      isPersonal: isPersonalWorkspace,
+    };
+  }, [currentUser, activeWorkspace, isPersonalWorkspace, now, monthNames]);
+
   const toneClasses: Record<string, string> = {
     blue: 'bg-blue-50 border-blue-100 text-blue-600',
     emerald: 'bg-emerald-50 border-emerald-100 text-emerald-600',
@@ -245,17 +312,24 @@ export const DashboardView: React.FC = () => {
   return (
     <div className="w-full max-w-7xl 2xl:max-w-[1500px] mx-auto px-3.5 sm:px-6 lg:px-8 py-3.5 sm:py-5 space-y-3.5 sm:space-y-4 animate-in fade-in duration-300">
       {/* Top Title Card */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-4.5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3.5">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-lg sm:text-xl lg:text-2xl font-black text-slate-900 tracking-tight truncate">
               Panel Kontrol Utama
             </h1>
             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
               {userScope.roleBadgeLabel}
             </span>
+            {/* Lencana Paket */}
+            {currentUser?.role !== 'SUPER_ADMIN' && (
+              <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[11px] font-black bg-gradient-to-r from-amber-50 to-orange-50 text-amber-900 border border-amber-300/80 shadow-xs shrink-0">
+                <Sparkles size={12} className="text-amber-600 animate-pulse" />
+                <span>{packageInfo.planName}</span>
+              </div>
+            )}
           </div>
-          <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
+          <p className="text-xs text-slate-500 mt-1 leading-relaxed">
             {userScope.isWaliKelas
               ? `Pengawasan kehadiran dan administrasi kelas binaan ${userScope.assignedWaliClassName || 'Wali Kelas'}.`
               : userScope.isGuruMapel
@@ -264,14 +338,24 @@ export const DashboardView: React.FC = () => {
           </p>
         </div>
 
-        {isTeacherOrWali && (
-          <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {/* Masa Berlaku Paket */}
+          {currentUser?.role !== 'SUPER_ADMIN' && packageInfo.expiryFormatted && (
+            <div className="px-3 py-1.5 rounded-xl bg-amber-50/70 border border-amber-200 text-amber-900 text-xs font-semibold flex items-center gap-1.5 shadow-xs">
+              <Clock size={14} className="text-amber-600 shrink-0" />
+              <span>
+                Masa Berlaku: <strong className="font-extrabold text-amber-950">s.d. {packageInfo.expiryFormatted}</strong>
+              </span>
+            </div>
+          )}
+
+          {isTeacherOrWali && (
             <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold flex items-center gap-2">
               <CalendarCheck size={15} className="text-emerald-600" />
               <span>Hari Efektif: <strong className="text-slate-900">{effectiveDaysThisMonth} Hari</strong></span>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Main Widgets: If Wali Kelas or Guru Mapel -> 4 widgets (Jumlah Siswa, Siswa Laki-laki, Siswa Perempuan, Hari Efektif Belajar) */}

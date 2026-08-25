@@ -826,7 +826,7 @@ export const DataSiswaView: React.FC = () => {
                 {availableClasses.length > 1 && <option value="">Pilih kelas...</option>}
                 {availableClasses.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name} — Kelas {c.grade}
+                    {c.name}
                   </option>
                 ))}
               </select>
@@ -1149,13 +1149,13 @@ export const DataSiswaView: React.FC = () => {
                   {availableClasses.length > 1 && <option value="">Pilih kelas siswa...</option>}
                   {availableClasses.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name} — Kelas {c.grade}
+                      {c.name}
                     </option>
                   ))}
                 </select>
                 {isPersonalWorkspace && (
-                  <p className="text-[10px] text-blue-600 mt-1 font-medium">
-                    * Terintegrasi otomatis dari rombel pendaftaran onboarding ({availableClasses.map((c) => c.name).join(', ')}).
+                  <p className="text-[10px] text-slate-500 mt-1 font-medium">
+                    * Rombel aktif: {availableClasses.map((c) => c.name).join(', ')}
                   </p>
                 )}
               </div>
