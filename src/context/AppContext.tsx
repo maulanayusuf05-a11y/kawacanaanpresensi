@@ -474,6 +474,9 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
 
      if(session?.user){
        setPasswordRecovery(false);
+       if (typeof window !== 'undefined' && window.location.hash && (window.location.hash.includes('access_token=') || window.location.hash.includes('refresh_token='))) {
+         window.history.replaceState(null, '', window.location.pathname + window.location.search);
+       }
        setTimeout(()=>loadData(session.user.id),0);
        return;
      }

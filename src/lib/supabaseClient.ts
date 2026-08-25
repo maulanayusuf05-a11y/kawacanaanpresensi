@@ -27,13 +27,15 @@ const appOrigin = () => {
   return configured?.replace(/\/$/, '') || undefined;
 };
 
-export const signInWithGoogle = () =>
-  supabase.auth.signInWithOAuth({
+export const signInWithGoogle = () => {
+  const origin = appOrigin();
+  return supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      redirectTo: appOrigin(),
+      redirectTo: origin ? `${origin}?page=login` : undefined,
     },
   });
+};
 
 export const resetPassword = (email: string) =>
   supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {

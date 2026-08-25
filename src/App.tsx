@@ -135,9 +135,26 @@ const MainAppContent: React.FC = () => {
     loadUserDataAfterOnboarding 
   } = useApp();
   const [showLanding, setShowLanding] = React.useState(() => {
+    if (typeof window === 'undefined') return true;
     const params = new URLSearchParams(window.location.search);
-    return params.get('page') !== 'login' && params.get('page') !== 'setup';
+    const hash = window.location.hash || '';
+    const hasAuthHash =
+      hash.includes('access_token=') ||
+      hash.includes('refresh_token=') ||
+      hash.includes('error=') ||
+      hash.includes('error_description=') ||
+      hash.includes('type=recovery') ||
+      hash.includes('type=signup') ||
+      hash.includes('type=invite');
+    return params.get('page') !== 'login' && params.get('page') !== 'setup' && !hasAuthHash;
   });
+
+  // Pastikan landing page tertutup jika ada session OAuth atau user masuk Onboarding/Login
+  React.useEffect(() => {
+    if (isOnboarding || isSelectingWorkspace || currentUser) {
+      setShowLanding(false);
+    }
+  }, [isOnboarding, isSelectingWorkspace, currentUser]);
   const isSetupPage = new URLSearchParams(window.location.search).get('page') === 'setup';
 
   if (isSetupPage && !currentUser) return <SetupSuperAdminView />;
