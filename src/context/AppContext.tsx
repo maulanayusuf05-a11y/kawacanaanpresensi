@@ -407,16 +407,23 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
 
    // Fallback jika belum ada record multi-workspace di endpoint: bangun dari baseProfile
    if (memberships.length === 0 && baseProfile.school_id) {
-     const { data: schoolRow } = await supabase.from('schools').select('name, npsn, plan').eq('id', baseProfile.school_id).maybeSingle();
+     const { data: schoolRow } = await supabase.from('schools').select('name, npsn, plan, workspace_type, is_personal').eq('id', baseProfile.school_id).maybeSingle();
+     const isPersonal =
+       (baseProfile as any).workspace_type === 'personal' ||
+       (baseProfile as any).registration_mode === 'personal' ||
+       schoolRow?.workspace_type === 'personal' ||
+       (schoolRow as any)?.is_personal === true ||
+       schoolRow?.plan === 'mulai';
+
      memberships.push({
        id: `ws-mem-${baseProfile.id}`,
        userId: baseProfile.id,
        workspaceId: baseProfile.school_id,
        role: baseProfile.role as UserRole,
-       workspaceName: schoolRow?.name || 'Sekolah Terdaftar',
-       workspaceType: 'school',
+       workspaceName: schoolRow?.name || (isPersonal ? 'Ruang Kerja Individu' : 'Ruang Kerja Sekolah'),
+       workspaceType: isPersonal ? 'personal' : 'school',
        npsn: schoolRow?.npsn || null,
-       subscriptionPlan: (schoolRow?.plan || 'sekolah') as any,
+       subscriptionPlan: (schoolRow?.plan || (isPersonal ? 'mulai' : 'sekolah')) as any,
        joinedAt: baseProfile.created_at || new Date().toISOString()
      });
    }

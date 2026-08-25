@@ -202,15 +202,23 @@ export default async function handler(req: any, res: any) {
         const { data: school } = await db.from('schools').select('*').eq('id', profile.school_id).maybeSingle();
         const { data: sp } = await db.from('school_profile').select('*').eq('school_id', profile.school_id).maybeSingle();
 
+        const isPersonal =
+          (profile as any).workspace_type === 'personal' ||
+          (profile as any).registration_mode === 'personal' ||
+          (school as any)?.workspace_type === 'personal' ||
+          (school as any)?.is_personal === true ||
+          school?.plan === 'mulai';
+
         workspaces.push({
           id: `ws-mem-${profile.id}`,
           userId: profile.id,
           workspaceId: profile.school_id,
           role: profile.role,
-          workspaceName: school?.name || sp?.nama_sekolah || 'Sekolah Terdaftar',
-          workspaceType: 'school',
+          workspaceName: school?.name || sp?.nama_sekolah || (isPersonal ? 'Ruang Kerja Individu' : 'Ruang Kerja Sekolah'),
+          workspaceType: isPersonal ? 'personal' : 'school',
+          registrationMode: isPersonal ? 'personal' : 'school',
           npsn: school?.npsn || sp?.npsn || null,
-          subscriptionPlan: school?.plan || 'sekolah',
+          subscriptionPlan: school?.plan || (isPersonal ? 'mulai' : 'sekolah'),
           joinedAt: profile.created_at || new Date().toISOString(),
         });
       }
@@ -269,6 +277,9 @@ export default async function handler(req: any, res: any) {
           name: wsName,
           plan: 'mulai',
           status: 'active',
+          workspace_type: 'personal',
+          is_personal: true,
+          owner_id: newUserId,
           max_teachers: 1,
           max_students: 32,
           max_classes: 1,
@@ -320,6 +331,8 @@ export default async function handler(req: any, res: any) {
         username,
         email: authEmail,
         role: role as any,
+        workspace_type: mode === 'personal' ? 'personal' : 'school',
+        registration_mode: mode === 'personal' ? 'personal' : 'school',
         is_active: true,
         must_change_password: false,
         student_id: body.studentId || null,
@@ -387,6 +400,9 @@ export default async function handler(req: any, res: any) {
           name: wsName,
           plan: 'mulai',
           status: 'active',
+          workspace_type: 'personal',
+          is_personal: true,
+          owner_id: callerUser.id,
           max_teachers: 1,
           max_students: 32,
           max_classes: 1,
@@ -466,6 +482,8 @@ export default async function handler(req: any, res: any) {
         username: defaultUsername,
         email: userEmail,
         role: 'WALI KELAS',
+        workspace_type: mode === 'personal' ? 'personal' : 'school',
+        registration_mode: mode === 'personal' ? 'personal' : 'school',
         is_active: true,
         is_google_auth: true,
         auth_provider: 'google',
@@ -515,6 +533,9 @@ export default async function handler(req: any, res: any) {
           name: wsName,
           plan: 'mulai',
           status: 'active',
+          workspace_type: 'personal',
+          is_personal: true,
+          owner_id: callerUser.id,
           max_teachers: 1,
           max_students: 32,
           max_classes: 1,
@@ -561,6 +582,8 @@ export default async function handler(req: any, res: any) {
         username: defaultUsername,
         email: userEmail,
         role: 'GURU MAPEL',
+        workspace_type: mode === 'personal' ? 'personal' : 'school',
+        registration_mode: mode === 'personal' ? 'personal' : 'school',
         is_active: true,
         is_google_auth: true,
         auth_provider: 'google',

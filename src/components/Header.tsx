@@ -48,6 +48,11 @@ export const Header: React.FC = () => {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
 
+  const isPersonalWorkspace =
+    activeWorkspace?.workspaceType === 'personal' ||
+    activeWorkspace?.workspaceType === 'individu' ||
+    (currentUser?.subscriptionPlan === 'mulai' && !currentUser?.schoolId);
+
   const [readNotifIds, setReadNotifIds] = useState<string[]>([]);
 
   const tenantLifecycle = currentUser?.role !== 'SUPER_ADMIN' ? getTenantLifecycleInfo({
@@ -275,9 +280,22 @@ export const Header: React.FC = () => {
               <SchoolLogo size={36} className="sm:w-[40px] sm:h-[40px]" />
             </div>
             <div className="min-w-0">
-              <h1 className="font-bold text-[#1E40AF] text-sm sm:text-base lg:text-lg leading-tight tracking-tight group-hover:text-blue-800 transition-colors truncate">
-                {currentUser?.role === 'SUPER_ADMIN' ? 'Platform Super Admin' : (schoolProfile.namaSekolah || 'Sistem Informasi Sekolah')}
-              </h1>
+              <div className="flex items-center gap-2">
+                <h1 className="font-bold text-[#1E40AF] text-sm sm:text-base lg:text-lg leading-tight tracking-tight group-hover:text-blue-800 transition-colors truncate">
+                  {currentUser?.role === 'SUPER_ADMIN' ? 'Platform Super Admin' : (schoolProfile.namaSekolah || 'Sistem Informasi Sekolah')}
+                </h1>
+                {currentUser?.role !== 'SUPER_ADMIN' && (
+                  <span
+                    className={`hidden md:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold tracking-normal uppercase border ${
+                      isPersonalWorkspace
+                        ? 'bg-purple-50 text-purple-700 border-purple-200'
+                        : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    }`}
+                  >
+                    {isPersonalWorkspace ? 'Ruang Kerja Individu' : 'Ruang Kerja Sekolah'}
+                  </span>
+                )}
+              </div>
               <p className="text-[9px] sm:text-[10px] font-bold tracking-[0.15em] sm:tracking-[0.2em] text-slate-500 uppercase truncate">
                 {currentUser?.role === 'SUPER_ADMIN' ? 'KONTROL MULTI-TENANT SEKOLAH' : (systemConfig.appTitle ? systemConfig.appTitle.toUpperCase() : 'ABSENSI SISWA')}
               </p>
