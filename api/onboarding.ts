@@ -81,13 +81,25 @@ export default async function handler(req: any, res: any) {
     // -------------------------------------------------------------
     // 1. LOOKUP SEKOLAH / KODE UNDANGAN / NPSN (PUBLIC)
     // -------------------------------------------------------------
-    if (action === 'lookup_school') {
-      const query = String(body.query || '').trim();
+    if (action === 'lookup_school' || action === 'lookup_school_code') {
+      const query = String(body.code || body.query || '').trim();
       if (!query) {
         return json(res, 400, { error: 'Masukkan kode sekolah, NPSN, atau nama sekolah.' });
       }
 
+      const cleanCode = query.toUpperCase().replace(/\s+/g, '');
       const cleanDigits = query.replace(/\D/g, '');
+
+      // Cari di tabel schools
+      let schQuery = db.from('schools').select('id, name, npsn, code, plan, status, workspace_type');
+      if (cleanDigits.length >= 4) {
+        schQuery = schQuery.or(`code.ilike.%${cleanCode}%,code.ilike.%${query}%,name.ilike.%${query}%,npsn.ilike.%${cleanDigits}%`);
+      } else {
+        schQuery = schQuery.or(`code.ilike.%${cleanCode}%,code.ilike.%${query}%,name.ilike.%${query}%`);
+      }
+      const { data: matchedSchools } = await schQuery.limit(15);
+
+      // Cari di school_profile
       let spQuery = db
         .from('school_profile')
         .select('school_id, nama_sekolah, npsn, jenjang, alamat, tahun_pelajaran');
@@ -97,42 +109,35 @@ export default async function handler(req: any, res: any) {
       } else {
         spQuery = spQuery.ilike('nama_sekolah', `%${query}%`);
       }
-
       const { data: matchedProfiles } = await spQuery.limit(15);
-
-      // Cari juga di tabel schools
-      let schQuery = db.from('schools').select('id, name, npsn, code, status');
-      if (cleanDigits.length >= 3) {
-        schQuery = schQuery.or(`npsn.ilike.%${cleanDigits}%,name.ilike.%${query}%,code.ilike.%${query}%`);
-      } else {
-        schQuery = schQuery.ilike('name', `%${query}%`);
-      }
-      const { data: matchedSchools } = await schQuery.limit(15);
 
       const schoolMap = new Map<string, any>();
 
-      for (const sp of matchedProfiles || []) {
-        if (!sp.school_id) continue;
-        schoolMap.set(sp.school_id, {
-          id: sp.school_id,
-          name: sp.nama_sekolah || 'Sekolah Terdaftar',
-          npsn: sp.npsn || '',
-          jenjang: sp.jenjang || 'SD',
-          alamat: sp.alamat || '',
+      for (const sc of matchedSchools || []) {
+        if (!sc.id) continue;
+        const fallbackCode = sc.code || `SCH-${sc.id.slice(0, 4).toUpperCase()}`;
+        schoolMap.set(sc.id, {
+          id: sc.id,
+          name: sc.name || 'Sekolah Terdaftar',
+          code: fallbackCode,
+          npsn: sc.npsn || '',
+          jenjang: 'SD',
+          alamat: '',
         });
       }
 
-      for (const sc of matchedSchools || []) {
-        if (!sc.id) continue;
-        if (!schoolMap.has(sc.id)) {
-          schoolMap.set(sc.id, {
-            id: sc.id,
-            name: sc.name || 'Sekolah Terdaftar',
-            npsn: sc.npsn || '',
-            jenjang: 'SD',
-            alamat: '',
-          });
-        }
+      for (const sp of matchedProfiles || []) {
+        if (!sp.school_id) continue;
+        const existing = schoolMap.get(sp.school_id);
+        const fallbackCode = existing?.code || `SCH-${sp.school_id.slice(0, 4).toUpperCase()}`;
+        schoolMap.set(sp.school_id, {
+          id: sp.school_id,
+          name: sp.nama_sekolah || existing?.name || 'Sekolah Terdaftar',
+          code: fallbackCode,
+          npsn: sp.npsn || existing?.npsn || '',
+          jenjang: sp.jenjang || existing?.jenjang || 'SD',
+          alamat: sp.alamat || existing?.alamat || '',
+        });
       }
 
       const schools = [];
@@ -147,6 +152,7 @@ export default async function handler(req: any, res: any) {
         schools.push({
           id: sc.id,
           name: sc.name,
+          code: sc.code,
           npsn: sc.npsn,
           jenjang: sc.jenjang || 'SD',
           alamat: sc.alamat,

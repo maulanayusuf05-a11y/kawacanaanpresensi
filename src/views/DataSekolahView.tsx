@@ -19,7 +19,11 @@ import {
   Search,
   RefreshCw,
   Sparkles,
-  Calendar
+  Calendar,
+  KeyRound,
+  Copy,
+  Check,
+  Share2
 } from 'lucide-react';
 
 export const DataSekolahView: React.FC = () => {
@@ -33,6 +37,30 @@ export const DataSekolahView: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [lookupSuccess, setLookupSuccess] = useState<boolean | null>(null);
+  const [copiedCode, setCopiedCode] = useState(false);
+
+  const activeSchoolCode =
+    schoolProfile.kodeSekolah ||
+    (currentUser?.schoolId ? `SCH-${currentUser.schoolId.slice(0, 4).toUpperCase()}` : 'SCH-7849');
+
+  const handleCopySchoolCode = () => {
+    navigator.clipboard.writeText(activeSchoolCode);
+    setCopiedCode(true);
+    showToast(`Kode sekolah "${activeSchoolCode}" berhasil disalin!`, 'success');
+    setTimeout(() => setCopiedCode(false), 2000);
+  };
+
+  const handleShareWhatsApp = () => {
+    const schoolName = formData.namaSekolah || 'Sekolah';
+    const text = encodeURIComponent(
+      `Halo Bapak/Ibu Guru dan Tenaga Pendidik ${schoolName},\n\n` +
+      `Silakan bergabung ke Ruang Kerja Sekolah di aplikasi Presensi Kawacanaan.\n` +
+      `Gunakan Kode Undangan Sekolah berikut saat mendaftar/onboarding:\n\n` +
+      `👉 KODE SEKOLAH: ${activeSchoolCode}\n\n` +
+      `Dengan kode ini, akun Anda akan langsung terhubung secara otomatis ke data kelas dan jadwal sekolah kita.`
+    );
+    window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
+  };
 
   // Sinkronisasi state form jika schoolProfile pada context berubah
   useEffect(() => {
@@ -177,6 +205,53 @@ export const DataSekolahView: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Kartu Kode Undangan Sekolah untuk Bergabung Guru & Siswa */}
+      {!isPersonalWorkspace && (
+        <div className="bg-gradient-to-r from-indigo-900 via-slate-900 to-blue-950 text-white rounded-3xl p-6 shadow-lg border border-indigo-500/20 flex flex-col md:flex-row md:items-center justify-between gap-5 relative overflow-hidden">
+          <div className="absolute right-0 top-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none" />
+          <div className="space-y-1.5 z-10">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400/20 border border-amber-300/30 text-amber-300 text-xs font-bold uppercase tracking-wider">
+              <KeyRound size={13} className="text-amber-300" />
+              <span>Kode Undangan Sekolah (School Join Code)</span>
+            </div>
+            <h3 className="text-lg font-black text-white">
+              Kode Akses Guru & Peserta Didik
+            </h3>
+            <p className="text-xs text-slate-300 max-w-xl leading-relaxed">
+              Bagikan kode ini kepada seluruh Bapak/Ibu Guru dan Siswa saat mendaftar/onboarding. Mereka cukup memasukkan kode ini agar otomatis terhubung ke Ruang Kerja Sekolah tanpa perlu mencari NPSN.
+            </p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 z-10">
+            <div className="bg-white/10 backdrop-blur-md border border-white/20 px-5 py-3 rounded-2xl flex items-center justify-between gap-4 shadow-inner">
+              <div>
+                <div className="text-[10px] text-slate-300 uppercase font-bold tracking-wider">Kode Sekolah</div>
+                <div className="font-mono text-2xl font-black text-amber-300 tracking-wider">
+                  {activeSchoolCode}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleCopySchoolCode}
+                className="p-2.5 rounded-xl bg-white/20 hover:bg-white/30 text-white transition-all cursor-pointer shadow-xs"
+                title="Salin Kode Sekolah"
+              >
+                {copiedCode ? <Check size={18} className="text-emerald-300" /> : <Copy size={18} />}
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleShareWhatsApp}
+              className="px-4 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <Share2 size={16} />
+              <span>Bagikan via WhatsApp</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {isPersonalWorkspace && (
         <div className="flex items-center gap-3 p-4 bg-blue-50 border border-blue-200 text-blue-900 rounded-2xl text-xs font-medium">

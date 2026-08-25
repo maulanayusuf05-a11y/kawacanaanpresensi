@@ -17,6 +17,7 @@ import {
   Trash2,
   KeyRound,
   Check,
+  Copy,
   GraduationCap,
   Briefcase,
   Layers,
@@ -267,6 +268,34 @@ export const SchoolsSection: React.FC<{
     }
   };
 
+  const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
+  const [regeneratingCode, setRegeneratingCode] = useState(false);
+
+  const handleCopyCode = (code: string, id: string) => {
+    if (!code) return;
+    navigator.clipboard.writeText(code);
+    setCopiedCodeId(id);
+    showToast(`Kode sekolah "${code}" berhasil disalin ke clipboard!`, 'success');
+    setTimeout(() => setCopiedCodeId(null), 2000);
+  };
+
+  const handleRegenerateCode = async (schoolId: string) => {
+    if (!confirm('Apakah Anda yakin ingin memperbarui / mengacak ulang Kode Undangan Sekolah ini?')) {
+      return;
+    }
+    setRegeneratingCode(true);
+    try {
+      const res = await call('regenerate_school_code', { school_id: schoolId });
+      showToast(`Kode sekolah berhasil diperbarui menjadi: ${res.code}`, 'success');
+      loadSchoolDetail(schoolId);
+      loadSchools();
+    } catch (e: any) {
+      showToast(e.message || 'Gagal memperbarui kode sekolah.', 'error');
+    } finally {
+      setRegeneratingCode(false);
+    }
+  };
+
   // Handle Buat Sekolah Baru
   const handleCreateSchool = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -494,6 +523,48 @@ export const SchoolsSection: React.FC<{
                     <div className="text-[11px] text-indigo-600 font-bold mt-1">
                       {lifecycle.daysRemaining === null ? 'Seumur Hidup' : `${lifecycle.daysRemaining} hari tersisa`}
                     </div>
+                  </div>
+                </div>
+
+                {/* Kartu Khusus Kode Undangan Sekolah */}
+                <div className="bg-gradient-to-r from-indigo-900 to-slate-900 rounded-2xl p-5 text-white shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-500/30 border border-indigo-400/30 text-indigo-200 text-[10px] font-bold uppercase tracking-wider">
+                      <KeyRound size={12} className="text-indigo-300" />
+                      <span>Kode Undangan Bergabung Sekolah</span>
+                    </div>
+                    <h3 className="text-base font-black text-white">
+                      Kode Akses Masuk Guru & Siswa
+                    </h3>
+                    <p className="text-xs text-slate-300 max-w-xl">
+                      Bagikan kode ini kepada Guru, Wali Kelas, dan Siswa saat mendaftar/onboarding agar mereka otomatis terhubung ke sekolah ini tanpa perlu memasukkan NPSN manual.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                    <div className="bg-white/10 backdrop-blur-md border border-white/20 px-4 py-2.5 rounded-xl flex items-center justify-between gap-3">
+                      <span className="font-mono text-xl font-black text-amber-300 tracking-wider">
+                        {sch.code || `SCH-${sch.id?.slice(0, 4)?.toUpperCase() || '7849'}`}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyCode(sch.code || `SCH-${sch.id?.slice(0, 4)?.toUpperCase() || '7849'}`, sch.id)}
+                        className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors cursor-pointer"
+                        title="Salin Kode"
+                      >
+                        {copiedCodeId === sch.id ? <Check size={16} className="text-emerald-300" /> : <Copy size={16} />}
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleRegenerateCode(sch.id)}
+                      disabled={regeneratingCode}
+                      className="px-3.5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      <RefreshCw size={14} className={regeneratingCode ? 'animate-spin' : ''} />
+                      <span>Acak Ulang</span>
+                    </button>
                   </div>
                 </div>
 
@@ -1048,6 +1119,7 @@ export const SchoolsSection: React.FC<{
               <thead>
                 <tr className="border-b border-slate-200 text-slate-500 font-bold bg-slate-50/80">
                   <th className="py-3 px-4">Nama Sekolah</th>
+                  <th className="py-3 px-4">Kode Undangan</th>
                   <th className="py-3 px-4">NPSN</th>
                   <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4">Paket</th>
@@ -1062,6 +1134,7 @@ export const SchoolsSection: React.FC<{
                 {filteredSchools.map((s) => {
                   const lifecycle = getTenantLifecycleInfo(s);
                   const isSuspendedOrExpired = s.status === 'inactive' || lifecycle.isSuspended;
+                  const displayCode = s.code || `SCH-${s.id?.slice(0, 4)?.toUpperCase() || '7849'}`;
 
                   return (
                     <tr
@@ -1073,7 +1146,20 @@ export const SchoolsSection: React.FC<{
                         <div className="font-extrabold text-slate-900 hover:text-indigo-600 transition-colors">
                           {s.name}
                         </div>
-                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">Kode: {s.code || '-'}</div>
+                      </td>
+
+                      <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
+                        <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 font-mono font-bold text-[11px]">
+                          <span>{displayCode}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyCode(displayCode, s.id)}
+                            className="text-amber-700 hover:text-amber-950 p-0.5"
+                            title="Salin Kode Undangan"
+                          >
+                            {copiedCodeId === s.id ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
+                          </button>
+                        </div>
                       </td>
 
                       <td className="py-3 px-4 font-mono font-semibold text-slate-700">

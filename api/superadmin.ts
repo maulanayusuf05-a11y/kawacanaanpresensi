@@ -389,6 +389,32 @@ export default async function handler(req:any,res:any){
       return json(res,200,{ok:true});
     }
 
+    if(action==='regenerate_school_code'||action==='reset_school_code'||action==='update_school_code'){
+      const id=req.body.school_id||req.body.id;
+      if(!id) return json(res,400,{error:'ID sekolah wajib diisi.'});
+      
+      let newCode = '';
+      if (req.body.customCode && String(req.body.customCode).trim()) {
+        newCode = String(req.body.customCode).trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
+      } else {
+        const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
+        newCode = `SCH-${rand}`;
+      }
+      
+      const {data,error}=await admin.from('schools').update({code: newCode}).eq('id',id).select('id, name, code, npsn').single();
+      if(error) return json(res,400,{error:error.message});
+      
+      await admin.from('audit_logs').insert({
+        actor_id: caller.user.id,
+        actor_name: profile.name,
+        actor_role: 'SUPER_ADMIN',
+        action: 'REGENERATE_SCHOOL_CODE',
+        school_id: id,
+        details: { newCode, schoolName: data.name }
+      });
+      return json(res,200,{ok:true,code:newCode,school:data});
+    }
+
     if(action==='delete_school'){
       const id=req.body.schoolId||req.body.school_id||req.body.id; if(!id) return json(res,400,{error:'ID sekolah atau ruang kerja wajib diisi.'});
       
