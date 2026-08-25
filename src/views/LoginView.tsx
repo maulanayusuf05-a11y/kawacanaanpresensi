@@ -8,6 +8,10 @@ import {
   resetPassword,
   isSupabaseConfigured,
   supabase,
+  extractTokensFromUrl,
+  setSessionFromTokenOrUrl,
+  getAuthRedirectUrl,
+  appOrigin,
 } from '../lib/supabaseClient';
 import {
   Mail,
@@ -18,6 +22,14 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
+  HelpCircle,
+  KeyRound,
+  Copy,
+  Check,
+  ExternalLink,
+  ShieldCheck,
+  Globe,
+  Sparkles,
 } from 'lucide-react';
 
 export const LoginView: React.FC = () => {
@@ -31,6 +43,13 @@ export const LoginView: React.FC = () => {
 
   // Mode: 'login' | 'forgot-password'
   const [authMode, setAuthMode] = useState<'login' | 'forgot-password'>('login');
+
+  // Modal State for Token Importer & Supabase Config Guide
+  const [showTokenImporter, setShowTokenImporter] = useState(false);
+  const [showConfigGuide, setShowConfigGuide] = useState(false);
+  const [pastedTokenUrl, setPastedTokenUrl] = useState('');
+  const [isImportingToken, setIsImportingToken] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
 
   // Form states
   const [emailOrUser, setEmailOrUser] = useState(() => {
@@ -51,16 +70,69 @@ export const LoginView: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState('');
   const [resetSuccessMessage, setResetSuccessMessage] = useState('');
 
+  const currentOrigin = appOrigin() || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
+  const redirectTarget = getAuthRedirectUrl() || `${currentOrigin}/`;
+
+  // Auto-detect if current window has auth hash on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.hash && window.location.hash.includes('access_token=')) {
+      const tokenString = window.location.hash;
+      setIsImportingToken(true);
+      setSessionFromTokenOrUrl(tokenString)
+        .then(() => {
+          showToast('Sesi Google berhasil diaktifkan. Membuka Onboarding...', 'success');
+          window.history.replaceState(null, '', window.location.pathname + window.location.search);
+        })
+        .catch((err) => {
+          console.warn('Auto token process error:', err);
+        })
+        .finally(() => {
+          setIsImportingToken(false);
+        });
+    }
+  }, [showToast]);
+
   useEffect(() => {
     if (registrationRequired) {
       openOnboarding();
     }
   }, [registrationRequired, openOnboarding]);
 
+  const copyToClipboard = (text: string, fieldName: string) => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+      setCopiedField(fieldName);
+      showToast(`Berhasil menyalin: ${fieldName}`, 'success');
+      setTimeout(() => setCopiedField(null), 2500);
+    }
+  };
+
+  // Handle Token / URL Paste manually from localhost redirect
+  const handleImportTokenUrl = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pastedTokenUrl.trim()) {
+      setErrorMessage('Harap masukkan URL atau token Google yang Anda dapatkan.');
+      return;
+    }
+
+    setIsImportingToken(true);
+    setErrorMessage('');
+
+    try {
+      await setSessionFromTokenOrUrl(pastedTokenUrl);
+      showToast('Autentikasi Google berhasil! Mengarahkan ke Onboarding...', 'success');
+      setShowTokenImporter(false);
+      setPastedTokenUrl('');
+    } catch (err: any) {
+      console.error('Import token error:', err);
+      setErrorMessage(err.message || 'Format URL/Token tidak valid. Pastikan menyalin seluruh tautan.');
+      showToast('Gagal memproses token.', 'error');
+    } finally {
+      setIsImportingToken(false);
+    }
+  };
 
   // Handle standard login through Supabase Auth.
-  // Email is used directly; username/NIP/NISN keeps the existing app convention.
-  // The AppContext auth listener then loads the authoritative role/profile from Supabase.
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
@@ -93,8 +165,6 @@ export const LoginView: React.FC = () => {
         return;
       }
 
-      // Do not create a role locally here. AppContext will read the matching
-      // Supabase profile and set the correct role/view after auth succeeds.
       showToast('Login berhasil. Memuat data aplikasi...', 'success');
     } catch (err: any) {
       console.error('Login error:', err);
@@ -105,9 +175,7 @@ export const LoginView: React.FC = () => {
     }
   };
 
-  // Google OAuth: autentikasi dulu dengan Google.
-  // Setelah Google berhasil, AppContext akan menerima session Supabase
-  // dan otomatis membuka Onboarding jika profil pengguna belum ada.
+  // Google OAuth handler
   const handleGoogleOAuth = async () => {
     setErrorMessage('');
 
@@ -130,9 +198,6 @@ export const LoginView: React.FC = () => {
         );
         setIsGoogleLoading(false);
       }
-      // Jika berhasil, Supabase akan mengarahkan browser ke Google.
-      // Jangan membuka Onboarding di sini; Onboarding dibuka setelah
-      // Google berhasil kembali ke aplikasi dan profil belum ditemukan.
     } catch (err: any) {
       console.error('Google OAuth exception:', err);
       setErrorMessage(
@@ -143,18 +208,7 @@ export const LoginView: React.FC = () => {
     }
   };
 
-
-  const handleRegisterEmail = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMessage('Pendaftaran mandiri dinonaktifkan. Silakan minta Administrator Sekolah membuat akun Anda.');
-  };
-
-  const handleCompleteGoogleRegistration = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMessage('Akun Google harus dibuat terlebih dahulu oleh Administrator Sekolah.');
-  };
-
-    // Handle Reset Password via Supabase Auth
+  // Handle Reset Password via Supabase Auth
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
@@ -187,7 +241,7 @@ export const LoginView: React.FC = () => {
         showToast('Tautan reset kata sandi terkirim ke email', 'success');
       }
     } catch (err: any) {
-      setErrorMessage(err.message || 'Gagal memproses reset kata sandi.');
+      setErrorMessage(err?.message || 'Gagal memproses reset kata sandi.');
     } finally {
       setIsLoading(false);
     }
@@ -210,7 +264,7 @@ export const LoginView: React.FC = () => {
 
         {/* Right Side: Clean White Login Card */}
         <div className="w-full flex justify-center lg:justify-center flex-1">
-          <div className="w-full max-w-[400px] sm:max-w-[430px] bg-white rounded-3xl p-7 sm:p-9 shadow-xl shadow-slate-200/80 border border-slate-200/90 transition-all text-slate-800">
+          <div className="w-full max-w-[400px] sm:max-w-[440px] bg-white rounded-3xl p-7 sm:p-8 shadow-xl shadow-slate-200/80 border border-slate-200/90 transition-all text-slate-800">
             
             {/* Top Brand Header inside Card */}
             <div className="flex flex-col items-center justify-center mb-6 text-center">
@@ -332,7 +386,7 @@ export const LoginView: React.FC = () => {
                 </form>
 
                 {/* Clean Divider "Atau" */}
-                <div className="relative flex py-5 items-center">
+                <div className="relative flex py-4 items-center">
                   <div className="flex-grow border-t border-slate-200"></div>
                   <span className="shrink mx-3 text-slate-400 text-xs font-semibold uppercase tracking-wider">
                     Atau
@@ -373,8 +427,33 @@ export const LoginView: React.FC = () => {
                   <span>Lanjutkan dengan Google</span>
                 </button>
 
+                {/* Secondary Google SSO Quick Helper Links */}
+                <div className="mt-3.5 pt-3 border-t border-slate-100 flex flex-col gap-2 text-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setErrorMessage('');
+                      setShowTokenImporter(true);
+                    }}
+                    className="inline-flex items-center justify-center gap-1.5 text-[11px] font-bold text-amber-700 hover:text-amber-800 bg-amber-50/80 hover:bg-amber-100/90 py-1.5 px-3 rounded-xl border border-amber-200 transition-colors cursor-pointer"
+                    id="btn-open-token-importer"
+                  >
+                    <KeyRound size={13} className="shrink-0 text-amber-600" />
+                    <span>Terlempar ke localhost? Tempel tautan token di sini</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowConfigGuide(true)}
+                    className="inline-flex items-center justify-center gap-1 text-[11px] font-medium text-slate-500 hover:text-blue-600 hover:underline cursor-pointer"
+                  >
+                    <HelpCircle size={12} className="shrink-0" />
+                    <span>Panduan Pengaturan Redirect URL Supabase</span>
+                  </button>
+                </div>
+
                 {/* Footer registration note inside card */}
-                <div className="text-center mt-5 text-xs text-slate-500 font-medium">
+                <div className="text-center mt-4 text-xs text-slate-500 font-medium">
                   Belum punya akun?{' '}
                   <button
                     type="button"
@@ -455,6 +534,197 @@ export const LoginView: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* MODAL 1: TOKEN / URL GOOGLE IMPORTER */}
+      {showTokenImporter && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-lg rounded-3xl p-6 sm:p-7 shadow-2xl border border-slate-200 text-slate-800">
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                  <KeyRound size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900">
+                    Masuk via Tautan / Token Google
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    Selesaikan login jika peramban terlempar ke <code className="bg-slate-100 px-1 py-0.5 rounded text-amber-800 font-mono">http://localhost:3000/#access_token=...</code>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowTokenImporter(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleImportTokenUrl} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Tempel Seluruh Tautan URL atau Token di Bawah:
+                </label>
+                <textarea
+                  rows={4}
+                  required
+                  value={pastedTokenUrl}
+                  onChange={(e) => setPastedTokenUrl(e.target.value)}
+                  placeholder="Contoh: http://localhost:3000/#access_token=eyJhbGciOiJ...&refresh_token=... (atau token JWT)"
+                  className="w-full p-3 bg-slate-50 text-slate-800 placeholder-slate-400 rounded-2xl border border-slate-200 focus:border-amber-600 focus:ring-3 focus:ring-amber-500/15 outline-none text-xs font-mono transition-all resize-none"
+                />
+              </div>
+
+              <div className="bg-amber-50/90 border border-amber-200 rounded-2xl p-3.5 text-xs text-amber-900 leading-relaxed flex items-start gap-2.5">
+                <Sparkles size={16} className="shrink-0 text-amber-600 mt-0.5" />
+                <div>
+                  <strong>Cara Cepat:</strong> Saat tab baru peramban Anda menampilkan <em>"localhost refused to connect"</em>, cukup klik bilah alamat URL, tekan <kbd className="bg-amber-200/80 px-1.5 py-0.5 rounded font-mono text-[11px]">Ctrl+A</kbd> lalu <kbd className="bg-amber-200/80 px-1.5 py-0.5 rounded font-mono text-[11px]">Ctrl+C</kbd>, kemudian tempelkan di kotak atas ini.
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowTokenImporter(false)}
+                  className="py-2.5 px-4 rounded-xl text-slate-600 font-bold text-xs hover:bg-slate-100 cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isImportingToken || !pastedTokenUrl.trim()}
+                  className="py-2.5 px-5 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-[0.99] text-white font-extrabold text-xs shadow-md shadow-amber-600/20 hover:shadow-lg flex items-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isImportingToken ? (
+                    <>
+                      <Loader2 size={15} className="animate-spin" />
+                      <span>Memproses Token...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check size={15} />
+                      <span>Aktifkan Sesi Sekarang</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: SUPABASE AUTH CONFIGURATION GUIDE */}
+      {showConfigGuide && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-xl rounded-3xl p-6 sm:p-7 shadow-2xl border border-slate-200 text-slate-800 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                  <Globe size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900">
+                    Audit & Panduan URL Configuration Supabase
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    Cara memperbaiki pengalihan otomatis agar Google SSO tidak terlempar ke localhost
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowConfigGuide(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs text-slate-700 leading-relaxed">
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-2xl text-blue-900 flex items-start gap-2.5">
+                <ShieldCheck size={16} className="shrink-0 text-blue-600 mt-0.5" />
+                <div>
+                  Supabase mengalihkan ke <code className="font-mono bg-blue-100 px-1 py-0.5 rounded">http://localhost:3000</code> jika URL domain aplikasi Anda saat ini belum didaftarkan di daftar <strong>Allowed Redirect URLs</strong> di Supabase Dashboard.
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h4 className="font-bold text-slate-900 text-sm">Langkah Pengaturan di Supabase Dashboard:</h4>
+                <ol className="list-decimal pl-5 space-y-3 font-medium">
+                  <li>
+                    Buka project Supabase Anda &gt; menu <strong>Authentication</strong> &gt; <strong>URL Configuration</strong>.
+                  </li>
+                  <li>
+                    <div className="mb-1">
+                      Setel <strong>Site URL</strong> ke alamat domain utama Anda:
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        readOnly
+                        value={currentOrigin}
+                        className="flex-1 p-2 bg-slate-50 font-mono text-[11px] rounded-xl border border-slate-200 text-slate-800"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => copyToClipboard(currentOrigin, 'Site URL')}
+                        className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold flex items-center gap-1 shrink-0 cursor-pointer"
+                      >
+                        {copiedField === 'Site URL' ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+                        <span className="text-[11px]">Salin</span>
+                      </button>
+                    </div>
+                  </li>
+                  <li>
+                    <div className="mb-1">
+                      Tambahkan entri berikut ke dalam <strong>Redirect URLs</strong> (tekan Add URL untuk tiap baris):
+                    </div>
+                    <div className="space-y-2 mt-1.5">
+                      {[
+                        `https://*.run.app/**`,
+                        `${currentOrigin}/**`,
+                        `http://localhost:3000/**`,
+                      ].map((urlPattern) => (
+                        <div key={urlPattern} className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            readOnly
+                            value={urlPattern}
+                            className="flex-1 p-2 bg-slate-50 font-mono text-[11px] rounded-xl border border-slate-200 text-slate-800"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => copyToClipboard(urlPattern, urlPattern)}
+                            className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold flex items-center gap-1 shrink-0 cursor-pointer"
+                          >
+                            {copiedField === urlPattern ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+                            <span className="text-[11px]">Salin</span>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </li>
+                  <li>
+                    Klik tombol <strong>Save Changes</strong> di Supabase. Setelah itu, Google Login akan otomatis kembali langsung ke halaman aplikasi tanpa terlempar lagi ke localhost!
+                  </li>
+                </ol>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowConfigGuide(false)}
+                  className="py-2.5 px-5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs cursor-pointer shadow-md shadow-blue-600/20"
+                >
+                  Saya Mengerti
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Bottom Footer Links (Centered minimal footer outside the card) */}
       <div className="w-full max-w-4xl mx-auto flex items-center justify-center text-center text-[11px] sm:text-xs text-slate-500 pt-4 z-10">
