@@ -90,8 +90,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ onCompleted }) =
 
   // Detect existing Supabase session (e.g. from Google SSO)
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      const user = data.session?.user;
+    const updateUserFromSession = (user: any) => {
       if (user) {
         setHasGoogleSession(true);
         setCurrentUserId(user.id);
@@ -99,13 +98,27 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ onCompleted }) =
         const meta = user.user_metadata || {};
         const name = meta.full_name || meta.name || user.email?.split('@')[0] || '';
         setCurrentUserName(name);
-        setAccountFullName(name);
-        setAccountEmail(user.email || '');
-        if (!accountUsername) {
-          setAccountUsername(user.email ? user.email.split('@')[0].replace(/[^a-z0-9._-]/g, '') : '');
-        }
+        setAccountFullName((prev) => prev || name);
+        setAccountEmail((prev) => prev || user.email || '');
+        setAccountUsername((prev) => prev || (user.email ? user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9._-]/g, '') : ''));
+      }
+    };
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session?.user) {
+        updateUserFromSession(data.session.user);
       }
     });
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        updateUserFromSession(session.user);
+      }
+    });
+
+    return () => {
+      sub.subscription.unsubscribe();
+    };
   }, []);
 
   // Auto-generate suggested username from Full Name if not manually edited
