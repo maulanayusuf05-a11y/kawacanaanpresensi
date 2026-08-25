@@ -115,7 +115,7 @@ export default async function handler(req: any, res: any) {
 
       for (const sc of matchedSchools || []) {
         if (!sc.id) continue;
-        const fallbackCode = sc.code || `SCH-${sc.id.slice(0, 4).toUpperCase()}`;
+        const fallbackCode = sc.code || sc.npsn || sc.id.slice(0, 6).toUpperCase();
         schoolMap.set(sc.id, {
           id: sc.id,
           name: sc.name || 'Sekolah Terdaftar',
@@ -129,7 +129,7 @@ export default async function handler(req: any, res: any) {
       for (const sp of matchedProfiles || []) {
         if (!sp.school_id) continue;
         const existing = schoolMap.get(sp.school_id);
-        const fallbackCode = existing?.code || `SCH-${sp.school_id.slice(0, 4).toUpperCase()}`;
+        const fallbackCode = existing?.code || sp.npsn || sp.school_id.slice(0, 6).toUpperCase();
         schoolMap.set(sp.school_id, {
           id: sp.school_id,
           name: sp.nama_sekolah || existing?.name || 'Sekolah Terdaftar',

@@ -544,11 +544,11 @@ export const SchoolsSection: React.FC<{
                   <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
                     <div className="bg-white/10 backdrop-blur-md border border-white/20 px-4 py-2.5 rounded-xl flex items-center justify-between gap-3">
                       <span className="font-mono text-xl font-black text-amber-300 tracking-wider">
-                        {sch.code || `SCH-${sch.id?.slice(0, 4)?.toUpperCase() || '7849'}`}
+                        {sch.code || sch.npsn || sch.id?.slice(0, 6)?.toUpperCase() || '784920'}
                       </span>
                       <button
                         type="button"
-                        onClick={() => handleCopyCode(sch.code || `SCH-${sch.id?.slice(0, 4)?.toUpperCase() || '7849'}`, sch.id)}
+                        onClick={() => handleCopyCode(sch.code || sch.npsn || sch.id?.slice(0, 6)?.toUpperCase() || '784920', sch.id)}
                         className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors cursor-pointer"
                         title="Salin Kode"
                       >
@@ -1134,7 +1134,7 @@ export const SchoolsSection: React.FC<{
                 {filteredSchools.map((s) => {
                   const lifecycle = getTenantLifecycleInfo(s);
                   const isSuspendedOrExpired = s.status === 'inactive' || lifecycle.isSuspended;
-                  const displayCode = s.code || `SCH-${s.id?.slice(0, 4)?.toUpperCase() || '7849'}`;
+                  const displayCode = s.code || s.npsn || s.id?.slice(0, 6)?.toUpperCase() || '784920';
 
                   return (
                     <tr

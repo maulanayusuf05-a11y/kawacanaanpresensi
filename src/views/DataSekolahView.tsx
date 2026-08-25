@@ -35,7 +35,8 @@ export const DataSekolahView: React.FC = () => {
 
   const activeSchoolCode =
     schoolProfile.kodeSekolah ||
-    (currentUser?.schoolId ? `SCH-${currentUser.schoolId.slice(0, 4).toUpperCase()}` : 'SCH-7849');
+    schoolProfile.npsn ||
+    (currentUser?.schoolId ? currentUser.schoolId.slice(0, 6).toUpperCase() : '784920');
 
   const handleCopySchoolCode = () => {
     navigator.clipboard.writeText(activeSchoolCode);

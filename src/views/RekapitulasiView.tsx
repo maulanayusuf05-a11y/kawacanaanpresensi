@@ -34,7 +34,16 @@ export const RekapitulasiView: React.FC = () => {
     subjects,
     teachers,
     currentUser,
+    activeWorkspace,
   } = useApp();
+
+  const isPersonalWorkspace =
+    activeWorkspace?.workspaceType === 'personal' ||
+    currentUser?.workspaceType === 'personal' ||
+    currentUser?.subscriptionPlan === 'guru_pro' ||
+    currentUser?.subscriptionPlan === 'mulai' ||
+    currentUser?.subscriptionPlan === 'teacher' ||
+    !currentUser?.schoolId;
 
   const userScope = useMemo(
     () => getUserRoleScope(currentUser, classes, subjects, teachers),
@@ -412,22 +421,26 @@ export const RekapitulasiView: React.FC = () => {
             <BarChart3 size={22} />
           </div>
           <div>
-            <div className="flex items-center gap-2 mb-0.5">
-              {userScope.isWaliKelas ? (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-800 font-bold text-[11px] border border-blue-200">
-                  <Lock size={11} />
-                  <span>Wali {userScope.assignedWaliClassName?.toLowerCase().startsWith('kelas') ? userScope.assignedWaliClassName : `Kelas ${userScope.assignedWaliClassName || ''}`}</span>
-                </span>
-              ) : userScope.isGuruMapel ? (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-800 font-bold text-[11px] border border-indigo-200">
-                  <ShieldCheck size={11} />
-                  <span>Guru {specializedSubjects[0]?.name || 'Mapel'}</span>
-                </span>
-              ) : null}
-              <span className="text-[11px] text-slate-500 font-medium">
-                {schoolProfile.namaSekolah}
-              </span>
-            </div>
+            {!isPersonalWorkspace && (userScope.isWaliKelas || userScope.isGuruMapel || schoolProfile.namaSekolah) && (
+              <div className="flex items-center gap-2 mb-0.5">
+                {userScope.isWaliKelas ? (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-800 font-bold text-[11px] border border-blue-200">
+                    <Lock size={11} />
+                    <span>Wali {userScope.assignedWaliClassName?.toLowerCase().startsWith('kelas') ? userScope.assignedWaliClassName : `Kelas ${userScope.assignedWaliClassName || ''}`}</span>
+                  </span>
+                ) : userScope.isGuruMapel ? (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-800 font-bold text-[11px] border border-indigo-200">
+                    <ShieldCheck size={11} />
+                    <span>Guru {specializedSubjects[0]?.name || 'Mapel'}</span>
+                  </span>
+                ) : null}
+                {schoolProfile.namaSekolah && (
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    {schoolProfile.namaSekolah}
+                  </span>
+                )}
+              </div>
+            )}
             <h1 className="text-lg sm:text-xl lg:text-2xl font-black text-slate-900">
               Rekapitulasi Kehadiran Siswa
             </h1>

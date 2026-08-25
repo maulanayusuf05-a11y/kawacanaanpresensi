@@ -316,7 +316,9 @@ export default async function handler(req:any,res:any){
       const expires=p.subscription_expires_at||p.expiresAt||null;
       const started=p.subscription_started_at||p.startedAt||new Date().toISOString().slice(0, 10);
       const notes=p.notes !== undefined ? (p.notes ? String(p.notes).trim() : null) : null;
-      const code=`SCH-${Date.now().toString(36).toUpperCase()}`;
+      const code = p.code && String(p.code).trim()
+        ? String(p.code).trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+        : (npsn || Math.random().toString(36).substring(2, 8).toUpperCase());
       const workspaceType = p.workspace_type || 'school'; // Sekolah ber-NPSN adalah Ruang Kerja Sekolah
       const {data:school,error}=await admin.from('schools').insert({
         name,
@@ -395,10 +397,9 @@ export default async function handler(req:any,res:any){
       
       let newCode = '';
       if (req.body.customCode && String(req.body.customCode).trim()) {
-        newCode = String(req.body.customCode).trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
+        newCode = String(req.body.customCode).trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
       } else {
-        const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
-        newCode = `SCH-${rand}`;
+        newCode = Math.random().toString(36).substring(2, 8).toUpperCase();
       }
       
       const {data,error}=await admin.from('schools').update({code: newCode}).eq('id',id).select('id, name, code, npsn').single();

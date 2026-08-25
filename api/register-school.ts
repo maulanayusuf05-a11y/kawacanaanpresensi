@@ -179,9 +179,9 @@ export default async function handler(req: any, res: any) {
     const expiryDate = new Date();
     expiryDate.setDate(startDate.getDate() + planLimits.days);
 
-    const schoolCode = isTeacherPlan
-      ? `SCH-${npsn}-GURU-${Date.now().toString(36).toUpperCase()}`
-      : `SCH-${npsn}-${Date.now().toString(36).toUpperCase()}`;
+    const schoolCode = npsn
+      ? npsn
+      : Math.random().toString(36).substring(2, 8).toUpperCase();
 
     // 4. Buat Tenant Sekolah / Guru (Sekolah formal = Ruang Kerja Sekolah, Guru Mandiri = Ruang Kerja Individu)
     const workspaceType = isTeacherPlan ? 'personal' : 'school';

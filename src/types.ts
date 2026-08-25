@@ -183,7 +183,7 @@ export interface SchoolProfile {
   namaSekolah: string;
   jenjang?: string; // SD, SMP, SMA, SMK, PAUD/TK, SLB, dll
   npsn: string;
-  kodeSekolah?: string; // Kode Undangan Bergabung Sekolah (e.g. SCH-7849 atau CIDENG07)
+  kodeSekolah?: string; // Kode Undangan Bergabung Sekolah (e.g. 20104501 atau CIDENG07)
   // Alamat Dipecah
   alamat?: string; // Alamat gabungan (formatted string untuk kop & cetak)
   jalan?: string;

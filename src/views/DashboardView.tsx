@@ -330,9 +330,11 @@ export const DashboardView: React.FC = () => {
 
         {/* Lencana dan Status di Sebelah Kanan (Sejajar) */}
         <div className="flex flex-wrap items-center md:justify-end gap-2 shrink-0">
-          <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
-            {userScope.roleBadgeLabel}
-          </span>
+          {!isPersonalWorkspace && (
+            <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
+              {userScope.roleBadgeLabel}
+            </span>
+          )}
           {/* Lencana Gabungan Masa Berlaku & Paket */}
           {currentUser?.role !== 'SUPER_ADMIN' && (
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-gradient-to-r from-amber-50 to-orange-50 text-amber-900 border border-amber-300/80 shadow-xs shrink-0">

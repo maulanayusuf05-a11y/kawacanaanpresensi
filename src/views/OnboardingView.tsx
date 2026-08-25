@@ -939,7 +939,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ onCompleted }) =
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') handleSearchSchool();
                             }}
-                            placeholder="Contoh: SCH-7849"
+                            placeholder="Contoh: 20104501 atau 784920"
                             className="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 font-mono text-sm font-bold text-slate-900 bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 outline-none uppercase tracking-wider"
                             id="input-school-code-teacher"
                           />
@@ -1452,7 +1452,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ onCompleted }) =
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') handleSearchSchool();
                         }}
-                        placeholder="Contoh: SCH-7849"
+                        placeholder="Contoh: 20104501 atau 784920"
                         className="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 font-mono text-sm font-bold text-slate-900 bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none uppercase tracking-wider"
                         id="input-search-school-student"
                       />
