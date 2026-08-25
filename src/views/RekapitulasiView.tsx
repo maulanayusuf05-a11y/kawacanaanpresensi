@@ -416,7 +416,7 @@ export const RekapitulasiView: React.FC = () => {
               {userScope.isWaliKelas ? (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-800 font-bold text-[11px] border border-blue-200">
                   <Lock size={11} />
-                  <span>Wali Kelas {userScope.assignedWaliClassName}</span>
+                  <span>Wali {userScope.assignedWaliClassName?.toLowerCase().startsWith('kelas') ? userScope.assignedWaliClassName : `Kelas ${userScope.assignedWaliClassName || ''}`}</span>
                 </span>
               ) : userScope.isGuruMapel ? (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-800 font-bold text-[11px] border border-indigo-200">
@@ -433,7 +433,7 @@ export const RekapitulasiView: React.FC = () => {
             </h1>
             <p className="text-xs sm:text-sm text-slate-500">
               {userScope.isWaliKelas
-                ? `Laporan dan ringkasan presensi harian siswa khusus Kelas ${userScope.assignedWaliClassName || ''}`
+                ? `Laporan dan ringkasan presensi harian siswa khusus ${userScope.assignedWaliClassName?.toLowerCase().startsWith('kelas') ? userScope.assignedWaliClassName : `Kelas ${userScope.assignedWaliClassName || ''}`}`
                 : userScope.isGuruMapel
                 ? `Laporan dan ringkasan presensi mata pelajaran untuk rombel yang Anda ajar`
                 : 'Pilih jenis rekapitulasi (Bulanan atau Semester) untuk melihat ringkasan presensi sekolah'}
@@ -527,17 +527,12 @@ export const RekapitulasiView: React.FC = () => {
                   Mata Pelajaran
                 </button>
               </div>
-            ) : userScope.isWaliKelas ? (
-              <div className="px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-900 text-xs font-bold rounded-xl flex items-center gap-1.5">
-                <Lock size={12} className="text-blue-600" />
-                <span>Format: Wali Kelas (Harian)</span>
-              </div>
-            ) : (
+            ) : userScope.isGuruMapel ? (
               <div className="px-3 py-1.5 bg-indigo-50 border border-indigo-200 text-indigo-900 text-xs font-bold rounded-xl flex items-center gap-1.5">
                 <ShieldCheck size={12} className="text-indigo-600" />
                 <span>Format: Guru Mapel</span>
               </div>
-            )}
+            ) : null}
 
             {/* If SUBJECT, dropdown mapel */}
             {attendanceType === 'SUBJECT' && (
@@ -561,12 +556,7 @@ export const RekapitulasiView: React.FC = () => {
             )}
 
             {/* Filter Kelas */}
-            {userScope.isWaliKelas ? (
-              <div className="px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-900 text-xs font-black rounded-xl flex items-center gap-1.5">
-                <CheckCircle2 size={13} className="text-blue-600" />
-                <span>{userScope.assignedWaliClassName || 'Kelas Binaan'}</span>
-              </div>
-            ) : (
+            {!userScope.isWaliKelas && (
               <select
                 value={selectedClassId}
                 onChange={(e) => setSelectedClassId(e.target.value)}

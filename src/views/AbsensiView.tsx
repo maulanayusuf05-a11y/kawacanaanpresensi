@@ -465,43 +465,36 @@ export const AbsensiView: React.FC = () => {
         </div>
       )}
 
-      {/* Mode Selector & Configuration Toolbar */}
-      <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-4">
-        {/* Toggle Mode / Role Scoped Mode */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block mb-1.5">
-              {userScope.isWaliKelas
-                ? 'FORMAT ABSENSI (TERKUNCI SESUAI KEWENANGAN WALI KELAS)'
-                : userScope.isGuruMapel
-                ? 'FORMAT ABSENSI (TERKUNCI SESUAI KEWENANGAN GURU MAPEL)'
-                : 'PILIH FORMAT ABSENSI'}
-            </span>
-            <div className="inline-flex p-1 bg-slate-200/80 rounded-xl gap-1">
-              {/* Wali Kelas Button: Hidden for Guru Mapel */}
-              {!userScope.isGuruMapel && (
-                <button
-                  type="button"
-                  onClick={() => !userScope.isWaliKelas && setAttendanceMode('DAILY')}
-                  id="btn-mode-daily"
-                  className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-black transition-all ${
-                    attendanceMode === 'DAILY'
-                      ? 'bg-white text-blue-700 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900 cursor-pointer'
-                  }`}
-                >
-                  <UserCheck size={15} />
-                  <span>Format Wali Kelas (Harian)</span>
-                  {userScope.isWaliKelas && (
-                    <span className="ml-1 text-[10px] bg-blue-100 text-blue-800 px-1.5 py-0.2 rounded font-bold">
-                      {userScope.assignedWaliClassName}
-                    </span>
-                  )}
-                </button>
-              )}
+      {/* Mode Selector & Configuration Toolbar (Hanya untuk Admin / KS / Guru Mapel) */}
+      {!userScope.isWaliKelas && (
+        <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-4">
+          {/* Toggle Mode / Role Scoped Mode */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block mb-1.5">
+                {userScope.isGuruMapel
+                  ? 'FORMAT ABSENSI (GURU MAPEL)'
+                  : 'PILIH FORMAT ABSENSI'}
+              </span>
+              <div className="inline-flex p-1 bg-slate-200/80 rounded-xl gap-1">
+                {/* Wali Kelas Button: Hidden for Guru Mapel */}
+                {!userScope.isGuruMapel && (
+                  <button
+                    type="button"
+                    onClick={() => setAttendanceMode('DAILY')}
+                    id="btn-mode-daily"
+                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-black transition-all ${
+                      attendanceMode === 'DAILY'
+                        ? 'bg-white text-blue-700 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900 cursor-pointer'
+                    }`}
+                  >
+                    <UserCheck size={15} />
+                    <span>Format Wali Kelas (Harian)</span>
+                  </button>
+                )}
 
-              {/* Guru Mapel Button: Hidden for Wali Kelas */}
-              {!userScope.isWaliKelas && (
+                {/* Guru Mapel Button */}
                 <button
                   type="button"
                   onClick={() => !userScope.isGuruMapel && setAttendanceMode('SUBJECT')}
@@ -515,27 +508,16 @@ export const AbsensiView: React.FC = () => {
                   <BookOpen size={15} />
                   <span>Format Guru Mapel (Per Jam Pelajaran)</span>
                 </button>
-              )}
+              </div>
             </div>
-          </div>
 
-          {/* Select Class (Wali Kelas) or Subject + Class (Guru Mapel) */}
-          <div className="flex flex-wrap items-center gap-3">
-            {attendanceMode === 'DAILY' ? (
-              <div className="flex flex-col">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1 flex items-center gap-1">
-                  <span>KELAS BINAAN</span>
-                  {userScope.isWaliKelas && <Lock size={10} className="text-amber-600" />}
-                </label>
-                {userScope.isWaliKelas ? (
-                  <div className="px-4 py-2 bg-blue-50 border border-blue-200 text-blue-900 text-xs font-black rounded-xl shadow-xs inline-flex items-center gap-2">
-                    <CheckCircle2 size={14} className="text-blue-600" />
-                    <span>{userScope.assignedWaliClassName || currentSelectedClassName}</span>
-                    <span className="text-[10px] bg-blue-200 text-blue-800 px-1.5 py-0.5 rounded font-bold">
-                      Khusus Kelas Anda
-                    </span>
-                  </div>
-                ) : (
+            {/* Select Class (Admin/KS Daily) or Subject + Class (Guru Mapel / Admin Subject) */}
+            <div className="flex flex-wrap items-center gap-3">
+              {attendanceMode === 'DAILY' ? (
+                <div className="flex flex-col">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">
+                    PILIH KELAS
+                  </label>
                   <select
                     value={selectedClassId}
                     onChange={(e) => setSelectedClassId(e.target.value)}
@@ -547,157 +529,149 @@ export const AbsensiView: React.FC = () => {
                       </option>
                     ))}
                   </select>
-                )}
-              </div>
-            ) : (
-              <>
-                <div className="flex flex-col">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1 flex items-center gap-1">
-                    <span>MATA PELAJARAN</span>
-                    {userScope.isGuruMapel && selectableSubjects.length === 1 && (
-                      <Lock size={10} className="text-indigo-600" />
-                    )}
-                  </label>
-                  {userScope.isGuruMapel && selectableSubjects.length === 1 ? (
-                    <div className="px-3.5 py-2 bg-indigo-50 border border-indigo-200 text-indigo-900 text-xs font-black rounded-xl shadow-xs inline-flex items-center gap-2">
-                      <BookOpen size={14} className="text-indigo-600" />
-                      <span>{selectableSubjects[0].name}</span>
-                      {selectableSubjects[0].code && (
-                        <span className="text-[10px] bg-indigo-200 text-indigo-800 px-1.5 py-0.5 rounded font-bold">
-                          {selectableSubjects[0].code}
-                        </span>
+                </div>
+              ) : (
+                <>
+                  <div className="flex flex-col">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1 flex items-center gap-1">
+                      <span>MATA PELAJARAN</span>
+                      {userScope.isGuruMapel && selectableSubjects.length === 1 && (
+                        <Lock size={10} className="text-indigo-600" />
                       )}
-                    </div>
-                  ) : (
+                    </label>
+                    {userScope.isGuruMapel && selectableSubjects.length === 1 ? (
+                      <div className="px-3.5 py-2 bg-indigo-50 border border-indigo-200 text-indigo-900 text-xs font-black rounded-xl shadow-xs inline-flex items-center gap-2">
+                        <BookOpen size={14} className="text-indigo-600" />
+                        <span>{selectableSubjects[0].name}</span>
+                        {selectableSubjects[0].code && (
+                          <span className="text-[10px] bg-indigo-200 text-indigo-800 px-1.5 py-0.5 rounded font-bold">
+                            {selectableSubjects[0].code}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <select
+                        value={selectedSubjectId}
+                        onChange={(e) => setSelectedSubjectId(e.target.value)}
+                        id="select-subject"
+                        className="px-3.5 py-2 bg-white border border-blue-300 text-blue-900 text-xs font-bold rounded-xl shadow-xs outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
+                      >
+                        {selectableSubjects.map((sub) => (
+                          <option key={sub.id} value={sub.id}>
+                            {sub.name} {sub.code ? `(${sub.code})` : ''} {sub.teacherName ? `• ${sub.teacherName}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">
+                      {userScope.isGuruMapel ? 'PILIH ROMBEL YANG DIAJAR' : 'KELAS YANG DIAJAR'}
+                    </label>
                     <select
-                      value={selectedSubjectId}
-                      onChange={(e) => setSelectedSubjectId(e.target.value)}
-                      id="select-subject"
-                      className="px-3.5 py-2 bg-white border border-blue-300 text-blue-900 text-xs font-bold rounded-xl shadow-xs outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
+                      value={selectedClassId}
+                      onChange={(e) => setSelectedClassId(e.target.value)}
+                      id="select-class"
+                      className="px-3.5 py-2 bg-white border border-blue-300 text-blue-900 text-xs font-bold rounded-xl shadow-xs outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer min-w-[140px]"
                     >
-                      {selectableSubjects.map((sub) => (
-                        <option key={sub.id} value={sub.id}>
-                          {sub.name} {sub.code ? `(${sub.code})` : ''} {sub.teacherName ? `• ${sub.teacherName}` : ''}
-                        </option>
-                      ))}
+                      {availableClasses.map((cls) => {
+                        const label = cls.name.toLowerCase().startsWith('kelas') ? cls.name.toUpperCase() : `KELAS ${cls.name.toUpperCase()}`;
+                        return (
+                          <option key={cls.id} value={cls.id}>
+                            {userScope.isGuruMapel ? label : `${cls.name} ${cls.waliKelasName ? `(Wali: ${cls.waliKelasName})` : ''}`}
+                          </option>
+                        );
+                      })}
                     </select>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Dynamic Context Header (Guru Mapel) */}
+          {attendanceMode === 'SUBJECT' && (
+            <div className="space-y-3 pt-2 border-t border-slate-200">
+              {/* Subject Schedule & Teacher Info Box */}
+              <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-white rounded-xl border border-blue-200 text-xs">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-1.5 font-extrabold text-slate-900">
+                    <UserCheck size={15} className="text-blue-600" />
+                    <span>Pengajar: {activeSubject?.teacherName || 'Guru Mapel'}</span>
+                  </div>
+                  {activeSubject?.code && (
+                    <span className="px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 font-bold text-[10px]">
+                      {activeSubject.code}
+                    </span>
+                  )}
+                  {activeSubject?.scheduleDays && activeSubject.scheduleDays.length > 0 && (
+                    <div className="flex items-center gap-1">
+                      <span className="text-slate-400 text-[11px]">Jadwal Mengajar:</span>
+                      <div className="flex flex-wrap gap-1">
+                        {activeSubject.scheduleDays.map((d) => (
+                          <span
+                            key={d}
+                            className={`px-2 py-0.5 rounded text-[10px] font-extrabold ${
+                              d === currentDayName
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                : 'bg-slate-100 text-slate-600'
+                            }`}
+                          >
+                            {d}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </div>
 
-                <div className="flex flex-col">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">
-                    {userScope.isGuruMapel ? 'PILIH ROMBEL YANG DIAJAR' : 'KELAS YANG DIAJAR'}
-                  </label>
-                  <select
-                    value={selectedClassId}
-                    onChange={(e) => setSelectedClassId(e.target.value)}
-                    id="select-class"
-                    className="px-3.5 py-2 bg-white border border-blue-300 text-blue-900 text-xs font-bold rounded-xl shadow-xs outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer min-w-[140px]"
-                  >
-                    {availableClasses.map((cls) => {
-                      const label = cls.name.toLowerCase().startsWith('kelas') ? cls.name.toUpperCase() : `KELAS ${cls.name.toUpperCase()}`;
-                      return (
-                        <option key={cls.id} value={cls.id}>
-                          {userScope.isGuruMapel ? label : `${cls.name} ${cls.waliKelasName ? `(Wali: ${cls.waliKelasName})` : ''}`}
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Dynamic Context Header (Wali Kelas vs Guru Mapel) */}
-        {attendanceMode === 'SUBJECT' ? (
-          <div className="space-y-3 pt-2 border-t border-slate-200">
-            {/* Subject Schedule & Teacher Info Box */}
-            <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-white rounded-xl border border-blue-200 text-xs">
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-1.5 font-extrabold text-slate-900">
-                  <UserCheck size={15} className="text-blue-600" />
-                  <span>Pengajar: {activeSubject?.teacherName || 'Guru Mapel'}</span>
-                </div>
-                {activeSubject?.code && (
-                  <span className="px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 font-bold text-[10px]">
-                    {activeSubject.code}
+                {isLockedForGuruMapel ? (
+                  <span className="px-2.5 py-1 rounded-md bg-rose-100 text-rose-800 font-bold text-[10px] flex items-center gap-1">
+                    <Lock size={12} />
+                    <span>Bukan Jadwal Mengajar (Terkunci)</span>
+                  </span>
+                ) : isScheduledToday ? (
+                  <span className="px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-800 font-bold text-[10px] flex items-center gap-1">
+                    <CheckCircle2 size={12} />
+                    <span>Sesuai Jadwal Mengajar</span>
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-1 rounded-md bg-amber-100 text-amber-800 font-bold text-[10px]">
+                    KBM Tambahan (Hari {currentDayName})
                   </span>
                 )}
-                {activeSubject?.scheduleDays && activeSubject.scheduleDays.length > 0 && (
-                  <div className="flex items-center gap-1">
-                    <span className="text-slate-400 text-[11px]">Jadwal Mengajar:</span>
-                    <div className="flex flex-wrap gap-1">
-                      {activeSubject.scheduleDays.map((d) => (
-                        <span
-                          key={d}
-                          className={`px-2 py-0.5 rounded text-[10px] font-extrabold ${
-                            d === currentDayName
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                              : 'bg-slate-100 text-slate-600'
-                          }`}
-                        >
-                          {d}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
 
-              {isLockedForGuruMapel ? (
-                <span className="px-2.5 py-1 rounded-md bg-rose-100 text-rose-800 font-bold text-[10px] flex items-center gap-1">
-                  <Lock size={12} />
-                  <span>Bukan Jadwal Mengajar (Terkunci)</span>
-                </span>
-              ) : isScheduledToday ? (
-                <span className="px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-800 font-bold text-[10px] flex items-center gap-1">
-                  <CheckCircle2 size={12} />
-                  <span>Sesuai Jadwal Mengajar</span>
-                </span>
-              ) : (
-                <span className="px-2.5 py-1 rounded-md bg-amber-100 text-amber-800 font-bold text-[10px]">
-                  KBM Tambahan (Hari {currentDayName})
-                </span>
+              {/* Locked Warning for Guru Mapel on Non-Teaching Days */}
+              {isLockedForGuruMapel && (
+                <div className="flex items-start gap-3 p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 shadow-xs">
+                  <div className="w-8 h-8 rounded-lg bg-amber-100 border border-amber-300 text-amber-700 flex items-center justify-center shrink-0 mt-0.5">
+                    <Lock size={16} />
+                  </div>
+                  <div className="space-y-0.5">
+                    <h4 className="text-xs font-black text-amber-950 flex items-center gap-2">
+                      <span>Fitur Absensi Siswa Dikunci Otomatis</span>
+                      <span className="text-[10px] bg-amber-200 text-amber-900 px-2 py-0.5 rounded font-black">
+                        Bukan Hari Mengajar
+                      </span>
+                    </h4>
+                    <p className="text-xs text-amber-800 leading-relaxed font-medium">
+                      Hari <strong>{currentDayName}</strong> bukan merupakan jadwal mengajar mata pelajaran <strong>{activeSubject?.name}</strong>.
+                      {activeSubject?.scheduleDays && activeSubject.scheduleDays.length > 0 ? (
+                        <span> Jadwal resmi mata pelajaran ini adalah: <strong>{activeSubject.scheduleDays.join(', ')}</strong>.</span>
+                      ) : (
+                        <span> Tidak ada jadwal mengajar pada hari ini.</span>
+                      )}
+                      {' '}Sistem otomatis menonaktifkan pengisian dan perubahan data absensi.
+                    </p>
+                  </div>
+                </div>
               )}
             </div>
-
-            {/* Locked Warning for Guru Mapel on Non-Teaching Days */}
-            {isLockedForGuruMapel && (
-              <div className="flex items-start gap-3 p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 shadow-xs">
-                <div className="w-8 h-8 rounded-lg bg-amber-100 border border-amber-300 text-amber-700 flex items-center justify-center shrink-0 mt-0.5">
-                  <Lock size={16} />
-                </div>
-                <div className="space-y-0.5">
-                  <h4 className="text-xs font-black text-amber-950 flex items-center gap-2">
-                    <span>Fitur Absensi Siswa Dikunci Otomatis</span>
-                    <span className="text-[10px] bg-amber-200 text-amber-900 px-2 py-0.5 rounded font-black">
-                      Bukan Hari Mengajar
-                    </span>
-                  </h4>
-                  <p className="text-xs text-amber-800 leading-relaxed font-medium">
-                    Hari <strong>{currentDayName}</strong> bukan merupakan jadwal mengajar mata pelajaran <strong>{activeSubject?.name}</strong>.
-                    {activeSubject?.scheduleDays && activeSubject.scheduleDays.length > 0 ? (
-                      <span> Jadwal resmi mata pelajaran ini adalah: <strong>{activeSubject.scheduleDays.join(', ')}</strong>.</span>
-                    ) : (
-                      <span> Tidak ada jadwal mengajar pada hari ini.</span>
-                    )}
-                    {' '}Sistem otomatis menonaktifkan pengisian dan perubahan data absensi.
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-emerald-50/80 border border-emerald-200 text-emerald-900 text-xs">
-            <Info size={16} className="text-emerald-600 shrink-0 mt-0.5" />
-            <div>
-              <span className="font-bold">Format Absensi Harian Wali Kelas: </span>
-              Mencatat jam masuk/kehadiran pagi, kepulangan siswa, dan keterangan ketidakhadiran (Sakit, Izin, Alfa). Data ini terintegrasi langsung ke rekapitulasi bulanan dan acuan awal bagi guru mata pelajaran.
-            </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       {/* Bulk Action Buttons */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">

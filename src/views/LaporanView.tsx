@@ -378,7 +378,11 @@ export const LaporanView: React.FC = () => {
               <div className="w-full px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl text-xs sm:text-sm font-bold text-blue-900 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <CheckCircle2 size={16} className="text-blue-600" />
-                  <span>Kelas {userScope.assignedWaliClassName || schoolProfile.kelas}</span>
+                  <span>
+                    {(userScope.assignedWaliClassName || schoolProfile.kelas || '').toLowerCase().startsWith('kelas')
+                      ? (userScope.assignedWaliClassName || schoolProfile.kelas)
+                      : `Kelas ${userScope.assignedWaliClassName || schoolProfile.kelas || '1'}`}
+                  </span>
                 </div>
                 <span className="text-[10px] bg-blue-200 text-blue-800 px-2 py-0.5 rounded font-black">
                   Kelas Binaan Anda

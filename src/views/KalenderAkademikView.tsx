@@ -320,15 +320,10 @@ export const KalenderAkademikView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2 self-start sm:self-auto">
-          {isReadOnly ? (
+          {isReadOnly && (
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-50 border border-amber-200 text-amber-800">
               <Lock size={13} className="text-amber-600" />
               <span>Dikelola Admin Sekolah</span>
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 border border-emerald-200 text-emerald-800">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Akses Admin Aktif</span>
             </span>
           )}
         </div>
