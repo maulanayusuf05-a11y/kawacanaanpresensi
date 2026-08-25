@@ -1158,105 +1158,36 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ onCompleted }) =
                   {/* Jika Kelola Sendiri (Personal Workspace) */}
                   {selectedPath === 'personal' && (
                     <div className="space-y-4 p-4 sm:p-5 rounded-2xl bg-indigo-50/50 border border-indigo-100">
-                      <div>
-                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                          Nama Ruang Kerja Personal:
-                        </label>
-                        <input
-                          type="text"
-                          value={customWorkspaceName}
-                          onChange={(e) => setCustomWorkspaceName(e.target.value)}
-                          placeholder={
-                            selectedRole === 'homeroom'
-                              ? `Contoh: Ruang Kelas 4A - ${accountFullName || currentUserName || 'Guru Kelas'}`
-                              : `Contoh: Ruang Mengajar PJOK - ${accountFullName || currentUserName || 'Guru Mapel'}`
-                          }
-                          className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-900 bg-white focus:border-indigo-600 outline-none"
-                        />
-                      </div>
-
-                      {selectedRole === 'homeroom' ? (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                              Kelas:
-                            </label>
-                            <select
-                              value={customGrade}
-                              onChange={(e) => {
-                                const g = Number(e.target.value);
-                                setCustomGrade(g);
-                                setCustomClassName(`Kelas ${g}`);
-                              }}
-                              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold bg-white text-slate-900 focus:border-indigo-600 outline-none cursor-pointer"
-                            >
-                              {[1, 2, 3, 4, 5, 6].map((g) => (
-                                <option key={g} value={g}>
-                                  Kelas {g} SD
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                              Nama Rombel:
-                            </label>
-                            <input
-                              type="text"
-                              value={customClassName}
-                              onChange={(e) => setCustomClassName(e.target.value)}
-                              placeholder="Contoh: Kelas 4A"
-                              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold bg-white text-slate-900 focus:border-indigo-600 outline-none"
-                            />
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-                          <div>
-                            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                              Mata Pelajaran Utama:
-                            </label>
-                            <input
-                              type="text"
-                              value={subjectName}
-                              onChange={(e) => setSubjectName(e.target.value)}
-                              placeholder="Contoh: Pendidikan Jasmani (PJOK)"
-                              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold bg-white text-slate-900 focus:border-indigo-600 outline-none"
-                            />
-                          </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div>
-                              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                                Kelas Binaan / Target Mengajar:
-                              </label>
-                              <select
-                                value={customGrade}
-                                onChange={(e) => {
-                                  const g = Number(e.target.value);
-                                  setCustomGrade(g);
-                                  setCustomClassName(`Kelas ${g}`);
-                                }}
-                                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold bg-white text-slate-900 focus:border-indigo-600 outline-none cursor-pointer"
+                      {selectedRole === 'subject' && (
+                        <div className="space-y-2">
+                          <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                            Mata Pelajaran yang Diampu: <span className="text-rose-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={subjectName}
+                            onChange={(e) => setSubjectName(e.target.value)}
+                            placeholder="Contoh: Pendidikan Jasmani, Olahraga, dan Kesehatan (PJOK)"
+                            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold bg-white text-slate-900 focus:border-indigo-600 outline-none"
+                          />
+                          <div className="flex flex-wrap gap-1.5 pt-1">
+                            {[
+                              'PJOK',
+                              'Pendidikan Agama Islam (PAI)',
+                              'Pendidikan Agama Kristen',
+                              'Bahasa Inggris',
+                              'Seni Budaya',
+                              'Informatika',
+                            ].map((s) => (
+                              <button
+                                key={s}
+                                type="button"
+                                onClick={() => setSubjectName(s)}
+                                className="px-2 py-1 rounded-md bg-white border border-slate-200 hover:border-indigo-400 hover:text-indigo-700 text-slate-700 text-[10px] font-semibold transition cursor-pointer"
                               >
-                                {[1, 2, 3, 4, 5, 6].map((g) => (
-                                  <option key={g} value={g}>
-                                    Kelas {g} SD
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                            <div>
-                              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                                Nama Rombel:
-                              </label>
-                              <input
-                                type="text"
-                                value={customClassName}
-                                onChange={(e) => setCustomClassName(e.target.value)}
-                                placeholder="Contoh: Kelas 4A"
-                                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold bg-white text-slate-900 focus:border-indigo-600 outline-none"
-                              />
-                            </div>
+                                {s}
+                              </button>
+                            ))}
                           </div>
                         </div>
                       )}
@@ -1264,12 +1195,12 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ onCompleted }) =
                       {/* Info Langganan Personal */}
                       <div className="p-3.5 rounded-xl bg-white border border-indigo-200 flex items-center justify-between text-xs">
                         <div className="flex items-center gap-2">
-                          <Zap size={16} className="text-indigo-600" />
-                          <span>
+                          <Zap size={16} className="text-indigo-600 shrink-0" />
+                          <span className="text-slate-700">
                             Paket Langganan: <strong>Paket Mulai / Gratis</strong> (Personal Workspace)
                           </span>
                         </div>
-                        <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px] uppercase">
+                        <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px] uppercase shrink-0">
                           Gratis Rp0/bln
                         </span>
                       </div>
