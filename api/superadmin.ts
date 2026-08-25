@@ -390,16 +390,77 @@ export default async function handler(req:any,res:any){
     }
 
     if(action==='delete_school'){
-      const id=req.body.schoolId||req.body.school_id||req.body.id; if(!id) return json(res,400,{error:'ID sekolah wajib diisi.'});
+      const id=req.body.schoolId||req.body.school_id||req.body.id; if(!id) return json(res,400,{error:'ID sekolah atau ruang kerja wajib diisi.'});
       
-      const { data: targetSchool } = await admin.from('schools').select('name, npsn').eq('id', id).maybeSingle();
-      const {data:users}=await admin.from('profiles').select('id').eq('school_id',id);
-      for(const u of users||[]) {
+      const { data: targetSchool } = await admin.from('schools').select('name, npsn, workspace_type, is_personal').eq('id', id).maybeSingle();
+      const isPersonal = targetSchool?.workspace_type === 'personal' || targetSchool?.is_personal === true;
+      const workspaceLabel = isPersonal ? `Ruang Kerja Individu (${targetSchool?.name || id})` : `Sekolah (${targetSchool?.name || id})`;
+
+      // Hapus data terkait sekolah/ruang kerja secara menyeluruh
+      try { await admin.from('teacher_class_assignments').delete().eq('school_id', id); } catch (_) {}
+      try { await admin.from('attendance_records').delete().eq('school_id', id); } catch (_) {}
+      try { await admin.from('students').delete().eq('school_id', id); } catch (_) {}
+      try { await admin.from('classes').delete().eq('school_id', id); } catch (_) {}
+      try { await admin.from('subjects').delete().eq('school_id', id); } catch (_) {}
+      try { await admin.from('academic_events').delete().eq('school_id', id); } catch (_) {}
+      try { await admin.from('school_profile').delete().eq('school_id', id); } catch (_) {}
+      try { await admin.from('system_config').delete().eq('school_id', id); } catch (_) {}
+      try { await admin.from('teachers').delete().eq('school_id', id); } catch (_) {}
+
+      const { data: users } = await admin.from('profiles').select('id, name, username').eq('school_id', id);
+      for(const u of users || []) {
         try { await admin.auth.admin.deleteUser(u.id); } catch (_) {}
       }
-      const {error}=await admin.from('schools').delete().eq('id',id); if(error) throw error;
-      await admin.from('audit_logs').insert({actor_id:caller.user.id,actor_name:profile.name,actor_role:'SUPER_ADMIN',action:'DELETE_SCHOOL',details:{schoolId:id, schoolName: targetSchool?.name}});
-      return json(res,200,{ok:true});
+      try { await admin.from('profiles').delete().eq('school_id', id); } catch (_) {}
+
+      const { error } = await admin.from('schools').delete().eq('id', id);
+      if(error) throw error;
+
+      await admin.from('audit_logs').insert({
+        actor_id: caller.user.id,
+        actor_name: profile.name,
+        actor_role: 'SUPER_ADMIN',
+        action: 'DELETE_SCHOOL',
+        details: { schoolId: id, schoolName: targetSchool?.name, isPersonal, label: workspaceLabel }
+      });
+
+      return json(res,200,{ ok: true, message: `${workspaceLabel} beserta data terkait berhasil dihapus.` });
+    }
+
+    if(action==='delete_user'||action==='delete_admin'){
+      const id=req.body.user_id||req.body.userId||req.body.id;
+      if(!id) return json(res,400,{error:'User ID wajib disertakan.'});
+
+      const { data: targetProfile } = await admin.from('profiles').select('id, name, username, role, school_id').eq('id', id).maybeSingle();
+      if(!targetProfile) {
+        return json(res,404,{error:'Pengguna tidak ditemukan di database profil.'});
+      }
+
+      // Bersihkan relasi penugasan guru jika ada
+      try { await admin.from('teacher_class_assignments').delete().eq('teacher_id', id); } catch (_) {}
+      try { await admin.from('teachers').delete().eq('id', id); } catch (_) {}
+      
+      // Hapus profil
+      const { error: pErr } = await admin.from('profiles').delete().eq('id', id);
+      if(pErr) throw pErr;
+
+      // Hapus akun di Supabase Auth
+      try {
+        await admin.auth.admin.deleteUser(id);
+      } catch (authErr) {
+        console.warn('Supabase Auth user delete warning:', authErr);
+      }
+
+      // Catat di audit log
+      await admin.from('audit_logs').insert({
+        actor_id: caller.user.id,
+        actor_name: profile.name,
+        actor_role: 'SUPER_ADMIN',
+        action: 'DELETE_USER',
+        details: { userId: id, name: targetProfile.name, username: targetProfile.username, role: targetProfile.role, schoolId: targetProfile.school_id }
+      });
+
+      return json(res,200,{ ok: true, message: `Pengguna ${targetProfile.name} (${targetProfile.username}) berhasil dihapus.` });
     }
 
     if(action==='create_admin'){

@@ -102,6 +102,30 @@ export const SchoolsSection: React.FC<{
   const [newPassword, setNewPassword] = useState('');
   const [resettingPassword, setResettingPassword] = useState(false);
 
+  // Delete School / Workspace State
+  const [schoolToDelete, setSchoolToDelete] = useState<any | null>(null);
+  const [deletingSchool, setDeletingSchool] = useState(false);
+
+  const handleDeleteSchool = async () => {
+    if (!schoolToDelete) return;
+    const sId = schoolToDelete.school_id || schoolToDelete.id;
+    setDeletingSchool(true);
+    try {
+      const res = await call('delete_school', { school_id: sId });
+      showToast(res.message || `Sekolah/ruang kerja "${schoolToDelete.name}" berhasil dihapus.`, 'success');
+      setSchoolToDelete(null);
+      if (selectedSchoolId === sId) {
+        setSelectedSchoolId(null);
+        setDetailData(null);
+      }
+      loadSchools();
+    } catch (e: any) {
+      showToast(e.message || 'Gagal menghapus sekolah.', 'error');
+    } finally {
+      setDeletingSchool(false);
+    }
+  };
+
   const loadSchools = async () => {
     setLoading(true);
     try {
@@ -390,6 +414,14 @@ export const SchoolsSection: React.FC<{
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSchoolToDelete(sch)}
+              className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold shadow-xs flex items-center gap-1.5 cursor-pointer transition-all"
+              title="Hapus Sekolah atau Ruang Kerja ini"
+            >
+              <Trash2 size={14} />
+              <span>Hapus {sch.workspace_type === 'personal' || sch.is_personal ? 'Ruang Kerja' : 'Sekolah'}</span>
+            </button>
             <button
               onClick={() => handleImpersonate(sch)}
               className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 cursor-pointer transition-all"
@@ -1088,12 +1120,21 @@ export const SchoolsSection: React.FC<{
                       </td>
 
                       <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={() => handleSelectSchool(s)}
-                          className="px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs cursor-pointer transition-colors"
-                        >
-                          Detail
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => handleSelectSchool(s)}
+                            className="px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs cursor-pointer transition-colors"
+                          >
+                            Detail
+                          </button>
+                          <button
+                            onClick={() => setSchoolToDelete(s)}
+                            title="Hapus Sekolah / Ruang Kerja"
+                            className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold text-xs cursor-pointer transition-colors"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1205,6 +1246,88 @@ export const SchoolsSection: React.FC<{
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Konfirmasi Hapus Sekolah / Ruang Kerja */}
+      {schoolToDelete && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-slate-100 space-y-6">
+            <div className="flex items-center justify-between border-b pb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center">
+                  <Trash2 size={20} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">Hapus {schoolToDelete.workspace_type === 'personal' || schoolToDelete.is_personal ? 'Ruang Kerja Individu' : 'Sekolah'}</h3>
+                  <p className="text-xs text-slate-500">Tindakan ini permanen dan tidak dapat dibatalkan</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSchoolToDelete(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-medium">Nama:</span>
+                  <span className="font-bold text-slate-800">{schoolToDelete.name}</span>
+                </div>
+                {schoolToDelete.npsn && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500 font-medium">NPSN:</span>
+                    <span className="font-mono text-slate-700">{schoolToDelete.npsn}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-medium">Tipe:</span>
+                  <span className="font-bold text-indigo-700">{schoolToDelete.workspace_type === 'personal' || schoolToDelete.is_personal ? 'Ruang Kerja Individu' : 'Ruang Kerja Sekolah'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-medium">Paket:</span>
+                  <span className="font-semibold text-slate-700 uppercase">{schoolToDelete.plan || 'Mulai'}</span>
+                </div>
+              </div>
+
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 text-[11px] leading-relaxed flex items-start gap-2">
+                <AlertTriangle size={16} className="shrink-0 text-rose-600 mt-0.5" />
+                <span>
+                  Seluruh akun pengguna, data kelas, peserta didik, rekap presensi, dan konfigurasi yang terhubung dengan entitas ini akan dihapus secara menyeluruh.
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                disabled={deletingSchool}
+                onClick={() => setSchoolToDelete(null)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-600 hover:bg-slate-50 transition cursor-pointer disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={deletingSchool}
+                onClick={handleDeleteSchool}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold transition shadow-md shadow-rose-600/20 cursor-pointer disabled:opacity-50"
+              >
+                {deletingSchool ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin" /> Menghapus...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 size={14} /> Hapus Permanen
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

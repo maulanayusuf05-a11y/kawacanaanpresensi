@@ -35,6 +35,7 @@ export const AdminsTab: React.FC<{
   // Modals
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [resetModal, setResetModal] = useState<{ userId: string; name: string; username: string } | null>(null);
+  const [userToDelete, setUserToDelete] = useState<{ id: string; name: string; username: string; role: string; school_name?: string } | null>(null);
   const [newPassword, setNewPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -151,6 +152,21 @@ export const AdminsTab: React.FC<{
       loadSchoolUsers();
     } catch (e: any) {
       showToast(e.message || 'Gagal mengubah status akun.', 'error');
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!userToDelete) return;
+    setIsSubmitting(true);
+    try {
+      const res = await call('delete_user', { user_id: userToDelete.id });
+      showToast(res.message || `Pengguna ${userToDelete.name} berhasil dihapus.`, 'success');
+      setUserToDelete(null);
+      loadSchoolUsers();
+    } catch (e: any) {
+      showToast(e.message || 'Gagal menghapus pengguna.', 'error');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -398,6 +414,21 @@ export const AdminsTab: React.FC<{
                           >
                             <Power size={14} />
                           </button>
+                          <button
+                            onClick={() =>
+                              setUserToDelete({
+                                id: usr.id,
+                                name: usr.name,
+                                username: usr.username,
+                                role: usr.role,
+                                school_name: usr.school_name,
+                              })
+                            }
+                            title="Hapus Akun Pengguna"
+                            className="p-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 transition cursor-pointer"
+                          >
+                            <Trash2 size={14} />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -579,6 +610,88 @@ export const AdminsTab: React.FC<{
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Konfirmasi Hapus Pengguna */}
+      {userToDelete && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-slate-100 space-y-6">
+            <div className="flex items-center justify-between border-b pb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center">
+                  <Trash2 size={20} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">Hapus Akun Pengguna</h3>
+                  <p className="text-xs text-slate-500">Tindakan ini permanen dan tidak dapat dibatalkan</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setUserToDelete(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-medium">Nama:</span>
+                  <span className="font-bold text-slate-800">{userToDelete.name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-medium">Username:</span>
+                  <span className="font-mono text-slate-700">@{userToDelete.username}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-medium">Peran / Role:</span>
+                  <span className="font-bold text-indigo-700">{userToDelete.role}</span>
+                </div>
+                {userToDelete.school_name && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500 font-medium">Ruang Kerja:</span>
+                    <span className="font-semibold text-slate-700">{userToDelete.school_name}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 text-[11px] leading-relaxed flex items-start gap-2">
+                <ShieldAlert size={16} className="shrink-0 text-rose-600 mt-0.5" />
+                <span>
+                  Akun autentikasi, profil guru/siswa, dan hak akses pengguna ini akan dihapus secara menyeluruh dari database.
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={() => setUserToDelete(null)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 font-bold text-slate-600 hover:bg-slate-50 transition cursor-pointer disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={handleDeleteUser}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold transition shadow-md shadow-rose-600/20 cursor-pointer disabled:opacity-50"
+              >
+                {isSubmitting ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin" /> Menghapus...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 size={14} /> Hapus Pengguna
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

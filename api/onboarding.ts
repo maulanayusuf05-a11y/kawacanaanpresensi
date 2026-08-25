@@ -3,6 +3,32 @@ import { createClient } from '@supabase/supabase-js';
 const json = (res: any, status: number, body: unknown) =>
   res.status(status).setHeader('Content-Type', 'application/json').end(JSON.stringify(body));
 
+/**
+ * Menghitung masa aktif trial Guru Pro untuk ruang kerja individu baru.
+ * Aturan: Jika mendaftar di bulan X pada tanggal berapa pun, masa aktif trial
+ * berlaku sampai dengan akhir tanggal di bulan (X + 1).
+ * Contoh: Daftar di bulan Agustus pada tanggal berapa pun -> masa aktif sampai 30 September.
+ */
+function calculateGuruProTrialPeriod(now: Date = new Date()) {
+  const startedAt = now.toISOString().slice(0, 10);
+  const year = now.getFullYear();
+  const month = now.getMonth(); // 0 = Jan, 7 = Aug, 11 = Dec
+  // Hari terakhir di bulan berikutnya: new Date(year, month + 2, 0)
+  const endOfNextMonth = new Date(year, month + 2, 0);
+  const expiresAt = endOfNextMonth.toISOString().slice(0, 10);
+
+  return {
+    plan: 'teacher', // Paket Guru Pro
+    status: 'trial',
+    startedAt,
+    expiresAt,
+    notes: `[Guru Pro Trial Otomatis: Masa aktif s.d akhir bulan berikutnya (${expiresAt})]`,
+    maxTeachers: 2,
+    maxStudents: 100,
+    maxClasses: 5,
+  };
+}
+
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
     return json(res, 405, { error: 'Metode permintaan tidak diizinkan. Gunakan POST.' });
@@ -273,16 +299,20 @@ export default async function handler(req: any, res: any) {
 
       if (mode === 'personal' || !finalSchoolId) {
         const wsName = String(body.workspaceName || `Ruang Kelas ${fullName}`).trim();
+        const trial = calculateGuruProTrialPeriod();
         const { data: newSchool, error: schoolErr } = await db.from('schools').insert({
           name: wsName,
-          plan: 'mulai',
+          plan: trial.plan,
           status: 'active',
           workspace_type: 'personal',
           is_personal: true,
           owner_id: newUserId,
-          max_teachers: 1,
-          max_students: 32,
-          max_classes: 1,
+          subscription_started_at: trial.startedAt,
+          subscription_expires_at: trial.expiresAt,
+          notes: trial.notes,
+          max_teachers: trial.maxTeachers,
+          max_students: trial.maxStudents,
+          max_classes: trial.maxClasses,
         }).select('id').single();
 
         if (schoolErr) throw schoolErr;
@@ -396,16 +426,20 @@ export default async function handler(req: any, res: any) {
 
       if (mode === 'personal' || !targetSchoolId) {
         const wsName = String(body.workspaceName || `Ruang Kelas ${teacherName}`).trim();
+        const trial = calculateGuruProTrialPeriod();
         const { data: newSchool, error: schoolErr } = await db.from('schools').insert({
           name: wsName,
-          plan: 'mulai',
+          plan: trial.plan,
           status: 'active',
           workspace_type: 'personal',
           is_personal: true,
           owner_id: callerUser.id,
-          max_teachers: 1,
-          max_students: 32,
-          max_classes: 1,
+          subscription_started_at: trial.startedAt,
+          subscription_expires_at: trial.expiresAt,
+          notes: trial.notes,
+          max_teachers: trial.maxTeachers,
+          max_students: trial.maxStudents,
+          max_classes: trial.maxClasses,
         }).select('id').single();
 
         if (schoolErr) throw schoolErr;
@@ -529,16 +563,20 @@ export default async function handler(req: any, res: any) {
 
       if (mode === 'personal' || !targetSchoolId) {
         const wsName = String(body.workspaceName || `Ruang Mengajar ${subjectName} - ${teacherName}`).trim();
+        const trial = calculateGuruProTrialPeriod();
         const { data: newSchool, error: schoolErr } = await db.from('schools').insert({
           name: wsName,
-          plan: 'mulai',
+          plan: trial.plan,
           status: 'active',
           workspace_type: 'personal',
           is_personal: true,
           owner_id: callerUser.id,
-          max_teachers: 1,
-          max_students: 32,
-          max_classes: 1,
+          subscription_started_at: trial.startedAt,
+          subscription_expires_at: trial.expiresAt,
+          notes: trial.notes,
+          max_teachers: trial.maxTeachers,
+          max_students: trial.maxStudents,
+          max_classes: trial.maxClasses,
         }).select('id').single();
 
         if (schoolErr) throw schoolErr;
