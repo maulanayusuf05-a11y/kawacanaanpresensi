@@ -872,13 +872,13 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ onCompleted }) =
                         <Building2 size={18} />
                       </div>
                       <div>
-                        <div className="font-bold text-sm text-slate-900">
-                          PILIHAN 1: Bergabung ke Sekolah
+                        <div className="font-black text-sm text-slate-900 tracking-tight">
+                          RUANG KERJA SEKOLAH : Bergabung ke Sekolah
                         </div>
                         <div className="text-xs text-slate-600 mt-1">
                           {selectedRole === 'homeroom'
                             ? 'Saya adalah wali kelas di sekolah yang sudah menggunakan aplikasi.'
-                            : 'Saya mengajar di sekolah yang sudah menggunakan aplikasi.'}
+                            : 'Saya adalah guru di sekolah yang sudah menggunakan aplikasi.'}
                         </div>
                       </div>
                     </div>
@@ -908,13 +908,11 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ onCompleted }) =
                         <UserCheck size={18} />
                       </div>
                       <div>
-                        <div className="font-bold text-sm text-slate-900">
-                          PILIHAN 2: {selectedRole === 'homeroom' ? 'Kelola Kelas Sendiri' : 'Kelola Mengajar Sendiri'}
+                        <div className="font-black text-sm text-slate-900 tracking-tight">
+                          RUANG KERJA INDIVIDU : Kelola Kelas Sendiri
                         </div>
                         <div className="text-xs text-slate-600 mt-1">
-                          {selectedRole === 'homeroom'
-                            ? 'Buat ruang kerja pribadi untuk mengelola kelas saya sendiri secara gratis.'
-                            : 'Buat ruang kerja pribadi untuk mengelola kelas dan jadwal mapel saya sendiri.'}
+                          Buat ruang kerja pribadi untuk mengelola kelas saya sendiri.
                         </div>
                       </div>
                     </div>

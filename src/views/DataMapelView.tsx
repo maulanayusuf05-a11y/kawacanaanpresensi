@@ -37,7 +37,13 @@ export const DataMapelView: React.FC = () => {
     deleteSubject,
     setActiveView,
     showToast,
+    activeWorkspace,
   } = useApp();
+
+  const isPersonalWorkspace =
+    activeWorkspace?.workspaceType === 'personal' ||
+    activeWorkspace?.workspaceType === 'individu' ||
+    (currentUser?.subscriptionPlan === 'mulai' && !currentUser?.schoolId);
 
   const userScope = useMemo(
     () => getUserRoleScope(currentUser, classes, subjects, teachers),
@@ -264,14 +270,14 @@ export const DataMapelView: React.FC = () => {
     setDeletingSubject(null);
   };
 
-  const canAdd = isAdmin || isGuruMapel;
+  const canAdd = isAdmin || isGuruMapel || isPersonalWorkspace;
   const canEditSubject = (sub: Subject) => {
-    if (isAdmin) return true;
+    if (isAdmin || isPersonalWorkspace) return true;
     if (isGuruMapel) return true; // Allow Guru Mapel to configure subjects/schedules
     return false;
   };
   const canDeleteSubject = (sub: Subject) => {
-    if (isAdmin) return true;
+    if (isAdmin || isPersonalWorkspace) return true;
     if (isGuruMapel && isMySubject(sub)) return true;
     return false;
   };

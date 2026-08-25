@@ -108,9 +108,9 @@ export const DataKelasView: React.FC = () => {
     return myAssignedClasses;
   }, [isAdmin, isPersonalWorkspace, classes, myAssignedClasses, schoolProfile, currentUser]);
 
-  const canAddClass = isAdmin && !isPersonalWorkspace;
+  const canAddClass = isAdmin || isPersonalWorkspace;
   const canEditClass = isAdmin || isPersonalWorkspace || isWaliKelas;
-  const canDeleteClass = isAdmin && !isPersonalWorkspace;
+  const canDeleteClass = isAdmin || isPersonalWorkspace;
   const canManageKelas = isAdmin || isPersonalWorkspace || isWaliKelas;
 
   // Search & Pagination
