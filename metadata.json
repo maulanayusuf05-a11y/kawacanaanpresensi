@@ -1,0 +1,6 @@
+{
+  "name": "Kawacanaan Presensi",
+  "description": "Sistem Presensi Digital Terpadu Sekolah Dasar — Presensi Harian Wali Kelas, Presensi Guru Mapel, Deteksi NPSN Kemendikdasmen, dan Portal Siswa.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
