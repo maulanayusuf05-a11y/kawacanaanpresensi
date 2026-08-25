@@ -89,8 +89,24 @@ export const DataKelasView: React.FC = () => {
 
   const accessibleClasses = useMemo(() => {
     if (isAdmin && !isPersonalWorkspace) return classes;
+    if (isPersonalWorkspace) {
+      if (classes.length > 0) return classes;
+      const fallbackClassName = schoolProfile?.kelas || currentUser?.classNames?.[0] || 'Kelas 4A';
+      const matchGrade = fallbackClassName.match(/\d+/);
+      const fallbackGrade = matchGrade ? parseInt(matchGrade[0], 10) : 4;
+      return [
+        {
+          id: 'onboarding-class-default',
+          name: fallbackClassName,
+          grade: fallbackGrade,
+          academicYear: schoolProfile?.tahunPelajaran || '2026/2027',
+          waliKelasId: currentUser?.id || null,
+          waliKelasName: currentUser?.name || null,
+        },
+      ];
+    }
     return myAssignedClasses;
-  }, [isAdmin, isPersonalWorkspace, myAssignedClasses]);
+  }, [isAdmin, isPersonalWorkspace, classes, myAssignedClasses, schoolProfile, currentUser]);
 
   const canAddClass = isAdmin && !isPersonalWorkspace;
   const canEditClass = isAdmin || isPersonalWorkspace || isWaliKelas;
@@ -208,8 +224,14 @@ export const DataKelasView: React.FC = () => {
   // Students in currently viewed class
   const classStudents = useMemo(() => {
     if (!viewingClass) return [];
-    return students.filter((s) => s.classId === viewingClass.id);
-  }, [students, viewingClass]);
+    return students.filter(
+      (s) =>
+        s.classId === viewingClass.id ||
+        (s.className && s.className.toLowerCase() === viewingClass.name.toLowerCase()) ||
+        (isPersonalWorkspace &&
+          (!s.classId || s.classId === 'onboarding-class-default' || accessibleClasses.length === 1))
+    );
+  }, [students, viewingClass, isPersonalWorkspace, accessibleClasses.length]);
 
   const filteredClassStudents = useMemo(() => {
     return classStudents.filter((s) => {
@@ -406,10 +428,19 @@ export const DataKelasView: React.FC = () => {
             <tbody className="divide-y divide-slate-100">
               {currentClasses.length > 0 ? (
                 currentClasses.map((c, idx) => {
-                  const classStudentList = students.filter((s) => s.classId === c.id);
+                  const classStudentList = students.filter(
+                    (s) =>
+                      s.classId === c.id ||
+                      (s.className && s.className.toLowerCase() === c.name.toLowerCase()) ||
+                      (isPersonalWorkspace &&
+                        (!s.classId || s.classId === 'onboarding-class-default' || accessibleClasses.length === 1))
+                  );
                   const countL = classStudentList.filter((s) => s.gender === 'L' || s.gender === 'Laki-laki').length;
                   const countP = classStudentList.filter((s) => s.gender === 'P' || s.gender === 'Perempuan').length;
                   const totalCount = classStudentList.length;
+                  const effectiveWaliName =
+                    c.waliKelasName ||
+                    (isPersonalWorkspace && currentUser?.name ? currentUser.name : null);
 
                   return (
                     <tr key={c.id} className="hover:bg-slate-50/80 transition-colors">
@@ -418,10 +449,10 @@ export const DataKelasView: React.FC = () => {
                       </td>
                       <td className="py-3.5 px-4 font-semibold text-slate-800">
                         <div className="flex items-center gap-2">
-                          {c.waliKelasName ? (
+                          {effectiveWaliName ? (
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold text-[11px]">
                               <UserCheck size={13} className="text-emerald-600" />
-                              {c.waliKelasName}
+                              {effectiveWaliName}
                             </span>
                           ) : (
                             <span className="text-slate-400 italic text-[11px]">Belum ditentukan</span>

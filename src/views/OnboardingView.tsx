@@ -1303,17 +1303,53 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ onCompleted }) =
                           </div>
                         </div>
                       ) : (
-                        <div>
-                          <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                            Mata Pelajaran Utama:
-                          </label>
-                          <input
-                            type="text"
-                            value={subjectName}
-                            onChange={(e) => setSubjectName(e.target.value)}
-                            placeholder="Contoh: Pendidikan Jasmani (PJOK)"
-                            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold bg-white text-slate-900 focus:border-indigo-600 outline-none"
-                          />
+                        <div className="space-y-3">
+                          <div>
+                            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                              Mata Pelajaran Utama:
+                            </label>
+                            <input
+                              type="text"
+                              value={subjectName}
+                              onChange={(e) => setSubjectName(e.target.value)}
+                              placeholder="Contoh: Pendidikan Jasmani (PJOK)"
+                              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold bg-white text-slate-900 focus:border-indigo-600 outline-none"
+                            />
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                                Kelas Binaan / Target Mengajar:
+                              </label>
+                              <select
+                                value={customGrade}
+                                onChange={(e) => {
+                                  const g = Number(e.target.value);
+                                  setCustomGrade(g);
+                                  setCustomClassName(`Kelas ${g}`);
+                                }}
+                                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold bg-white text-slate-900 focus:border-indigo-600 outline-none cursor-pointer"
+                              >
+                                {[1, 2, 3, 4, 5, 6].map((g) => (
+                                  <option key={g} value={g}>
+                                    Kelas {g} SD
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                                Nama Rombel:
+                              </label>
+                              <input
+                                type="text"
+                                value={customClassName}
+                                onChange={(e) => setCustomClassName(e.target.value)}
+                                placeholder="Contoh: Kelas 4A"
+                                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold bg-white text-slate-900 focus:border-indigo-600 outline-none"
+                              />
+                            </div>
+                          </div>
                         </div>
                       )}
 

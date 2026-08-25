@@ -558,10 +558,13 @@ export default async function handler(req: any, res: any) {
           app_subtitle: wsName,
         }, { onConflict: 'school_id' });
 
+        const clsName = String(body.className || 'Kelas 4A').trim();
+        const clsGrade = Number(body.grade || 4);
+
         const { data: newCls } = await db.from('classes').insert({
           school_id: targetSchoolId,
-          name: 'Kelas 4',
-          grade: 4,
+          name: clsName,
+          grade: clsGrade,
           academic_year: '2026/2027',
         }).select('id').single();
 

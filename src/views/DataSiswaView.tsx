@@ -30,7 +30,18 @@ interface ParsedStudentItem {
 }
 
 export const DataSiswaView: React.FC = () => {
-  const { currentUser, classes, students, addStudent, updateStudent, deleteStudent, importStudents, showToast, activeWorkspace } = useApp();
+  const {
+    currentUser,
+    classes,
+    students,
+    schoolProfile,
+    addStudent,
+    updateStudent,
+    deleteStudent,
+    importStudents,
+    showToast,
+    activeWorkspace,
+  } = useApp();
   const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN';
 
   // Deteksi ruang kerja individu dan paket mulai/gratis/guru
@@ -133,14 +144,46 @@ export const DataSiswaView: React.FC = () => {
     return map;
   }, [classes]);
 
+  // Available classes: integrated from onboarding registration / workspace classes
+  const availableClasses = useMemo(() => {
+    if (myAssignedClasses && myAssignedClasses.length > 0) {
+      return myAssignedClasses;
+    }
+    if (classes && classes.length > 0) {
+      return classes;
+    }
+    const fallbackClassName = schoolProfile?.kelas || currentUser?.classNames?.[0] || 'Kelas 4A';
+    const matchGrade = fallbackClassName.match(/\d+/);
+    const fallbackGrade = matchGrade ? parseInt(matchGrade[0], 10) : 4;
+    return [
+      {
+        id: 'onboarding-class-default',
+        name: fallbackClassName,
+        grade: fallbackGrade,
+        academicYear: schoolProfile?.tahunPelajaran || '2026/2027',
+        waliKelasId: currentUser?.id || null,
+        waliKelasName: currentUser?.name || null,
+      },
+    ];
+  }, [myAssignedClasses, classes, schoolProfile, currentUser]);
+
   // Filter and sort students (dari kumpulan accessibleStudents)
   const filteredStudents = useMemo(() => {
     return accessibleStudents
       .filter((s) => {
         const q = searchTerm.toLowerCase();
         const matchesSearch = s.nama.toLowerCase().includes(q) || s.nisn.includes(q);
-        const matchesClass = selectedClassFilter === 'ALL' || s.classId === selectedClassFilter;
-        return matchesSearch && matchesClass;
+        if (!matchesSearch) return false;
+
+        if (selectedClassFilter !== 'ALL') {
+          const selCls = availableClasses.find((c) => c.id === selectedClassFilter);
+          const matchesClass =
+            s.classId === selectedClassFilter ||
+            (selCls && s.className && s.className.toLowerCase() === selCls.name.toLowerCase());
+          if (!matchesClass) return false;
+        }
+
+        return true;
       })
       .sort((a, b) => {
         if (sortBy === 'class-asc' || sortBy === 'class-desc') {
@@ -175,7 +218,7 @@ export const DataSiswaView: React.FC = () => {
         }
         return 0;
       });
-  }, [accessibleStudents, searchTerm, selectedClassFilter, sortBy, classMap]);
+  }, [accessibleStudents, searchTerm, selectedClassFilter, sortBy, classMap, availableClasses]);
 
   // Pagination
   const totalPages = Math.ceil(filteredStudents.length / pageSize) || 1;
@@ -188,13 +231,18 @@ export const DataSiswaView: React.FC = () => {
       return;
     }
     setEditingStudent(null);
-    setFormData({ nisn: '', nama: '', gender: 'L', classId: myAssignedClasses[0]?.id || classes[0]?.id || '' });
+    setFormData({ nisn: '', nama: '', gender: 'L', classId: availableClasses[0]?.id || '' });
     setIsModalOpen(true);
   };
 
   const openEditModal = (student: Student) => {
     setEditingStudent(student);
-    setFormData({ nisn: student.nisn, nama: student.nama, gender: student.gender, classId: student.classId || myAssignedClasses[0]?.id || '' });
+    setFormData({
+      nisn: student.nisn,
+      nama: student.nama,
+      gender: student.gender,
+      classId: student.classId || availableClasses[0]?.id || '',
+    });
     setIsModalOpen(true);
   };
 
@@ -202,7 +250,8 @@ export const DataSiswaView: React.FC = () => {
     e.preventDefault();
     if (!formData.nisn.trim() || !formData.nama.trim()) return;
 
-    const targetClassId = formData.classId || myAssignedClasses[0]?.id || classes[0]?.id || null;
+    const selectedCls = availableClasses.find((c) => c.id === formData.classId) || availableClasses[0];
+    const targetClassId = selectedCls && selectedCls.id !== 'onboarding-class-default' ? selectedCls.id : null;
 
     if (editingStudent) {
       updateStudent(editingStudent.id, {
@@ -464,7 +513,7 @@ export const DataSiswaView: React.FC = () => {
                     setParsedStudents([]);
                     setPasteText('');
                     setFileName('');
-                    setSelectedImportClassId(myAssignedClasses[0]?.id || classes[0]?.id || '');
+                    setSelectedImportClassId(availableClasses[0]?.id || '');
                     setIsImportModalOpen(true);
                   }}
                   id="btn-import-siswa-modal"
@@ -502,12 +551,16 @@ export const DataSiswaView: React.FC = () => {
                   className="bg-transparent font-extrabold text-slate-800 focus:outline-none cursor-pointer text-xs"
                 >
                   <option value="ALL">
-                    {isWaliKelas && myAssignedClasses.length === 1
-                      ? `Semua Siswa Kelas ${myAssignedClasses[0].name} (${accessibleStudents.length})`
+                    {isWaliKelas && availableClasses.length === 1
+                      ? `Semua Siswa Kelas ${availableClasses[0].name} (${accessibleStudents.length})`
                       : `Semua Kelas (${accessibleStudents.length})`}
                   </option>
-                  {myAssignedClasses.map((c) => {
-                    const count = accessibleStudents.filter((s) => s.classId === c.id).length;
+                  {availableClasses.map((c) => {
+                    const count = accessibleStudents.filter(
+                      (s) =>
+                        s.classId === c.id ||
+                        (s.className && s.className.toLowerCase() === c.name.toLowerCase())
+                    ).length;
                     return (
                       <option key={c.id} value={c.id}>
                         {c.name} ({count} siswa)
@@ -765,15 +818,15 @@ export const DataSiswaView: React.FC = () => {
                 KELAS TUJUAN IMPORT
               </label>
               <select
-                value={selectedImportClassId}
+                value={selectedImportClassId || availableClasses[0]?.id || ''}
                 onChange={(e) => setSelectedImportClassId(e.target.value)}
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-xs font-bold"
+                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:border-blue-600 outline-none"
                 required
               >
-                <option value="">Pilih kelas...</option>
-                {myAssignedClasses.map((c) => (
+                {availableClasses.length > 1 && <option value="">Pilih kelas...</option>}
+                {availableClasses.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name}
+                    {c.name} — Kelas {c.grade}
                   </option>
                 ))}
               </select>
@@ -1084,25 +1137,26 @@ export const DataSiswaView: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">KELAS</label>
-                {myAssignedClasses.length > 0 ? (
-                  <select
-                    value={formData.classId}
-                    onChange={(e) => setFormData({ ...formData, classId: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900"
-                    required
-                  >
-                    <option value="">Pilih kelas siswa...</option>
-                    {myAssignedClasses.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} — Kelas {c.grade}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <div className="px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600">
-                    Kelas Utama Ruang Kerja
-                  </div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                  KELAS SISWA
+                </label>
+                <select
+                  value={formData.classId || availableClasses[0]?.id || ''}
+                  onChange={(e) => setFormData({ ...formData, classId: e.target.value })}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-500/10 outline-none transition-all"
+                  required
+                >
+                  {availableClasses.length > 1 && <option value="">Pilih kelas siswa...</option>}
+                  {availableClasses.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} — Kelas {c.grade}
+                    </option>
+                  ))}
+                </select>
+                {isPersonalWorkspace && (
+                  <p className="text-[10px] text-blue-600 mt-1 font-medium">
+                    * Terintegrasi otomatis dari rombel pendaftaran onboarding ({availableClasses.map((c) => c.name).join(', ')}).
+                  </p>
                 )}
               </div>
 
