@@ -18,6 +18,7 @@ import {
   CheckCircle2,
   ShieldCheck
 } from 'lucide-react';
+import { validateTeacherRoleAssignment } from '../utils/packageSystem';
 
 export const DataKelasView: React.FC = () => {
   const {
@@ -26,6 +27,8 @@ export const DataKelasView: React.FC = () => {
     users,
     teachers,
     students,
+    subjects,
+    schoolProfile,
     addClass,
     updateClass,
     deleteClass,
@@ -233,6 +236,20 @@ export const DataKelasView: React.FC = () => {
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return showToast('Nama kelas wajib diisi', 'error');
+
+    if (waliKelasId) {
+      const validation = validateTeacherRoleAssignment(
+        waliKelasId,
+        'wali_kelas',
+        classes.filter((c) => (editing ? c.id !== editing.id : true)),
+        subjects,
+        schoolProfile?.tahunPelajaran
+      );
+      if (!validation.valid) {
+        showToast(validation.errorMessage || 'Konflik peran guru terdeteksi.', 'error');
+        return;
+      }
+    }
     
     // Ekstrak angka kelas otomatis dari teks nama kelas (contoh: "Kelas 1A" -> 1, "2B" -> 2)
     const matchNumber = name.match(/\d+/);
@@ -252,6 +269,21 @@ export const DataKelasView: React.FC = () => {
   const handleSaveQuickWali = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!assignWaliModal) return;
+
+    if (quickWaliId) {
+      const validation = validateTeacherRoleAssignment(
+        quickWaliId,
+        'wali_kelas',
+        classes.filter((c) => c.id !== assignWaliModal.id),
+        subjects,
+        schoolProfile?.tahunPelajaran
+      );
+      if (!validation.valid) {
+        showToast(validation.errorMessage || 'Konflik peran guru terdeteksi.', 'error');
+        return;
+      }
+    }
+
     await updateClass(assignWaliModal.id, {
       name: assignWaliModal.name,
       grade: assignWaliModal.grade,

@@ -1,12 +1,25 @@
 import React, { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Teacher } from '../types';
-import { Plus, Edit2, Trash2, X, Search, UsersRound, UserPlus, CheckCircle2 } from 'lucide-react';
+import { Plus, Edit2, Trash2, X, Search, UsersRound, UserPlus, CheckCircle2, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { validateTeacherRoleAssignment } from '../utils/packageSystem';
 
 const GURU_OPTIONS: Array<'Wali Kelas' | 'Guru Mapel'> = ['Wali Kelas', 'Guru Mapel'];
 
 export const DataGuruView: React.FC = () => {
-  const { currentUser, teachers, users, classes, addTeacher, updateTeacher, deleteTeacher, addUser, showToast } = useApp();
+  const {
+    currentUser,
+    teachers,
+    users,
+    classes,
+    subjects,
+    schoolProfile,
+    addTeacher,
+    updateTeacher,
+    deleteTeacher,
+    addUser,
+    showToast,
+  } = useApp();
   const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN';
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -19,7 +32,7 @@ export const DataGuruView: React.FC = () => {
   const [accountUsername, setAccountUsername] = useState('');
   const [accountPassword, setAccountPassword] = useState('');
   const [accountEmail, setAccountEmail] = useState('');
-  const [accountRole, setAccountRole] = useState<'GURU MAPEL' | 'WALI KELAS' | 'GURU'>('WALI KELAS');
+  const [accountRole, setAccountRole] = useState<'GURU MAPEL' | 'WALI KELAS'>('WALI KELAS');
   const [accountClassId, setAccountClassId] = useState('');
   const [isCreatingAccount, setIsCreatingAccount] = useState(false);
 
@@ -98,6 +111,21 @@ export const DataGuruView: React.FC = () => {
     e.preventDefault();
     if (!accountTeacher || !accountUsername.trim() || !accountPassword.trim()) return;
 
+    // Validate role exclusivity
+    const targetRole = accountRole === 'WALI KELAS' ? 'wali_kelas' : 'guru_mapel';
+    const validation = validateTeacherRoleAssignment(
+      accountTeacher.id,
+      targetRole,
+      classes,
+      subjects,
+      schoolProfile.tahunPelajaran
+    );
+
+    if (!validation.valid) {
+      showToast(validation.errorMessage || 'Konflik peran guru terdeteksi.', 'error');
+      return;
+    }
+
     setIsCreatingAccount(true);
     try {
       await addUser({
@@ -119,6 +147,22 @@ export const DataGuruView: React.FC = () => {
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nama.trim()) return showToast('Nama guru wajib diisi', 'error');
+
+    const targetRole = guruType === 'Wali Kelas' ? 'wali_kelas' : 'guru_mapel';
+    if (editing) {
+      const validation = validateTeacherRoleAssignment(
+        editing.id,
+        targetRole,
+        classes,
+        subjects,
+        schoolProfile.tahunPelajaran
+      );
+      if (!validation.valid) {
+        showToast(validation.errorMessage || 'Konflik peran guru terdeteksi.', 'error');
+        return;
+      }
+    }
+
     const payload = {
       nama: nama.trim(),
       nip: nip.trim(),
@@ -129,6 +173,7 @@ export const DataGuruView: React.FC = () => {
       statusKepegawaian: 'PNS',
       noHp: '',
     };
+
     if (editing) await updateTeacher(editing.id, payload);
     else await addTeacher(payload);
     setOpen(false);
@@ -149,7 +194,9 @@ export const DataGuruView: React.FC = () => {
           </div>
           <div>
             <h2 className="text-lg font-black text-slate-900">Data Guru</h2>
-            <p className="text-xs text-slate-500">Data master pendidik (Nama, NIP, Jenis Kelamin, dan Penugasan Guru).</p>
+            <p className="text-xs text-slate-500">
+              Master pendidik sekolah. Penugasan <strong>Wali Kelas</strong> dan <strong>Guru Mapel</strong> bersifat eksklusif per tahun ajaran.
+            </p>
           </div>
         </div>
         {isAdmin && (
@@ -184,6 +231,7 @@ export const DataGuruView: React.FC = () => {
               <th className="py-3.5 px-4 w-44">NIP</th>
               <th className="py-3.5 px-4 w-24 text-center">JK</th>
               <th className="py-3.5 px-4 w-36 text-center">PENUGASAN</th>
+              <th className="py-3.5 px-4 w-36 text-center">STATUS AKUN</th>
               {isAdmin && <th className="py-3.5 px-4 w-24 text-center rounded-r-xl">AKSI</th>}
             </tr>
           </thead>
@@ -192,6 +240,7 @@ export const DataGuruView: React.FC = () => {
               filteredTeachers.map((t, idx) => {
                 const displayType = t.jabatan || t.jenisPTK || t.mataPelajaran || 'Wali Kelas';
                 const isGuruMapel = displayType.toLowerCase().includes('mapel');
+                const account = getTeacherAccount(t);
 
                 return (
                   <tr key={t.id} className="hover:bg-slate-50 transition-colors">
@@ -209,6 +258,23 @@ export const DataGuruView: React.FC = () => {
                       >
                         {isGuruMapel ? 'Guru Mapel' : 'Wali Kelas'}
                       </span>
+                    </td>
+                    <td className="py-3.5 px-4 text-center">
+                      {account ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          <CheckCircle2 size={11} />
+                          {account.role}
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => openCreateAccountModal(t)}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors cursor-pointer"
+                        >
+                          <UserPlus size={11} />
+                          Buat Akun
+                        </button>
+                      )}
                     </td>
                     {isAdmin && (
                       <td className="py-3.5 px-4 text-center">
@@ -235,8 +301,8 @@ export const DataGuruView: React.FC = () => {
               })
             ) : (
               <tr>
-                <td colSpan={isAdmin ? 6 : 5} className="text-center py-12 text-slate-400 font-medium">
-                  Belum ada data guru.
+                <td colSpan={isAdmin ? 7 : 6} className="py-12 text-center text-slate-400">
+                  Belum ada data guru yang sesuai
                 </td>
               </tr>
             )}
@@ -244,168 +310,54 @@ export const DataGuruView: React.FC = () => {
         </table>
       </div>
 
-      {/* Quick Create Account Modal */}
-      {accountTeacher && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 text-slate-800">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-                  <UserPlus size={16} />
-                </div>
-                <div>
-                  <h3 className="font-bold text-slate-900 text-sm">Buat Akun Guru</h3>
-                  <p className="text-[11px] text-slate-500 font-medium">{accountTeacher.nama}</p>
-                </div>
-              </div>
-              <button onClick={() => setAccountTeacher(null)} className="text-slate-400 hover:text-slate-700 cursor-pointer">
-                <X size={16} />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateAccountSubmit} className="space-y-3.5 pt-4">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
-                  USERNAME LOGIN
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={accountUsername}
-                  onChange={(e) => setAccountUsername(e.target.value)}
-                  placeholder="Username untuk login"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-500/10 outline-none transition-all"
-                />
-                <p className="text-[10px] text-slate-400 mt-1">Otomatis menggunakan NIP atau nama guru.</p>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
-                  PASSWORD
-                </label>
-                <input
-                  type="text"
-                  required
-                  minLength={6}
-                  value={accountPassword}
-                  onChange={(e) => setAccountPassword(e.target.value)}
-                  placeholder="Password akun"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-500/10 outline-none transition-all"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
-                  HAK AKSES / PERAN
-                </label>
-                <select
-                  value={accountRole}
-                  onChange={(e) => setAccountRole(e.target.value as any)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:border-blue-600 focus:bg-white outline-none cursor-pointer"
-                >
-                  <option value="WALI KELAS">WALI KELAS (Kelola 1 Kelas Binaan)</option>
-                  <option value="GURU MAPEL">GURU MAPEL (Bisa Mengajar Multi Kelas)</option>
-                </select>
-              </div>
-
-              {accountRole === 'WALI KELAS' && (
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
-                    KELAS BINAAN
-                  </label>
-                  <select
-                    value={accountClassId}
-                    onChange={(e) => setAccountClassId(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:border-blue-600 focus:bg-white outline-none cursor-pointer"
-                  >
-                    <option value="">Belum ditentukan / Pilih nanti</option>
-                    {classes.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
-                  EMAIL GOOGLE (OPSIONAL)
-                </label>
-                <input
-                  type="email"
-                  value={accountEmail}
-                  onChange={(e) => setAccountEmail(e.target.value)}
-                  placeholder="guru@sekolah.sch.id"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-500/10 outline-none transition-all"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setAccountTeacher(null)}
-                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-all cursor-pointer"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  disabled={isCreatingAccount}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 disabled:opacity-50 text-white text-xs font-extrabold rounded-xl shadow-md transition-all cursor-pointer"
-                >
-                  {isCreatingAccount ? 'Memproses...' : 'Buat Akun Sekarang'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Add / Edit Teacher Modal */}
+      {/* Modal Add / Edit */}
       {open && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 text-slate-800">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="font-bold text-slate-900 text-sm">{editing ? 'Edit Data Guru' : 'Tambah Data Guru'}</h3>
-              <button onClick={() => setOpen(false)} className="text-slate-400 hover:text-slate-700 cursor-pointer">
-                <X size={16} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between border-b pb-3">
+              <h3 className="font-extrabold text-slate-900 text-sm">
+                {editing ? 'Edit Data Guru' : 'Tambah Guru Baru'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={save} className="space-y-3.5 pt-4">
+            <form onSubmit={save} className="space-y-4 text-xs">
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">NAMA GURU</label>
+                <label className="block font-bold text-slate-700 mb-1">Nama Lengkap & Gelar *</label>
                 <input
                   type="text"
                   required
                   value={nama}
                   onChange={(e) => setNama(e.target.value)}
-                  placeholder="Nama Lengkap & Gelar"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-500/10 outline-none transition-all"
+                  placeholder="Contoh: Budi Santoso, S.Pd."
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 font-medium focus:bg-white focus:border-blue-600 outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
-                  NIP / NUPTK (OPSIONAL)
-                </label>
+                <label className="block font-bold text-slate-700 mb-1">NIP (Nomor Induk Pegawai)</label>
                 <input
                   type="text"
                   value={nip}
                   onChange={(e) => setNip(e.target.value)}
-                  placeholder="Nomor Induk Pegawai"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-medium text-slate-900 focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-500/10 outline-none transition-all"
+                  placeholder="Contoh: 198503152010011002 atau - jika non-PNS"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 font-mono focus:bg-white focus:border-blue-600 outline-none"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">JENIS KELAMIN</label>
+                  <label className="block font-bold text-slate-700 mb-1">Jenis Kelamin</label>
                   <select
                     value={jenisKelamin}
                     onChange={(e) => setJenisKelamin(e.target.value as 'L' | 'P')}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:border-blue-600 focus:bg-white outline-none cursor-pointer"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 font-medium focus:bg-white focus:border-blue-600 outline-none"
                   >
                     <option value="L">Laki-laki (L)</option>
                     <option value="P">Perempuan (P)</option>
@@ -413,34 +365,111 @@ export const DataGuruView: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">GURU</label>
+                  <label className="block font-bold text-slate-700 mb-1">Penugasan Jabatan</label>
                   <select
                     value={guruType}
                     onChange={(e) => setGuruType(e.target.value as 'Wali Kelas' | 'Guru Mapel')}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:border-blue-600 focus:bg-white outline-none cursor-pointer"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 font-medium focus:bg-white focus:border-blue-600 outline-none"
                   >
-                    {GURU_OPTIONS.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}
-                      </option>
-                    ))}
+                    <option value="Wali Kelas">Wali Kelas</option>
+                    <option value="Guru Mapel">Guru Mapel</option>
                   </select>
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-100 flex items-start gap-2 text-[11px] text-blue-800">
+                <ShieldCheck size={14} className="shrink-0 mt-0.5 text-blue-600" />
+                <span>
+                  <strong>Aturan Eksklusivitas:</strong> Seorang guru tidak dapat bertindak ganda sebagai Wali Kelas sekaligus Guru Mapel dalam sekolah & tahun ajaran yang sama.
+                </span>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t">
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-all cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition cursor-pointer"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-extrabold rounded-xl shadow-md transition-all cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition shadow-md shadow-blue-600/20 cursor-pointer"
                 >
-                  {editing ? 'Simpan Perubahan' : 'Tambah Guru'}
+                  Simpan Guru
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Quick Create Account */}
+      {accountTeacher && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between border-b pb-3">
+              <h3 className="font-extrabold text-slate-900 text-sm">
+                Buat Akun Pengguna untuk {accountTeacher.nama}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setAccountTeacher(null)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateAccountSubmit} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Username Login *</label>
+                <input
+                  type="text"
+                  required
+                  value={accountUsername}
+                  onChange={(e) => setAccountUsername(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 font-mono focus:bg-white focus:border-blue-600 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Password Awal *</label>
+                <input
+                  type="text"
+                  required
+                  value={accountPassword}
+                  onChange={(e) => setAccountPassword(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 font-mono focus:bg-white focus:border-blue-600 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Role Akun</label>
+                <select
+                  value={accountRole}
+                  onChange={(e) => setAccountRole(e.target.value as 'WALI KELAS' | 'GURU MAPEL')}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 font-bold focus:bg-white focus:border-blue-600 outline-none"
+                >
+                  <option value="WALI KELAS">Wali Kelas</option>
+                  <option value="GURU MAPEL">Guru Mapel</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t">
+                <button
+                  type="button"
+                  onClick={() => setAccountTeacher(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCreatingAccount}
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition shadow-md shadow-emerald-600/20 disabled:opacity-50 cursor-pointer"
+                >
+                  {isCreatingAccount ? 'Memproses...' : 'Buat Akun'}
                 </button>
               </div>
             </form>
@@ -450,25 +479,29 @@ export const DataGuruView: React.FC = () => {
 
       {/* Delete Confirmation Modal */}
       {deleting && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 text-slate-800 text-center">
-            <div className="w-12 h-12 rounded-full bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mx-auto mb-3">
-              <Trash2 size={24} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl border border-slate-200 space-y-4">
+            <div className="w-12 h-12 rounded-full bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mx-auto">
+              <AlertTriangle size={24} />
             </div>
-            <h3 className="text-base font-bold text-slate-900 mb-1">Hapus Data Guru?</h3>
-            <p className="text-xs text-slate-500 mb-5">
-              Apakah Anda yakin ingin menghapus data guru <strong className="text-slate-800">{deleting.nama}</strong>?
-            </p>
-            <div className="flex items-center justify-center gap-2">
+            <div className="text-center space-y-1">
+              <h3 className="font-extrabold text-slate-900 text-sm">Hapus Data Guru?</h3>
+              <p className="text-xs text-slate-500">
+                Data guru <strong>{deleting.nama}</strong> akan dihapus dari daftar master guru.
+              </p>
+            </div>
+            <div className="flex items-center justify-center gap-2 pt-2">
               <button
+                type="button"
                 onClick={() => setDeleting(null)}
-                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-all cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer"
               >
                 Batal
               </button>
               <button
+                type="button"
                 onClick={removeTeacher}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-extrabold rounded-xl shadow-md transition-all cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition shadow-md shadow-rose-600/20 cursor-pointer"
               >
                 Ya, Hapus
               </button>
@@ -479,3 +512,4 @@ export const DataGuruView: React.FC = () => {
     </div>
   );
 };
+

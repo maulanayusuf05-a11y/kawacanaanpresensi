@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { Subject } from '../types';
 import { getUserRoleScope } from '../utils/userScope';
+import { validateTeacherRoleAssignment } from '../utils/packageSystem';
 import {
   Plus,
   Edit2,
@@ -30,6 +31,7 @@ export const DataMapelView: React.FC = () => {
     teachers,
     classes,
     attendanceRecords,
+    schoolProfile,
     addSubject,
     updateSubject,
     deleteSubject,
@@ -220,11 +222,27 @@ export const DataMapelView: React.FC = () => {
     const chosenClasses = classes.filter((c) => selectedClassIds.includes(c.id));
     const targetClassNames = chosenClasses.map((c) => c.name);
 
+    const teacherIdToAssign = chosenTeacher ? chosenTeacher.id : (currentUser?.id || null);
+
+    if (teacherIdToAssign) {
+      const validation = validateTeacherRoleAssignment(
+        teacherIdToAssign,
+        'guru_mapel',
+        classes,
+        subjects.filter((s) => (editingSubject ? s.id !== editingSubject.id : true)),
+        schoolProfile?.tahunPelajaran
+      );
+      if (!validation.valid) {
+        showToast(validation.errorMessage || 'Konflik peran guru terdeteksi.', 'error');
+        return;
+      }
+    }
+
     const payload: Omit<Subject, 'id'> = {
       name: name.trim(),
       code: cleanAcronym,
       isSpecialized: true, // Khusus guru mapel
-      teacherId: chosenTeacher ? chosenTeacher.id : (currentUser?.id || null),
+      teacherId: teacherIdToAssign,
       teacherName: chosenTeacher ? chosenTeacher.nama : (currentUser?.name || null),
       targetClassIds: selectedClassIds,
       targetClassNames,

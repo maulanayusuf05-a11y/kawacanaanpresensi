@@ -1,9 +1,12 @@
 export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'KEPALA SEKOLAH' | 'GURU' | 'WALI KELAS' | 'GURU MAPEL' | 'SISWA';
 
-export type WorkspaceType = 'personal' | 'school';
+export type WorkspaceType = 'personal' | 'school' | 'individu' | 'sekolah';
 export type WorkspaceRoleKey = 'super_admin' | 'school_admin' | 'homeroom_teacher' | 'subject_teacher' | 'student';
-export type SubscriptionPackage = 'mulai' | 'guru' | 'sekolah';
-export type WorkspaceSubscriptionStatus = 'active' | 'trial' | 'expiring_soon' | 'grace_period' | 'suspended' | 'expired';
+export type SubscriptionPackage = 'mulai' | 'guru' | 'sekolah' | 'guru_gratis' | 'guru_uji_coba' | 'guru_pro' | 'sekolah_gratis' | 'sekolah_uji_coba' | 'sekolah_pro' | string;
+export type WorkspaceSubscriptionStatus = 'active' | 'trial' | 'expiring_soon' | 'grace_period' | 'suspended' | 'expired' | 'gratis' | 'uji_coba' | 'pro';
+
+// Re-export Sistem Paket, Ruang Kerja & Validasi
+export * from './utils/packageSystem';
 
 export interface WorkspaceSubscription {
   package: SubscriptionPackage;
@@ -12,12 +15,15 @@ export interface WorkspaceSubscription {
   maxTeachers?: number;
   maxStudents?: number;
   maxClasses?: number;
+  paketId?: string;
+  paketNama?: string;
+  statusPaket?: 'gratis' | 'uji_coba' | 'pro';
 }
 
 export interface Workspace {
   id: string;
   name: string;
-  type: WorkspaceType; // 'personal' | 'school'
+  type: WorkspaceType; // 'personal' | 'school' | 'individu' | 'sekolah'
   npsn?: string | null;
   ownerId?: string | null;
   subscription: WorkspaceSubscription;
@@ -42,10 +48,22 @@ export interface WorkspaceMembership {
   studentId?: string | null;
   studentName?: string | null;
   npsn?: string | null;
-  subscriptionPlan?: 'mulai' | 'guru' | 'sekolah' | string | null;
+  subscriptionPlan?: string | null;
   subscription?: WorkspaceSubscription;
   joinedAt?: string;
 }
+
+// -------------------------------------------------------------
+// STANDAR ENTITAS DATABASE BAHASA INDONESIA
+// -------------------------------------------------------------
+export type RuangKerja = Workspace;
+export type AnggotaRuangKerja = WorkspaceMembership;
+export type Siswa = Student;
+export type Guru = Teacher;
+export type Kelas = SchoolClass;
+export type MataPelajaran = Subject;
+export type TahunAjaran = string;
+
 
 export interface SchoolClass {
   id: string;
