@@ -270,13 +270,17 @@ export const DataMapelView: React.FC = () => {
     setDeletingSubject(null);
   };
 
-  const canAdd = isAdmin || isGuruMapel || isPersonalWorkspace;
+  const isPersonalWaliKelas = isPersonalWorkspace && isWaliKelas && !isAdmin;
+
+  const canAdd = !isPersonalWaliKelas && (isAdmin || isGuruMapel || (isPersonalWorkspace && !isWaliKelas));
   const canEditSubject = (sub: Subject) => {
+    if (isPersonalWaliKelas) return false;
     if (isAdmin || isPersonalWorkspace) return true;
     if (isGuruMapel) return true; // Allow Guru Mapel to configure subjects/schedules
     return false;
   };
   const canDeleteSubject = (sub: Subject) => {
+    if (isPersonalWaliKelas) return false;
     if (isAdmin || isPersonalWorkspace) return true;
     if (isGuruMapel && isMySubject(sub)) return true;
     return false;
@@ -293,14 +297,20 @@ export const DataMapelView: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-black text-slate-900">Data Mata Pelajaran & Guru Mapel</h2>
-              {isGuruMapel && (
+              {isPersonalWaliKelas ? (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-slate-100 text-slate-700 border border-slate-200">
+                  Mode Hanya Lihat
+                </span>
+              ) : isGuruMapel ? (
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">
                   Akses Guru Mapel
                 </span>
-              )}
+              ) : null}
             </div>
             <p className="text-xs text-slate-500">
-              {isWaliKelas && assignedWaliClass
+              {isPersonalWaliKelas
+                ? 'Daftar referensi mata pelajaran. Pada Ruang Kerja Individu Wali Kelas, data mata pelajaran bersifat hanya lihat.'
+                : isWaliKelas && assignedWaliClass
                 ? `Menampilkan daftar mata pelajaran yang diinput dan diajar oleh Guru Mapel untuk kelas ${assignedWaliClass.name}.`
                 : isGuruMapel
                 ? 'Kelola mata pelajaran yang Anda ampu, tentukan rombel kelas binaan/sasaran (1A - 6B), dan atur hari jadwal KBM.'
@@ -320,6 +330,23 @@ export const DataMapelView: React.FC = () => {
           </button>
         )}
       </div>
+
+      {/* Info Banner untuk Ruang Kerja Individu Wali Kelas */}
+      {isPersonalWaliKelas && (
+        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 shadow-xs flex items-start gap-3 text-slate-800">
+          <div className="w-8 h-8 rounded-xl bg-slate-200 text-slate-700 flex items-center justify-center shrink-0 mt-0.5">
+            <Info size={16} />
+          </div>
+          <div className="space-y-1 text-xs">
+            <div className="font-extrabold text-slate-900 text-sm">
+              Mode Hanya Lihat (Ruang Kerja Individu - Wali Kelas)
+            </div>
+            <p className="text-slate-600 leading-relaxed">
+              Ruang Kerja Individu untuk Wali Kelas dikhususkan untuk pengelolaan presensi harian rombongan belajar binaan Anda. Seluruh fitur penambahan dan perubahan mata pelajaran dinonaktifkan (hanya lihat).
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Info Banner untuk Guru Mapel */}
       {isGuruMapel && (
@@ -622,20 +649,22 @@ export const DataMapelView: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Card Footer with Quick Action */}
+                {/* Card Footer */}
                 <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between gap-2">
                   <span className="flex items-center gap-1 text-blue-600 font-bold text-[10px]">
                     <Sparkles size={11} /> Terintegrasi Rombel
                   </span>
 
-                  <button
-                    type="button"
-                    onClick={() => setActiveView('absensi')}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-600 text-blue-700 hover:text-white transition-all text-[10px] font-black cursor-pointer shadow-2xs"
-                  >
-                    <span>Presensi</span>
-                    <CheckSquare size={11} />
-                  </button>
+                  {!isPersonalWaliKelas && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveView('absensi')}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-600 text-blue-700 hover:text-white transition-all text-[10px] font-black cursor-pointer shadow-2xs"
+                    >
+                      <span>Presensi</span>
+                      <CheckSquare size={11} />
+                    </button>
+                  )}
                 </div>
               </div>
             );

@@ -228,6 +228,10 @@ export const DataKelasView: React.FC = () => {
   }, [classStudents, studentSearchTerm]);
 
   const openAdd = () => {
+    if (isPersonalWorkspace && isWaliKelas && classes.length >= 1) {
+      showToast('Ruang Kerja Individu (Wali Kelas) dibatasi maksimal 1 rombel/kelas. Anda dapat mengedit data kelas binaan yang sudah ada.', 'warning');
+      return;
+    }
     setEditing(null);
     setName('');
     setGrade(1);
@@ -247,6 +251,11 @@ export const DataKelasView: React.FC = () => {
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return showToast('Nama kelas wajib diisi', 'error');
+
+    if (!editing && isPersonalWorkspace && isWaliKelas && classes.length >= 1) {
+      showToast('Ruang Kerja Individu dibatasi maksimal 1 kelas binaan.', 'error');
+      return;
+    }
 
     if (waliKelasId) {
       const validation = validateTeacherRoleAssignment(

@@ -107,10 +107,7 @@ export const DataGuruView: React.FC = () => {
 
   const openAdd = () => {
     if (isPersonalWorkspace && baseTeacherList.length >= 1) {
-      showToast('Batas Kuota Paket Guru Pro: Ruang Kerja Individu dibatasi maksimal 1 guru (1 Wali Kelas atau 1 Guru Mapel). Membuka formulir edit profil guru Anda...', 'info');
-      if (baseTeacherList[0]) {
-        openEdit(baseTeacherList[0]);
-      }
+      showToast('Ruang Kerja Individu dikhususkan untuk 1 akun pendidik mandiri. Penambahan banyak akun/data guru hanya tersedia di Ruang Kerja Sekolah.', 'warning');
       return;
     }
     setEditing(null);

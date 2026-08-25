@@ -273,7 +273,7 @@ export const DataSekolahView: React.FC = () => {
 
       {/* Main Form */}
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* ================= SECTION 1: IDENTITAS POKOK & SINKRONISASI KEMENDIKDASMEN ================= */}
+        {/* ================= SECTION 1: IDENTITAS SEKOLAH ================= */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
@@ -281,71 +281,17 @@ export const DataSekolahView: React.FC = () => {
                 <Building2 size={18} />
               </div>
               <div>
-                <h2 className="text-sm font-black text-slate-900">1. Identitas Pokok & Integrasi Kemendikdasmen</h2>
-                <p className="text-[11px] text-slate-500">Tarik data alamat otomatis sesuai pangkalan data resmi https://referensi.data.kemendikdasmen.go.id/</p>
+                <h2 className="text-sm font-black text-slate-900">Identitas Sekolah</h2>
+                <p className="text-[11px] text-slate-500">Informasi pokok data identitas satuan pendidikan, jenjang, NPSN, tahun pelajaran, dan semester.</p>
               </div>
             </div>
-            <a
-              href="https://referensi.data.kemendikdasmen.go.id/"
-              target="_blank"
-              rel="noreferrer"
-              className="hidden sm:inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 font-semibold transition"
-            >
-              <span>Portal Kemendikdasmen</span>
-              <ExternalLink size={13} />
-            </a>
           </div>
 
           <div className="p-6 grid grid-cols-1 sm:grid-cols-12 gap-5">
-            {/* NPSN dengan Auto-Lookup */}
-            <div className="sm:col-span-4 space-y-1.5">
-              <label htmlFor="input-npsn" className="block text-xs font-bold text-slate-700">
-                NPSN (Nomor Pokok Sekolah Nasional) <span className="text-rose-500">*</span>
-              </label>
-              <div className="flex items-center gap-2">
-                <div className="relative flex-1">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                    <Hash size={16} />
-                  </div>
-                  <input
-                    id="input-npsn"
-                    type="text"
-                    name="npsn"
-                    disabled={isReadOnly}
-                    required
-                    value={formData.npsn}
-                    onChange={handleChange}
-                    placeholder="Contoh: 20104501"
-                    maxLength={8}
-                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-500/10 rounded-xl text-xs sm:text-sm font-mono font-bold text-slate-900 outline-none transition disabled:bg-slate-100 disabled:text-slate-500"
-                  />
-                </div>
-                {!isReadOnly && (
-                  <button
-                    type="button"
-                    onClick={() => handleLookupKemendikdasmen()}
-                    disabled={isLookingUp || !formData.npsn || formData.npsn.length < 8}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition shadow-sm shadow-blue-600/20 cursor-pointer shrink-0"
-                    title="Tarik data alamat & identitas dari Kemendikdasmen"
-                  >
-                    {isLookingUp ? (
-                      <RefreshCw size={14} className="animate-spin" />
-                    ) : (
-                      <Search size={14} />
-                    )}
-                    <span className="hidden md:inline">Tarik Data</span>
-                  </button>
-                )}
-              </div>
-              <span className="text-[10px] text-slate-400 block">
-                Ketik 8 digit NPSN lalu klik Tarik Data untuk mengisi alamat dan profil secara otomatis.
-              </span>
-            </div>
-
-            {/* Nama Sekolah */}
-            <div className="sm:col-span-8 space-y-1.5">
+            {/* Nama Satuan Pendidikan */}
+            <div className="sm:col-span-12 space-y-1.5">
               <label htmlFor="input-nama-sekolah" className="block text-xs font-bold text-slate-700">
-                Nama Resmi Satuan Pendidikan <span className="text-rose-500">*</span>
+                Nama Satuan Pendidikan <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -363,30 +309,54 @@ export const DataSekolahView: React.FC = () => {
                   className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-500/10 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 outline-none transition disabled:bg-slate-100 disabled:text-slate-500"
                 />
               </div>
-              <span className="text-[10px] text-slate-400 block">Digunakan pada kop surat resmi, rekapitulasi kehadiran, dan laporan absensi.</span>
+              <span className="text-[10px] text-slate-400 block">Nama resmi sekolah yang tercetak pada kop surat resmi, rekapitulasi kehadiran, dan laporan absensi.</span>
             </div>
 
-            {/* Jenjang Pendidikan Mutlak SD/MI (Terkunci & Tidak Ada Dropdown Lain) */}
+            {/* Jenjang Pendidikan: SD / MI Sederajat */}
             <div className="sm:col-span-4 space-y-1.5">
               <label className="block text-xs font-bold text-slate-700">
                 Jenjang Pendidikan <span className="text-rose-500">*</span>
               </label>
-              <div className="flex items-center gap-2.5 px-4 py-2.5 bg-emerald-50/80 border border-emerald-200 rounded-xl text-emerald-900 font-bold text-xs">
-                <GraduationCap size={18} className="text-emerald-600 shrink-0" />
+              <div className="flex items-center gap-2.5 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-bold text-xs">
+                <GraduationCap size={18} className="text-blue-600 shrink-0" />
                 <div className="flex-1">
                   <span>SD / MI Sederajat</span>
-                  <span className="block text-[10px] text-emerald-700 font-normal">Mutlak Sekolah Dasar / Madrasah Ibtidaiyah</span>
+                  <span className="block text-[10px] text-slate-500 font-normal">Sekolah Dasar / Madrasah Ibtidaiyah</span>
                 </div>
-                <span className="px-2 py-0.5 rounded-md bg-emerald-600 text-white text-[10px] font-black uppercase">
-                  Terkunci
-                </span>
               </div>
             </div>
 
+            {/* NPSN (Input Manual) */}
+            <div className="sm:col-span-8 space-y-1.5">
+              <label htmlFor="input-npsn" className="block text-xs font-bold text-slate-700">
+                NPSN (Nomor Pokok Sekolah Nasional) <span className="text-rose-500">*</span>
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                  <Hash size={16} />
+                </div>
+                <input
+                  id="input-npsn"
+                  type="text"
+                  name="npsn"
+                  disabled={isReadOnly}
+                  required
+                  value={formData.npsn}
+                  onChange={handleChange}
+                  placeholder="Contoh: 20104501"
+                  maxLength={8}
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-500/10 rounded-xl text-xs sm:text-sm font-mono font-bold text-slate-900 outline-none transition disabled:bg-slate-100 disabled:text-slate-500"
+                />
+              </div>
+              <span className="text-[10px] text-slate-400 block">
+                Nomor Pokok Sekolah Nasional 8 digit.
+              </span>
+            </div>
+
             {/* Tahun Pelajaran */}
-            <div className="sm:col-span-4 space-y-1.5">
+            <div className="sm:col-span-6 space-y-1.5">
               <label htmlFor="input-tahun-pelajaran" className="block text-xs font-bold text-slate-700">
-                Tahun Pelajaran Aktif <span className="text-rose-500">*</span>
+                Tahun Pelajaran <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -408,9 +378,9 @@ export const DataSekolahView: React.FC = () => {
             </div>
 
             {/* Semester */}
-            <div className="sm:col-span-4 space-y-1.5">
+            <div className="sm:col-span-6 space-y-1.5">
               <label htmlFor="select-semester" className="block text-xs font-bold text-slate-700">
-                Semester Aktif <span className="text-rose-500">*</span>
+                Semester <span className="text-rose-500">*</span>
               </label>
               <select
                 id="select-semester"
