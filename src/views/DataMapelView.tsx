@@ -297,20 +297,14 @@ export const DataMapelView: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-black text-slate-900">Data Mata Pelajaran & Guru Mapel</h2>
-              {isPersonalWaliKelas ? (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-slate-100 text-slate-700 border border-slate-200">
-                  Mode Hanya Lihat
-                </span>
-              ) : isGuruMapel ? (
+              {isGuruMapel && (
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">
                   Akses Guru Mapel
                 </span>
-              ) : null}
+              )}
             </div>
             <p className="text-xs text-slate-500">
-              {isPersonalWaliKelas
-                ? 'Daftar referensi mata pelajaran. Pada Ruang Kerja Individu Wali Kelas, data mata pelajaran bersifat hanya lihat.'
-                : isWaliKelas && assignedWaliClass
+              {isWaliKelas && assignedWaliClass
                 ? `Menampilkan daftar mata pelajaran yang diinput dan diajar oleh Guru Mapel untuk kelas ${assignedWaliClass.name}.`
                 : isGuruMapel
                 ? 'Kelola mata pelajaran yang Anda ampu, tentukan rombel kelas binaan/sasaran (1A - 6B), dan atur hari jadwal KBM.'
@@ -330,23 +324,6 @@ export const DataMapelView: React.FC = () => {
           </button>
         )}
       </div>
-
-      {/* Info Banner untuk Ruang Kerja Individu Wali Kelas */}
-      {isPersonalWaliKelas && (
-        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 shadow-xs flex items-start gap-3 text-slate-800">
-          <div className="w-8 h-8 rounded-xl bg-slate-200 text-slate-700 flex items-center justify-center shrink-0 mt-0.5">
-            <Info size={16} />
-          </div>
-          <div className="space-y-1 text-xs">
-            <div className="font-extrabold text-slate-900 text-sm">
-              Mode Hanya Lihat (Ruang Kerja Individu - Wali Kelas)
-            </div>
-            <p className="text-slate-600 leading-relaxed">
-              Ruang Kerja Individu untuk Wali Kelas dikhususkan untuk pengelolaan presensi harian rombongan belajar binaan Anda. Seluruh fitur penambahan dan perubahan mata pelajaran dinonaktifkan (hanya lihat).
-            </p>
-          </div>
-        </div>
-      )}
 
       {/* Info Banner untuk Guru Mapel */}
       {isGuruMapel && (

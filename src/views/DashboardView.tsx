@@ -255,25 +255,27 @@ export const DashboardView: React.FC = () => {
     const rawStatus = (currentUser?.subscriptionStatus || activeWorkspace?.subscriptionStatus || 'trial').toLowerCase();
     const rawExpiresAt = currentUser?.subscriptionExpiresAt || activeWorkspace?.subscriptionExpiresAt;
 
-    let planName = 'Paket Guru Pro (Trial)';
+    let planName = 'paket guru (trial)';
     let isTrial = false;
 
-    if (rawPlan.includes('guru_uji_coba') || rawPlan === 'teacher' || rawPlan === 'guru_pro' || isPersonalWorkspace) {
+    if (rawPlan.includes('guru_uji_coba') || rawPlan === 'teacher' || rawPlan === 'guru_pro' || rawPlan === 'guru' || isPersonalWorkspace) {
       if (rawStatus === 'trial' || rawPlan.includes('trial') || rawPlan.includes('uji_coba') || rawPlan === 'teacher' || rawStatus === 'active') {
-        planName = 'Paket Guru Pro (Trial)';
+        planName = 'paket guru (trial)';
         isTrial = true;
       } else {
-        planName = 'Paket Guru Pro';
+        planName = 'paket guru';
       }
-    } else if (rawPlan.includes('sekolah_pro')) {
-      planName = 'Paket Sekolah Pro';
-    } else if (rawPlan.includes('sekolah_uji_coba')) {
-      planName = 'Paket Sekolah Uji Coba';
-      isTrial = true;
+    } else if (rawPlan.includes('sekolah_pro') || rawPlan.includes('sekolah')) {
+      if (rawStatus === 'trial' || rawPlan.includes('trial') || rawPlan.includes('uji_coba')) {
+        planName = 'paket sekolah (trial)';
+        isTrial = true;
+      } else {
+        planName = 'paket sekolah';
+      }
     } else if (rawPlan.includes('sekolah_gratis')) {
-      planName = 'Paket Sekolah Gratis';
+      planName = 'paket sekolah gratis';
     } else if (rawPlan.includes('gratis') || rawPlan === 'mulai' || rawPlan === 'free') {
-      planName = 'Paket Guru Gratis';
+      planName = 'paket guru gratis';
     }
 
     // Format Expiry Date
@@ -288,7 +290,7 @@ export const DashboardView: React.FC = () => {
     }
 
     if (!expiryFormatted && isPersonalWorkspace) {
-      // Aturan sistem: Masa trial Guru Pro berlaku s.d akhir bulan berikutnya
+      // Aturan sistem: Masa trial Guru berlaku s.d akhir bulan berikutnya
       const endOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 2, 0);
       expiryFormatted = `${endOfNextMonth.getDate()} ${monthNames[endOfNextMonth.getMonth()]} ${endOfNextMonth.getFullYear()}`;
     }
@@ -331,19 +333,13 @@ export const DashboardView: React.FC = () => {
           <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
             {userScope.roleBadgeLabel}
           </span>
-          {/* Lencana Paket */}
+          {/* Lencana Gabungan Masa Berlaku & Paket */}
           {currentUser?.role !== 'SUPER_ADMIN' && (
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black bg-gradient-to-r from-amber-50 to-orange-50 text-amber-900 border border-amber-300/80 shadow-xs shrink-0">
-              <Sparkles size={13} className="text-amber-600 animate-pulse" />
-              <span>{packageInfo.planName}</span>
-            </div>
-          )}
-          {/* Masa Berlaku Paket */}
-          {currentUser?.role !== 'SUPER_ADMIN' && packageInfo.expiryFormatted && (
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50/70 border border-amber-200 text-amber-900 text-xs font-semibold shadow-xs shrink-0">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-gradient-to-r from-amber-50 to-orange-50 text-amber-900 border border-amber-300/80 shadow-xs shrink-0">
               <Clock size={13} className="text-amber-600 shrink-0" />
               <span>
-                Masa Berlaku: <strong className="font-extrabold text-amber-950">s.d. {packageInfo.expiryFormatted}</strong>
+                Masa Berlaku {packageInfo.planName}
+                {packageInfo.expiryFormatted ? `: s.d. ${packageInfo.expiryFormatted}` : ''}
               </span>
             </div>
           )}

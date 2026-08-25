@@ -15,9 +15,6 @@ import {
   AlertCircle,
   FileText,
   ClipboardPaste,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
   Filter,
 } from 'lucide-react';
 
@@ -108,7 +105,6 @@ export const DataSiswaView: React.FC = () => {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClassFilter, setSelectedClassFilter] = useState<string>('ALL');
-  const [sortBy, setSortBy] = useState<'class-asc' | 'class-desc' | 'name-asc' | 'name-desc' | 'nisn-asc' | 'nisn-desc'>('class-asc');
   const [pageSize, setPageSize] = useState<number>(10);
   const [currentPage, setCurrentPage] = useState<number>(1);
 
@@ -135,15 +131,6 @@ export const DataSiswaView: React.FC = () => {
   const [fileName, setFileName] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Map class lookup helper
-  const classMap = useMemo(() => {
-    const map = new Map<string, { grade: number; name: string }>();
-    classes.forEach((c) => {
-      map.set(c.id, { grade: c.grade, name: c.name });
-    });
-    return map;
-  }, [classes]);
-
   // Available classes: integrated from onboarding registration / workspace classes
   const availableClasses = useMemo(() => {
     if (myAssignedClasses && myAssignedClasses.length > 0) {
@@ -152,7 +139,7 @@ export const DataSiswaView: React.FC = () => {
     return classes || [];
   }, [myAssignedClasses, classes]);
 
-  // Filter and sort students (dari kumpulan accessibleStudents)
+  // Filter and sort students (otomatis urut alfabetis A - Z)
   const filteredStudents = useMemo(() => {
     return accessibleStudents
       .filter((s) => {
@@ -170,40 +157,8 @@ export const DataSiswaView: React.FC = () => {
 
         return true;
       })
-      .sort((a, b) => {
-        if (sortBy === 'class-asc' || sortBy === 'class-desc') {
-          const classA = a.classId ? classMap.get(a.classId) : null;
-          const classB = b.classId ? classMap.get(b.classId) : null;
-          const gradeA = classA?.grade ?? 999;
-          const gradeB = classB?.grade ?? 999;
-          const nameA = classA?.name || a.className || 'ZZZ';
-          const nameB = classB?.name || b.className || 'ZZZ';
-
-          if (gradeA !== gradeB) {
-            return sortBy === 'class-asc' ? gradeA - gradeB : gradeB - gradeA;
-          }
-          const classCompare = nameA.localeCompare(nameB, 'id');
-          if (classCompare !== 0) {
-            return sortBy === 'class-asc' ? classCompare : -classCompare;
-          }
-          return a.nama.localeCompare(b.nama, 'id');
-        }
-
-        if (sortBy === 'name-asc') {
-          return a.nama.localeCompare(b.nama, 'id');
-        }
-        if (sortBy === 'name-desc') {
-          return b.nama.localeCompare(a.nama, 'id');
-        }
-        if (sortBy === 'nisn-asc') {
-          return a.nisn.localeCompare(b.nisn);
-        }
-        if (sortBy === 'nisn-desc') {
-          return b.nisn.localeCompare(a.nisn);
-        }
-        return 0;
-      });
-  }, [accessibleStudents, searchTerm, selectedClassFilter, sortBy, classMap, availableClasses]);
+      .sort((a, b) => a.nama.localeCompare(b.nama, 'id'));
+  }, [accessibleStudents, searchTerm, selectedClassFilter, availableClasses]);
 
   // Pagination
   const totalPages = Math.ceil(filteredStudents.length / pageSize) || 1;
@@ -520,7 +475,7 @@ export const DataSiswaView: React.FC = () => {
             )}
           </div>
 
-          {/* Secondary Controls Bar: Filter by Class, Sort By, and Show Entries */}
+          {/* Secondary Controls Bar: Filter by Class and Show Entries */}
           <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100">
             <div className="flex flex-wrap items-center gap-2.5">
               {/* Filter By Class */}
@@ -552,27 +507,6 @@ export const DataSiswaView: React.FC = () => {
                       </option>
                     );
                   })}
-                </select>
-              </div>
-
-              {/* Sort By Dropdown (Sort By Class, Name, NISN) */}
-              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-700">
-                <ArrowUpDown size={13} className="text-slate-400" />
-                <span className="text-[11px] text-slate-500 font-bold">URUTKAN (SORT BY):</span>
-                <select
-                  value={sortBy}
-                  onChange={(e) => {
-                    setSortBy(e.target.value as any);
-                    setCurrentPage(1);
-                  }}
-                  className="bg-transparent font-extrabold text-blue-700 focus:outline-none cursor-pointer text-xs"
-                >
-                  <option value="class-asc">Kelas (Kelas 1 - 6)</option>
-                  <option value="class-desc">Kelas (Kelas 6 - 1)</option>
-                  <option value="name-asc">Nama Siswa (A - Z)</option>
-                  <option value="name-desc">Nama Siswa (Z - A)</option>
-                  <option value="nisn-asc">NISN (Terkecil - Terbesar)</option>
-                  <option value="nisn-desc">NISN (Terbesar - Terkecil)</option>
                 </select>
               </div>
             </div>
@@ -631,45 +565,9 @@ export const DataSiswaView: React.FC = () => {
             <thead>
               <tr className="border-b border-slate-200 text-[10px] font-bold text-blue-700 uppercase tracking-widest bg-blue-50/60 select-none">
                 <th className="py-3.5 px-4 w-12 rounded-l-xl">NO</th>
-                <th
-                  onClick={() => setSortBy(sortBy === 'nisn-asc' ? 'nisn-desc' : 'nisn-asc')}
-                  className="py-3.5 px-4 w-40 cursor-pointer hover:bg-blue-100/50 transition-colors"
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span>NISN</span>
-                    {sortBy.startsWith('nisn') ? (
-                      sortBy === 'nisn-asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />
-                    ) : (
-                      <ArrowUpDown size={12} className="text-slate-400" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  onClick={() => setSortBy(sortBy === 'name-asc' ? 'name-desc' : 'name-asc')}
-                  className="py-3.5 px-4 cursor-pointer hover:bg-blue-100/50 transition-colors"
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span>NAMA LENGKAP</span>
-                    {sortBy.startsWith('name') ? (
-                      sortBy === 'name-asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />
-                    ) : (
-                      <ArrowUpDown size={12} className="text-slate-400" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  onClick={() => setSortBy(sortBy === 'class-asc' ? 'class-desc' : 'class-asc')}
-                  className="py-3.5 px-4 text-center cursor-pointer hover:bg-blue-100/50 transition-colors"
-                >
-                  <div className="flex items-center justify-center gap-1.5">
-                    <span>KELAS</span>
-                    {sortBy.startsWith('class') ? (
-                      sortBy === 'class-asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />
-                    ) : (
-                      <ArrowUpDown size={12} className="text-slate-400" />
-                    )}
-                  </div>
-                </th>
+                <th className="py-3.5 px-4 w-40">NISN</th>
+                <th className="py-3.5 px-4">NAMA LENGKAP</th>
+                <th className="py-3.5 px-4 text-center">KELAS</th>
                 <th className="py-3.5 px-4 text-center w-28">L/P</th>
                 <th className="py-3.5 px-4 text-center w-24 rounded-r-xl">AKSI</th>
               </tr>
