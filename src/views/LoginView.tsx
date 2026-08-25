@@ -56,7 +56,7 @@ export const LoginView: React.FC = () => {
       const tokenString = window.location.hash;
       setSessionFromTokenOrUrl(tokenString)
         .then(() => {
-          showToast('Sesi Google berhasil diaktifkan. Membuka Onboarding...', 'success');
+          showToast('Sesi Google berhasil diaktifkan. Memuat data...', 'success');
           window.history.replaceState(null, '', window.location.pathname + window.location.search);
         })
         .catch((err) => {

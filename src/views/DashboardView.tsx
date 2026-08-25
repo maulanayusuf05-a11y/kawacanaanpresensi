@@ -313,31 +313,10 @@ export const DashboardView: React.FC = () => {
     <div className="w-full max-w-7xl 2xl:max-w-[1500px] mx-auto px-3.5 sm:px-6 lg:px-8 py-3.5 sm:py-5 space-y-3.5 sm:space-y-4 animate-in fade-in duration-300">
       {/* Top Title Card */}
       <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="min-w-0 space-y-1.5 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-lg sm:text-xl lg:text-2xl font-black text-slate-900 tracking-tight">
-              Panel Kontrol Utama
-            </h1>
-            <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
-              {userScope.roleBadgeLabel}
-            </span>
-            {/* Lencana Paket */}
-            {currentUser?.role !== 'SUPER_ADMIN' && (
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black bg-gradient-to-r from-amber-50 to-orange-50 text-amber-900 border border-amber-300/80 shadow-xs shrink-0">
-                <Sparkles size={13} className="text-amber-600 animate-pulse" />
-                <span>{packageInfo.planName}</span>
-              </div>
-            )}
-            {/* Masa Berlaku Paket */}
-            {currentUser?.role !== 'SUPER_ADMIN' && packageInfo.expiryFormatted && (
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50/70 border border-amber-200 text-amber-900 text-xs font-semibold shadow-xs shrink-0">
-                <Clock size={13} className="text-amber-600 shrink-0" />
-                <span>
-                  Masa Berlaku: <strong className="font-extrabold text-amber-950">s.d. {packageInfo.expiryFormatted}</strong>
-                </span>
-              </div>
-            )}
-          </div>
+        <div className="min-w-0 space-y-1 flex-1">
+          <h1 className="text-lg sm:text-xl lg:text-2xl font-black text-slate-900 tracking-tight">
+            Panel Kontrol Utama
+          </h1>
           <p className="text-xs text-slate-500 leading-relaxed">
             {userScope.isWaliKelas
               ? `Pengawasan kehadiran dan administrasi kelas binaan ${userScope.assignedWaliClassName || 'Wali Kelas'}.`
@@ -345,6 +324,29 @@ export const DashboardView: React.FC = () => {
               ? `Pengawasan kehadiran mata pelajaran ${userScope.primarySubject?.name || 'Mata Pelajaran'} (${userScope.accessibleClasses.length} Rombel).`
               : `Pantau aktivitas harian dan analisis kehadiran siswa ${schoolProfile.namaSekolah ? `${schoolProfile.namaSekolah} ` : ''}secara real-time.`}
           </p>
+        </div>
+
+        {/* Lencana dan Status di Sebelah Kanan */}
+        <div className="flex flex-wrap items-center md:justify-end gap-2 shrink-0">
+          <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
+            {userScope.roleBadgeLabel}
+          </span>
+          {/* Lencana Paket */}
+          {currentUser?.role !== 'SUPER_ADMIN' && (
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black bg-gradient-to-r from-amber-50 to-orange-50 text-amber-900 border border-amber-300/80 shadow-xs shrink-0">
+              <Sparkles size={13} className="text-amber-600 animate-pulse" />
+              <span>{packageInfo.planName}</span>
+            </div>
+          )}
+          {/* Masa Berlaku Paket */}
+          {currentUser?.role !== 'SUPER_ADMIN' && packageInfo.expiryFormatted && (
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50/70 border border-amber-200 text-amber-900 text-xs font-semibold shadow-xs shrink-0">
+              <Clock size={13} className="text-amber-600 shrink-0" />
+              <span>
+                Masa Berlaku: <strong className="font-extrabold text-amber-950">s.d. {packageInfo.expiryFormatted}</strong>
+              </span>
+            </div>
+          )}
         </div>
       </div>
 

@@ -253,15 +253,6 @@ export const DataGuruView: React.FC = () => {
         )}
       </div>
 
-      {isPersonalWorkspace && (
-        <div className="flex items-center gap-3 p-3.5 bg-blue-50 border border-blue-200 text-blue-900 rounded-xl text-xs font-medium">
-          <ShieldCheck size={18} className="text-blue-600 shrink-0" />
-          <span>
-            <strong>Ruang Kerja Individu:</strong> Hanya menampilkan data guru Anda sendiri. Anda dapat mengedit identitas dan penugasan Anda dengan menekan tombol <strong>Edit</strong>.
-          </span>
-        </div>
-      )}
-
       <div className="relative w-full sm:w-80">
         <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
         <input
@@ -422,11 +413,8 @@ export const DataGuruView: React.FC = () => {
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Penugasan Jabatan</label>
                   {isPersonalWorkspace ? (
-                    <div className="px-3.5 py-2 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 font-bold text-xs flex items-center justify-between min-h-[42px]">
+                    <div className="px-3.5 py-2 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 font-bold text-xs flex items-center min-h-[42px]">
                       <span>{defaultPersonalRole}</span>
-                      <span className="text-[10px] bg-blue-200 text-blue-800 px-2 py-0.5 rounded font-black">
-                        Terkunci Sesuai Akun
-                      </span>
                     </div>
                   ) : (
                     <select

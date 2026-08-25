@@ -98,7 +98,6 @@ export const signInWithGoogle = () => {
       redirectTo: redirectUrl,
       queryParams: {
         access_type: 'offline',
-        prompt: 'consent',
       },
     },
   });
