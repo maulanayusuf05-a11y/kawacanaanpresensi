@@ -166,28 +166,30 @@ export const DataKelasView: React.FC = () => {
       });
     });
 
-    // 2. Tambahkan juga akun pengguna GURU/WALI KELAS/GURU MAPEL/ADMIN yang mungkin belum ada di tabel teachers
-    users
-      .filter((u) => u.role === 'GURU' || u.role === 'WALI KELAS' || u.role === 'GURU MAPEL' || u.role === 'ADMIN')
-      .forEach((u) => {
-        const uName = (u.name || u.username).trim().toLowerCase();
-        const alreadyInList = list.some(
-          (item) => item.id === u.id || item.name.trim().toLowerCase() === uName
-        );
-        if (!alreadyInList) {
-          const assignedClass = classes.find((c) => c.waliKelasId === u.id);
-          list.push({
-            id: u.id,
-            name: u.name || u.username,
-            role: u.role,
-            assignedClassName: assignedClass?.name || null,
-            isAccount: true,
-          });
-        }
-      });
+    // 2. Tambahkan akun pengguna khusus jika di Ruang Kerja Sekolah
+    if (!isPersonalWorkspace) {
+      users
+        .filter((u) => u.role === 'GURU' || u.role === 'WALI KELAS' || u.role === 'GURU MAPEL' || u.role === 'ADMIN')
+        .forEach((u) => {
+          const uName = (u.name || u.username).trim().toLowerCase();
+          const alreadyInList = list.some(
+            (item) => item.id === u.id || item.name.trim().toLowerCase() === uName
+          );
+          if (!alreadyInList) {
+            const assignedClass = classes.find((c) => c.waliKelasId === u.id);
+            list.push({
+              id: u.id,
+              name: u.name || u.username,
+              role: u.role,
+              assignedClassName: assignedClass?.name || null,
+              isAccount: true,
+            });
+          }
+        });
+    }
 
     return list;
-  }, [teachers, users, classes]);
+  }, [teachers, users, classes, isPersonalWorkspace]);
 
   // Filtered classes by search term (menggunakan accessibleClasses)
   const filteredClasses = useMemo(() => {
@@ -439,9 +441,14 @@ export const DataKelasView: React.FC = () => {
                   const countL = classStudentList.filter((s) => s.gender === 'L' || s.gender === 'Laki-laki').length;
                   const countP = classStudentList.filter((s) => s.gender === 'P' || s.gender === 'Perempuan').length;
                   const totalCount = classStudentList.length;
-                  const effectiveWaliName =
-                    c.waliKelasName ||
-                    (isPersonalWorkspace && currentUser?.name ? currentUser.name : null);
+                  const matchedTeacher = teachers.find(
+                    (t) => t.id === c.waliKelasId || (c.waliKelasName && t.nama.trim().toLowerCase() === c.waliKelasName.trim().toLowerCase())
+                  );
+                  const effectiveWaliName = matchedTeacher
+                    ? matchedTeacher.nama
+                    : isPersonalWorkspace
+                    ? (currentUser?.name && (c.waliKelasId === currentUser.id || c.waliKelasName === currentUser.name) ? currentUser.name : null)
+                    : c.waliKelasName || null;
 
                   return (
                     <tr key={c.id} className="hover:bg-slate-50/80 transition-colors">

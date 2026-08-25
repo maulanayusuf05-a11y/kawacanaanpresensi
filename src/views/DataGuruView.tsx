@@ -78,7 +78,8 @@ export const DataGuruView: React.FC = () => {
     );
   };
 
-  const defaultPersonalRole = currentUser?.role === 'GURU_MAPEL' ? 'Guru Mapel' : 'Wali Kelas';
+  const defaultPersonalRole =
+    currentUser?.role === 'GURU MAPEL' || currentUser?.role === 'GURU_MAPEL' ? 'Guru Mapel' : 'Wali Kelas';
 
   const resetForm = () => {
     setNama('');
@@ -102,8 +103,9 @@ export const DataGuruView: React.FC = () => {
     setNama(t.nama);
     setNip(t.nip);
     setJenisKelamin(t.jenisKelamin);
-    const existingType = t.jabatan || t.jenisPTK || t.mataPelajaran || defaultPersonalRole;
-    setGuruType(existingType.toLowerCase().includes('mapel') ? 'Guru Mapel' : 'Wali Kelas');
+    const existingType = String(t.jabatan || t.jenisPTK || t.mataPelajaran || defaultPersonalRole).toLowerCase();
+    const isMapel = existingType.includes('mapel') || existingType.includes('mata pelajaran');
+    setGuruType(isMapel ? 'Guru Mapel' : 'Wali Kelas');
     setOpen(true);
   };
 

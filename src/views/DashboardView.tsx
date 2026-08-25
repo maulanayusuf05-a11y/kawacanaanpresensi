@@ -330,17 +330,6 @@ export const DashboardView: React.FC = () => {
 
         {/* Lencana dan Status di Sebelah Kanan (Sejajar) */}
         <div className="flex flex-wrap items-center md:justify-end gap-2 shrink-0">
-          {currentUser?.role !== 'SUPER_ADMIN' && (
-            <span
-              className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold border shrink-0 ${
-                isPersonalWorkspace
-                  ? 'bg-purple-50 text-purple-700 border-purple-200'
-                  : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-              }`}
-            >
-              {isPersonalWorkspace ? 'Ruang Kerja Individu' : 'Ruang Kerja Sekolah'}
-            </span>
-          )}
           <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
             {userScope.roleBadgeLabel}
           </span>

@@ -284,17 +284,6 @@ export const Header: React.FC = () => {
                 <h1 className="font-bold text-[#1E40AF] text-sm sm:text-base lg:text-lg leading-tight tracking-tight group-hover:text-blue-800 transition-colors truncate">
                   {currentUser?.role === 'SUPER_ADMIN' ? 'Platform Super Admin' : (schoolProfile.namaSekolah || 'Sistem Informasi Sekolah')}
                 </h1>
-                {currentUser?.role !== 'SUPER_ADMIN' && (
-                  <span
-                    className={`hidden md:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold tracking-normal uppercase border ${
-                      isPersonalWorkspace
-                        ? 'bg-purple-50 text-purple-700 border-purple-200'
-                        : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                    }`}
-                  >
-                    {isPersonalWorkspace ? 'Ruang Kerja Individu' : 'Ruang Kerja Sekolah'}
-                  </span>
-                )}
               </div>
               <p className="text-[9px] sm:text-[10px] font-bold tracking-[0.15em] sm:tracking-[0.2em] text-slate-500 uppercase truncate">
                 {currentUser?.role === 'SUPER_ADMIN' ? 'KONTROL MULTI-TENANT SEKOLAH' : (systemConfig.appTitle ? systemConfig.appTitle.toUpperCase() : 'ABSENSI SISWA')}

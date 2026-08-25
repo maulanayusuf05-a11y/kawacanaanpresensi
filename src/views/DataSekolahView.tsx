@@ -1,29 +1,23 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { SchoolProfile } from '../types';
 import {
   Building2,
   GraduationCap,
-  Hash,
   MapPin,
   Phone,
-  Mail,
-  Globe,
-  UserCheck,
-  Save,
-  CheckCircle2,
-  AlertCircle,
   School,
-  ExternalLink,
   Info,
-  Search,
-  RefreshCw,
-  Sparkles,
   Calendar,
   KeyRound,
   Copy,
   Check,
-  Share2
+  Share2,
+  Mail,
+  Globe,
+  UserCheck,
+  RefreshCw,
+  Save
 } from 'lucide-react';
 
 export const DataSekolahView: React.FC = () => {
@@ -310,25 +304,20 @@ export const DataSekolahView: React.FC = () => {
               <label htmlFor="input-npsn" className="block text-xs font-bold text-slate-700">
                 NPSN (Nomor Pokok Sekolah Nasional) <span className="text-rose-500">*</span>
               </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                  <Hash size={16} />
-                </div>
-                <input
-                  id="input-npsn"
-                  type="text"
-                  name="npsn"
-                  disabled={isReadOnly}
-                  required
-                  value={formData.npsn}
-                  onChange={handleChange}
-                  placeholder="Contoh: 20104501"
-                  maxLength={8}
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-500/10 rounded-xl text-xs sm:text-sm font-mono font-bold text-slate-900 outline-none transition disabled:bg-slate-100 disabled:text-slate-500"
-                />
-              </div>
+              <input
+                id="input-npsn"
+                type="text"
+                name="npsn"
+                disabled={isReadOnly}
+                required
+                value={formData.npsn}
+                onChange={handleChange}
+                placeholder="Contoh: 20104501"
+                maxLength={8}
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-500/10 rounded-xl text-xs sm:text-sm font-mono font-bold text-slate-900 outline-none transition disabled:bg-slate-100 disabled:text-slate-500"
+              />
               <span className="text-[10px] text-slate-400 block">
-                Nomor Pokok Sekolah Nasional 8 digit.
+                Nomor Pokok Sekolah Nasional 8 digit resmi.
               </span>
             </div>
 
