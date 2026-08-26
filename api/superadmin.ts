@@ -1,6 +1,19 @@
 import { createClient } from '@supabase/supabase-js';
 
 const json = (res:any,status:number,body:unknown)=>res.status(status).setHeader('Content-Type','application/json').end(JSON.stringify(body));
+
+/**
+ * Menghasilkan 8 karakter alfanumerik huruf besar tanpa awalan SCH- (contoh: 9B3366AB)
+ */
+function generateSchoolInviteCode(): string {
+  const chars = '0123456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  let code = '';
+  for (let i = 0; i < 8; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
 const limits = (plan: string) => {
   const p = (plan || 'mulai').toLowerCase();
   if (p === 'school' || p === 'sekolah' || p === 'pro' || p === 'enterprise') {
@@ -265,8 +278,10 @@ export default async function handler(req:any,res:any){
         const resolvedName = userFilledSchoolName || s.name || (isPersonal ? 'Ruang Kerja Individu' : 'Ruang Kerja Sekolah');
         const resolvedNpsn = sp?.npsn || s.npsn || null;
 
+        const rawCode = s.code ? String(s.code).replace(/^SCH-?/i, '').trim().toUpperCase() : null;
         return {
           ...s,
+          code: rawCode,
           name: resolvedName,
           npsn: resolvedNpsn,
           school_id: s.id,
@@ -286,7 +301,7 @@ export default async function handler(req:any,res:any){
 
     if(action==='dashboard'){
       const [{data:schools},{data:students},{data:classes},{data:users},{data:schoolProfiles}]=await Promise.all([
-        admin.from('schools').select('id,name,npsn,plan,status,subscription_expires_at,max_teachers,max_students,max_classes,workspace_type,is_personal,created_at'),
+        admin.from('schools').select('id,name,npsn,code,plan,status,subscription_expires_at,max_teachers,max_students,max_classes,workspace_type,is_personal,created_at'),
         admin.from('students').select('id, school_id'),
         admin.from('classes').select('id, school_id'),
         admin.from('profiles').select('id, role, school_id').neq('role','SUPER_ADMIN'),
@@ -296,8 +311,10 @@ export default async function handler(req:any,res:any){
       const rows=(schools||[]).map((s:any)=>{
         const sp = spMap.get(s.id);
         const userFilledSchoolName = sp?.nama_sekolah && String(sp.nama_sekolah).trim() ? String(sp.nama_sekolah).trim() : null;
+        const rawCode = s.code ? String(s.code).replace(/^SCH-?/i, '').trim().toUpperCase() : null;
         return {
           ...s,
+          code: rawCode,
           name: userFilledSchoolName || s.name || 'Ruang Kerja',
           npsn: sp?.npsn || s.npsn || null,
           school_id: s.id
@@ -340,9 +357,10 @@ export default async function handler(req:any,res:any){
       const expires=p.subscription_expires_at||p.expiresAt||null;
       const started=p.subscription_started_at||p.startedAt||new Date().toISOString().slice(0, 10);
       const notes=p.notes !== undefined ? (p.notes ? String(p.notes).trim() : null) : null;
-      const code = p.code && String(p.code).trim()
-        ? String(p.code).trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
-        : (npsn || Math.random().toString(36).substring(2, 8).toUpperCase());
+      const rawCode = p.code && String(p.code).trim()
+        ? String(p.code).trim().toUpperCase().replace(/^SCH-?/i, '').replace(/[^A-Z0-9]/g, '')
+        : '';
+      const code = rawCode || generateSchoolInviteCode();
       const workspaceType = p.workspace_type || 'school'; // Sekolah ber-NPSN adalah Ruang Kerja Sekolah
       const {data:school,error}=await admin.from('schools').insert({
         name,
@@ -385,6 +403,9 @@ export default async function handler(req:any,res:any){
         max_students: lim.max_students,
         max_classes: lim.max_classes
       };
+      if (p.code !== undefined) {
+        updateData.code = p.code ? String(p.code).trim().toUpperCase().replace(/^SCH-?/i, '').replace(/[^A-Z0-9]/g, '') : null;
+      }
       if (p.subscription_started_at !== undefined) {
         updateData.subscription_started_at = p.subscription_started_at || null;
       }
@@ -421,9 +442,9 @@ export default async function handler(req:any,res:any){
       
       let newCode = '';
       if (req.body.customCode && String(req.body.customCode).trim()) {
-        newCode = String(req.body.customCode).trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+        newCode = String(req.body.customCode).trim().toUpperCase().replace(/^SCH-?/i, '').replace(/[^A-Z0-9]/g, '');
       } else {
-        newCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+        newCode = generateSchoolInviteCode();
       }
       
       const {data,error}=await admin.from('schools').update({code: newCode}).eq('id',id).select('id, name, code, npsn').single();

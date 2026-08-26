@@ -4,6 +4,18 @@ const json = (res: any, status: number, body: unknown) =>
   res.status(status).setHeader('Content-Type', 'application/json').end(JSON.stringify(body));
 
 /**
+ * Menghasilkan 8 karakter alfanumerik huruf besar tanpa awalan SCH- (contoh: 9B3366AB)
+ */
+function generateSchoolInviteCode(): string {
+  const chars = '0123456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  let code = '';
+  for (let i = 0; i < 8; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
+/**
  * Menghitung masa aktif trial Guru Pro untuk ruang kerja individu baru.
  * Aturan: Jika mendaftar di bulan X pada tanggal berapa pun, masa aktif trial
  * berlaku sampai dengan akhir tanggal di bulan (X + 1).
@@ -82,20 +94,22 @@ export default async function handler(req: any, res: any) {
     // 1. LOOKUP SEKOLAH / KODE UNDANGAN / NPSN (PUBLIC)
     // -------------------------------------------------------------
     if (action === 'lookup_school' || action === 'lookup_school_code') {
-      const query = String(body.code || body.query || '').trim();
-      if (!query) {
+      const rawQuery = String(body.code || body.query || '').trim();
+      if (!rawQuery) {
         return json(res, 400, { error: 'Masukkan kode sekolah, NPSN, atau nama sekolah.' });
       }
 
-      const cleanCode = query.toUpperCase().replace(/\s+/g, '');
-      const cleanDigits = query.replace(/\D/g, '');
+      // Bersihkan awalan SCH- jika ada agar pengguna yang memasukkan format lama tetap terlayani
+      const strippedQuery = rawQuery.toUpperCase().replace(/^SCH-?/i, '').trim();
+      const cleanCode = strippedQuery.replace(/[^A-Z0-9]/g, '');
+      const cleanDigits = rawQuery.replace(/\D/g, '');
 
       // Cari di tabel schools
       let schQuery = db.from('schools').select('id, name, npsn, code, plan, status, workspace_type');
       if (cleanDigits.length >= 4) {
-        schQuery = schQuery.or(`code.ilike.%${cleanCode}%,code.ilike.%${query}%,name.ilike.%${query}%,npsn.ilike.%${cleanDigits}%`);
+        schQuery = schQuery.or(`code.ilike.%${cleanCode}%,code.ilike.%${strippedQuery}%,code.ilike.%${rawQuery}%,name.ilike.%${rawQuery}%,npsn.ilike.%${cleanDigits}%`);
       } else {
-        schQuery = schQuery.or(`code.ilike.%${cleanCode}%,code.ilike.%${query}%,name.ilike.%${query}%`);
+        schQuery = schQuery.or(`code.ilike.%${cleanCode}%,code.ilike.%${strippedQuery}%,code.ilike.%${rawQuery}%,name.ilike.%${rawQuery}%`);
       }
       const { data: matchedSchools } = await schQuery.limit(15);
 
@@ -105,9 +119,9 @@ export default async function handler(req: any, res: any) {
         .select('school_id, nama_sekolah, npsn, jenjang, alamat, tahun_pelajaran');
 
       if (cleanDigits.length >= 3) {
-        spQuery = spQuery.or(`npsn.ilike.%${cleanDigits}%,nama_sekolah.ilike.%${query}%`);
+        spQuery = spQuery.or(`npsn.ilike.%${cleanDigits}%,nama_sekolah.ilike.%${rawQuery}%`);
       } else {
-        spQuery = spQuery.ilike('nama_sekolah', `%${query}%`);
+        spQuery = spQuery.ilike('nama_sekolah', `%${rawQuery}%`);
       }
       const { data: matchedProfiles } = await spQuery.limit(15);
 
@@ -115,7 +129,8 @@ export default async function handler(req: any, res: any) {
 
       for (const sc of matchedSchools || []) {
         if (!sc.id) continue;
-        const fallbackCode = sc.code || sc.npsn || sc.id.slice(0, 6).toUpperCase();
+        const normalizedCode = sc.code ? String(sc.code).replace(/^SCH-?/i, '').trim().toUpperCase() : '';
+        const fallbackCode = normalizedCode || sc.npsn || sc.id.slice(0, 8).toUpperCase();
         schoolMap.set(sc.id, {
           id: sc.id,
           name: sc.name || 'Sekolah Terdaftar',
@@ -129,7 +144,8 @@ export default async function handler(req: any, res: any) {
       for (const sp of matchedProfiles || []) {
         if (!sp.school_id) continue;
         const existing = schoolMap.get(sp.school_id);
-        const fallbackCode = existing?.code || sp.npsn || sp.school_id.slice(0, 6).toUpperCase();
+        const normalizedCode = existing?.code ? String(existing.code).replace(/^SCH-?/i, '').trim().toUpperCase() : '';
+        const fallbackCode = normalizedCode || sp.npsn || sp.school_id.slice(0, 8).toUpperCase();
         schoolMap.set(sp.school_id, {
           id: sp.school_id,
           name: sp.nama_sekolah || existing?.name || 'Sekolah Terdaftar',
@@ -329,8 +345,10 @@ export default async function handler(req: any, res: any) {
         const isPersonal = mode === 'personal';
         const wsName = isPersonal ? 'Ruang Kerja Individu' : String(body.workspaceName || `Ruang Kerja ${fullName}`).trim();
         const trial = calculateGuruProTrialPeriod();
+        const inviteCode = generateSchoolInviteCode();
         const { data: newSchool, error: schoolErr } = await db.from('schools').insert({
           name: wsName,
+          code: inviteCode,
           plan: trial.plan,
           status: 'active',
           workspace_type: 'personal',
@@ -466,8 +484,10 @@ export default async function handler(req: any, res: any) {
           ? 'Ruang Kerja Individu'
           : String(body.workspaceName || `Ruang Kerja Sekolah ${teacherName}`).trim();
         const trial = calculateGuruProTrialPeriod();
+        const inviteCode = generateSchoolInviteCode();
         const { data: newSchool, error: schoolErr } = await db.from('schools').insert({
           name: wsName,
+          code: inviteCode,
           plan: isPersonal ? trial.plan : 'sekolah',
           status: 'active',
           workspace_type: isPersonal ? 'personal' : 'school',
@@ -632,8 +652,10 @@ export default async function handler(req: any, res: any) {
           ? 'Ruang Kerja Individu'
           : String(body.workspaceName || `Ruang Kerja Sekolah ${teacherName}`).trim();
         const trial = calculateGuruProTrialPeriod();
+        const inviteCode = generateSchoolInviteCode();
         const { data: newSchool, error: schoolErr } = await db.from('schools').insert({
           name: wsName,
+          code: inviteCode,
           plan: isPersonal ? trial.plan : 'sekolah',
           status: 'active',
           workspace_type: isPersonal ? 'personal' : 'school',

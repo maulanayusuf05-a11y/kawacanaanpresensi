@@ -33,10 +33,13 @@ export const DataSekolahView: React.FC = () => {
   const [lookupSuccess, setLookupSuccess] = useState<boolean | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
 
-  const activeSchoolCode =
+  const rawSchoolCode =
     schoolProfile.kodeSekolah ||
     schoolProfile.npsn ||
-    (currentUser?.schoolId ? currentUser.schoolId.slice(0, 6).toUpperCase() : '784920');
+    (currentUser?.schoolId ? currentUser.schoolId.slice(0, 8).toUpperCase() : '');
+  const activeSchoolCode = rawSchoolCode
+    ? rawSchoolCode.replace(/^SCH-?/i, '').trim().toUpperCase()
+    : '9B3366AB';
 
   const handleCopySchoolCode = () => {
     navigator.clipboard.writeText(activeSchoolCode);

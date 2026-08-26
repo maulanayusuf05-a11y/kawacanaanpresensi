@@ -3,6 +3,15 @@ import { createClient } from '@supabase/supabase-js';
 const json = (res: any, status: number, body: unknown) =>
   res.status(status).setHeader('Content-Type', 'application/json').end(JSON.stringify(body));
 
+const generateSchoolInviteCode = (): string => {
+  const chars = '0123456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  let code = '';
+  for (let i = 0; i < 8; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+};
+
 const getPlanLimits = (plan: string) => {
   const p = (plan || 'free').toLowerCase();
   if (p === 'school' || p === 'pro' || p === 'enterprise' || p === 'sekolah') {
@@ -179,9 +188,8 @@ export default async function handler(req: any, res: any) {
     const expiryDate = new Date();
     expiryDate.setDate(startDate.getDate() + planLimits.days);
 
-    const schoolCode = npsn
-      ? npsn
-      : Math.random().toString(36).substring(2, 8).toUpperCase();
+    const rawCustomCode = body.code ? String(body.code).trim().toUpperCase().replace(/^SCH-?/i, '').replace(/[^A-Z0-9]/g, '') : '';
+    const schoolCode = rawCustomCode || generateSchoolInviteCode();
 
     // 4. Buat Tenant Sekolah / Guru (Sekolah formal = Ruang Kerja Sekolah, Guru Mandiri = Ruang Kerja Individu)
     const workspaceType = isTeacherPlan ? 'personal' : 'school';
