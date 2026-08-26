@@ -19,8 +19,8 @@ interface AppContextType {
  loadUserDataAfterOnboarding: (userId: string) => Promise<void>;
  loadData: (userId?: string) => Promise<void>;
  schoolProfile:SchoolProfile; updateSchoolProfile:(p:SchoolProfile)=>Promise<void>; systemConfig:SystemConfig; updateSystemConfig:(c:SystemConfig)=>Promise<void>;
- classes:SchoolClass[]; addClass:(c:Omit<SchoolClass,'id'>)=>Promise<void>; updateClass:(id:string,c:Omit<SchoolClass,'id'>)=>Promise<void>; deleteClass:(id:string)=>Promise<void>; assignTeacherClasses:(teacherId:string,classIds:string[])=>Promise<void>;
- teachers:Teacher[]; addTeacher:(t:Omit<Teacher,'id'>)=>Promise<void>; updateTeacher:(id:string,t:Omit<Teacher,'id'>)=>Promise<void>; deleteTeacher:(id:string)=>Promise<void>;
+ classes:SchoolClass[]; addClass:(c:Omit<SchoolClass,'id'>)=>Promise<void>; updateClass:(id:string,c:Omit<SchoolClass,'id'>)=>Promise<void>; deleteClass:(id:string)=>Promise<void>; assignTeacherClasses:(teacherId:string,classIds:string[])=>Promise<void>; importClasses:(items:Array<Omit<SchoolClass,'id'> & { waliKelasNameInput?: string }>,replaceExisting?:boolean)=>Promise<void>;
+ teachers:Teacher[]; addTeacher:(t:Omit<Teacher,'id'>)=>Promise<void>; updateTeacher:(id:string,t:Omit<Teacher,'id'>)=>Promise<void>; deleteTeacher:(id:string)=>Promise<void>; importTeachers:(t:Omit<Teacher,'id'>[],replaceExisting?:boolean)=>Promise<void>;
  subjects:Subject[]; addSubject:(s:Omit<Subject,'id'>)=>Promise<void>; updateSubject:(id:string,s:Omit<Subject,'id'>)=>Promise<void>; deleteSubject:(id:string)=>Promise<void>;
  students:Student[]; addStudent:(s:Omit<Student,'id'>)=>Promise<void>; updateStudent:(id:string,s:Omit<Student,'id'>)=>Promise<void>; deleteStudent:(id:string)=>Promise<void>; deleteStudentsByClass:(classId:string)=>Promise<void>; importStudents:(s:Omit<Student,'id'>[],replaceExisting?:boolean,targetClassId?:string)=>Promise<void>;
  users:UserAccount[]; addUser:(u:UserAccountInput)=>Promise<void>; deleteUser:(id:string)=>Promise<void>; updateUser:(id:string,data:Partial<UserAccount>)=>Promise<void>; syncUsersWithStudents:()=>Promise<void>; generateAccountsFromReferences:(options?: { resetExistingPasswords?: boolean }) => Promise<GeneratedAccountResult[]>; updateUserPassword:(id:string,p:string)=>Promise<void>;
@@ -867,6 +867,59 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
  const deleteClass=async(id:string)=>{try{const {error}=await supabase.from('classes').delete().eq('id',id);if(error)throw error;setClasses(p=>p.filter(x=>x.id!==id));setStudents(p=>p.map(s=>s.classId===id?{...s,classId:null,className:''}:s));showToast('Kelas berhasil dihapus','info')}catch(e:any){showToast(e.message,'error')}};
  const addTeacher=async(t:Omit<Teacher,'id'>)=>{try{const jab=t.jabatan||t.jenisPTK||'Wali Kelas';const schoolId=currentUser?.schoolId||null;let savedTeacher:any=null;try{const {data:sessionData}=await supabase.auth.getSession();const token=sessionData.session?.access_token||'';const res=await fetch('/api/onboarding',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({action:'save_teacher',schoolId,nama:t.nama.trim(),nip:t.nip.trim(),jenisKelamin:t.jenisKelamin,jabatan:jab.trim(),statusKepegawaian:(t.statusKepegawaian||'').trim(),noHp:(t.noHp||'').trim()})});const json=await res.json();if(json.teacher)savedTeacher=json.teacher}catch(_){};if(!savedTeacher){const {data,error}=await supabase.from('teachers').insert({nama:t.nama.trim(),nip:t.nip.trim(),jenis_kelamin:t.jenisKelamin,mata_pelajaran:jab.trim(),status_kepegawaian:(t.statusKepegawaian||'').trim(),no_hp:(t.noHp||'').trim(),school_id:schoolId}).select().single();if(error)throw error;savedTeacher=data}const finalTeacher=dbTeacher({...savedTeacher,jabatan:jab});setTeachers(p=>[...p.filter(x=>x.id!==finalTeacher.id),finalTeacher]);showToast(`Data guru ${finalTeacher.nama} berhasil ditambahkan`)}catch(e:any){showToast(e.message,'error')}};
  const updateTeacher=async(id:string,t:Omit<Teacher,'id'>)=>{try{const jab=t.jabatan||t.jenisPTK||'Wali Kelas';const schoolId=currentUser?.schoolId||null;let updatedTeacher:any=null;try{const {data:sessionData}=await supabase.auth.getSession();const token=sessionData.session?.access_token||'';const res=await fetch('/api/onboarding',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({action:'save_teacher',teacherId:id,schoolId,nama:t.nama.trim(),nip:t.nip.trim(),jenisKelamin:t.jenisKelamin,jabatan:jab.trim(),statusKepegawaian:(t.statusKepegawaian||'').trim(),noHp:(t.noHp||'').trim()})});const json=await res.json();if(json.teacher)updatedTeacher=json.teacher}catch(_){};if(!updatedTeacher){const {data,error}=await supabase.from('teachers').update({nama:t.nama.trim(),nip:t.nip.trim(),jenis_kelamin:t.jenisKelamin,mata_pelajaran:jab.trim(),status_kepegawaian:(t.statusKepegawaian||'').trim(),no_hp:(t.noHp||'').trim()}).eq('id',id).select().single();if(error)throw error;updatedTeacher=data}const finalTeacher=dbTeacher({...updatedTeacher,jabatan:jab});setTeachers(p=>p.map(x=>x.id===id?finalTeacher:x));showToast('Data guru berhasil diperbarui')}catch(e:any){showToast(e.message,'error')}};
+  const importTeachers = async (items: Omit<Teacher, 'id'>[], replaceExisting = false) => {
+    try {
+      if (!items.length) throw new Error('Tidak ada data guru yang valid untuk diimpor');
+      const schoolId = currentUser?.schoolId || null;
+      if (replaceExisting) {
+        if (schoolId) {
+          await supabase.from('teachers').delete().eq('school_id', schoolId);
+        } else {
+          await supabase.from('teachers').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        }
+        setTeachers([]);
+      }
+      for (const t of items) {
+        await addTeacher(t);
+      }
+      showToast(`Berhasil mengimpor ${items.length} data guru.`);
+    } catch (e: any) {
+      showToast(e.message, 'error');
+    }
+  };
+  const importClasses = async (items: Array<Omit<SchoolClass, 'id'> & { waliKelasNameInput?: string }>, replaceExisting = false) => {
+    try {
+      if (!items.length) throw new Error('Tidak ada data kelas yang valid untuk diimpor');
+      const schoolId = currentUser?.schoolId || null;
+      if (replaceExisting) {
+        if (schoolId) {
+          await supabase.from('classes').delete().eq('school_id', schoolId);
+        } else {
+          await supabase.from('classes').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        }
+        setClasses([]);
+      }
+      for (const c of items) {
+        let targetWaliId = c.waliKelasId || null;
+        if (!targetWaliId && c.waliKelasNameInput) {
+          const matchedT = teachers.find((t) => t.nama.trim().toLowerCase() === c.waliKelasNameInput?.trim().toLowerCase());
+          if (matchedT) {
+            targetWaliId = matchedT.id;
+          }
+        }
+        await addClass({
+          name: c.name,
+          grade: c.grade,
+          academicYear: c.academicYear || schoolProfile.tahunPelajaran || '2026/2027',
+          waliKelasId: targetWaliId,
+          waliKelasName: c.waliKelasName || null,
+        });
+      }
+      showToast(`Berhasil mengimpor ${items.length} data kelas.`);
+    } catch (e: any) {
+      showToast(e.message, 'error');
+    }
+  };
   const deleteTeacher=async(id:string)=>{try{const teacherToDelete=teachers.find(t=>t.id===id);const teacherName=teacherToDelete?.nama;const schoolId=currentUser?.schoolId;try{const {data:sessionData}=await supabase.auth.getSession();const token=sessionData.session?.access_token||'';await fetch('/api/onboarding',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({action:'delete_teacher',teacherId:id,teacherName,schoolId})})}catch(_){};await supabase.from('teachers').delete().eq('id',id);if(schoolId&&teacherName){await supabase.from('teachers').delete().eq('school_id',schoolId).eq('nama',teacherName)}await supabase.from('teacher_class_assignments').delete().eq('teacher_id',id);await supabase.from('classes').update({wali_kelas_id:null}).eq('wali_kelas_id',id);if(schoolId){await supabase.from('classes').update({wali_kelas_id:null}).eq('school_id',schoolId).eq('wali_kelas_id',id)}setTeachers(p=>p.filter(x=>x.id!==id && (teacherName ? x.nama.trim().toLowerCase() !== teacherName.trim().toLowerCase() : true)));setClasses(p=>p.map(c=>(c.waliKelasId===id||(teacherName&&c.waliKelasName?.trim().toLowerCase()===teacherName.trim().toLowerCase()))?{...c,waliKelasId:null,waliKelasName:null}:c));showToast('Data guru berhasil dihapus','info')}catch(e:any){showToast(e.message,'error')}};
  const assignTeacherClasses=async(teacherId:string,classIds:string[])=>{try{await supabase.from('teacher_class_assignments').delete().eq('teacher_id',teacherId);if(classIds.length){const {error}=await supabase.from('teacher_class_assignments').insert(classIds.map(classId=>({school_id:currentUser?.schoolId,teacher_id:teacherId,class_id:classId})));if(error)throw error}setUsers(p=>p.map(u=>u.id===teacherId?{...u,classIds,classNames:classIds.map(id=>classes.find(c=>c.id===id)?.name||'').filter(Boolean)}:u));showToast('Penugasan kelas guru berhasil diperbarui')}catch(e:any){showToast(e.message,'error')}};
  const addStudent=async(s:Omit<Student,'id'>)=>{try{const {data,error}=await supabase.from('students').insert({nisn:s.nisn.trim(),nama:s.nama.trim().toUpperCase(),gender:s.gender,class_id:s.classId||null,school_id:currentUser?.schoolId||null}).select('*, classes:class_id(name)').single();if(error)throw error;const ns=dbStudent({...data,class_name:data.classes?.name||''});setStudents(p=>[...p,ns]);if(currentUser?.role==='ADMIN'){try{await apiUser('create',{name:ns.nama,username:ns.nisn,password:ns.nisn,role:'SISWA',studentId:ns.id});showToast(`Data siswa ${ns.nama} dan akun siswa berhasil ditambahkan`)}catch(accountError:any){showToast(`Data siswa ${ns.nama} berhasil ditambahkan. Akun belum dibuat. (${accountError?.message||'Menunggu Admin'})`,'info')}}else showToast(`Data siswa ${ns.nama} berhasil ditambahkan.`)}catch(e:any){showToast(e.message,'error')}};
@@ -1478,6 +1531,6 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
    return {success:true,message:'Berhasil'};
   }catch(e:any){const message=e?.message||'Gagal mengganti password.';showToast(message,'error');return{success:false,message}}
  };
-    return <AppContext.Provider value={{logout,classes,addClass,updateClass,deleteClass,assignTeacherClasses,teachers,addTeacher,updateTeacher,deleteTeacher,subjects,addSubject,updateSubject,deleteSubject,currentUser,setCurrentUser,registrationRequired,setRegistrationRequired,passwordRecovery,setPasswordRecovery,activeView,setActiveView,userWorkspaces,activeWorkspace,isOnboarding,setIsOnboarding,isSelectingWorkspace,setIsSelectingWorkspace,selectWorkspace,openOnboarding,returnToWorkspaceSelector,loadUserDataAfterOnboarding,loadData,schoolProfile,updateSchoolProfile,systemConfig,updateSystemConfig,students,addStudent,updateStudent,deleteStudent,deleteStudentsByClass,importStudents,users,addUser,deleteUser,updateUser,syncUsersWithStudents,generateAccountsFromReferences,updateUserPassword,academicEvents,addAcademicEvent,deleteAcademicEvent,activeStudyDays,updateActiveStudyDays,effectiveDaysConfig,updateEffectiveDays,getBaseStudyDaysForMonth,getEffectiveDaysForMonth,getDateStatus,attendanceRecords,currentAttendanceDate,setCurrentAttendanceDate,saveDailyAttendance,getAttendanceForDate,submitStudentAttendance,changeOwnPassword,resetAllDataToProductionReady,toasts,showToast,removeToast,impersonateSchool,stopImpersonation,globalAnnouncement,updateGlobalAnnouncement}}>{children}</AppContext.Provider>;
+    return <AppContext.Provider value={{logout,classes,addClass,updateClass,deleteClass,assignTeacherClasses,importClasses,teachers,addTeacher,updateTeacher,deleteTeacher,importTeachers,subjects,addSubject,updateSubject,deleteSubject,currentUser,setCurrentUser,registrationRequired,setRegistrationRequired,passwordRecovery,setPasswordRecovery,activeView,setActiveView,userWorkspaces,activeWorkspace,isOnboarding,setIsOnboarding,isSelectingWorkspace,setIsSelectingWorkspace,selectWorkspace,openOnboarding,returnToWorkspaceSelector,loadUserDataAfterOnboarding,loadData,schoolProfile,updateSchoolProfile,systemConfig,updateSystemConfig,students,addStudent,updateStudent,deleteStudent,deleteStudentsByClass,importStudents,users,addUser,deleteUser,updateUser,syncUsersWithStudents,generateAccountsFromReferences,updateUserPassword,academicEvents,addAcademicEvent,deleteAcademicEvent,activeStudyDays,updateActiveStudyDays,effectiveDaysConfig,updateEffectiveDays,getBaseStudyDaysForMonth,getEffectiveDaysForMonth,getDateStatus,attendanceRecords,currentAttendanceDate,setCurrentAttendanceDate,saveDailyAttendance,getAttendanceForDate,submitStudentAttendance,changeOwnPassword,resetAllDataToProductionReady,toasts,showToast,removeToast,impersonateSchool,stopImpersonation,globalAnnouncement,updateGlobalAnnouncement}}>{children}</AppContext.Provider>;
 };
 export const useApp=()=>{const c=useContext(AppContext);if(!c)throw new Error('useApp must be used within an AppProvider');return c};

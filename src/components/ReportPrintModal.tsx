@@ -69,6 +69,115 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
     });
   }, [attendanceRecords, attendanceType, subjectId, classId]);
 
+  // Resolved teacher info (Name & NIP) from Master Data Guru / Class / Subject
+  const resolvedTeacherInfo = useMemo(() => {
+    let teacherName = '';
+    let teacherNip = '';
+
+    if (attendanceType === 'SUBJECT') {
+      const activeSubjectObj = subjects.find((s) => s.id === subjectId) || subjects.find((s) => s.name === subjectName);
+
+      // 1. Check if currentUser is the subject teacher
+      if (currentUser?.role === 'GURU MAPEL' || currentUser?.role === 'GURU') {
+        if (!subjectId || currentUser.subjectId === subjectId || (currentUser.subjectName && subjectName && currentUser.subjectName.toLowerCase() === subjectName.toLowerCase())) {
+          teacherName = currentUser.name;
+          teacherNip = currentUser.nip || '';
+        }
+      }
+
+      // 2. Look in teachers list by subject's teacherId or name
+      if (!teacherName && activeSubjectObj) {
+        if (activeSubjectObj.teacherId) {
+          const tMatch = teachers.find((t) => t.id === activeSubjectObj.teacherId);
+          if (tMatch) {
+            teacherName = tMatch.nama;
+            teacherNip = tMatch.nip || '';
+          }
+        }
+        if (!teacherName && activeSubjectObj.teacherName) {
+          const tMatch = teachers.find((t) => t.nama.trim().toLowerCase() === activeSubjectObj.teacherName?.trim().toLowerCase());
+          if (tMatch) {
+            teacherName = tMatch.nama;
+            teacherNip = tMatch.nip || '';
+          } else {
+            teacherName = activeSubjectObj.teacherName;
+          }
+        }
+      }
+
+      // 3. Look in teachers list by specialization / mataPelajaran / jabatan
+      if (!teacherName && subjectName) {
+        const tMatch = teachers.find((t) =>
+          (t.mataPelajaran && t.mataPelajaran.toLowerCase().includes(subjectName.toLowerCase())) ||
+          (t.jabatan && t.jabatan.toLowerCase().includes(subjectName.toLowerCase())) ||
+          (t.jenisPTK && t.jenisPTK.toLowerCase().includes(subjectName.toLowerCase())) ||
+          (t.specialization && t.specialization.toLowerCase().includes(subjectName.toLowerCase()))
+        );
+        if (tMatch) {
+          teacherName = tMatch.nama;
+          teacherNip = tMatch.nip || '';
+        }
+      }
+
+      // 4. Fallback to school profile or currentUser
+      if (!teacherName) {
+        teacherName = schoolProfile.namaWaliKelas || currentUser?.name || 'Guru Mata Pelajaran';
+        teacherNip = schoolProfile.nipWaliKelas || currentUser?.nip || '';
+      }
+      if (!teacherNip) {
+        const tMatch = teachers.find((t) => t.nama.trim().toLowerCase() === teacherName.trim().toLowerCase());
+        if (tMatch?.nip) teacherNip = tMatch.nip;
+      }
+    } else {
+      // DAILY / Wali Kelas
+      // 1. Try from currentClass
+      if (currentClass?.waliKelasId) {
+        const tMatch = teachers.find((t) => t.id === currentClass.waliKelasId);
+        if (tMatch) {
+          teacherName = tMatch.nama;
+          teacherNip = tMatch.nip || '';
+        }
+      }
+
+      if (!teacherName && currentClass?.waliKelasName) {
+        teacherName = currentClass.waliKelasName;
+        const tMatch = teachers.find((t) => t.nama.trim().toLowerCase() === currentClass.waliKelasName?.trim().toLowerCase());
+        if (tMatch?.nip) {
+          teacherNip = tMatch.nip;
+        }
+      }
+
+      // 2. If currentUser is Wali Kelas and assigned
+      if (!teacherName && (currentUser?.role === 'WALI KELAS' || currentUser?.role === 'GURU')) {
+        if (!classId || (currentUser.classIds && currentUser.classIds.includes(classId))) {
+          teacherName = currentUser.name;
+          teacherNip = currentUser.nip || '';
+        }
+      }
+
+      // 3. Fallback to schoolProfile.namaWaliKelas
+      if (!teacherName) {
+        teacherName = schoolProfile.namaWaliKelas || currentUser?.name || 'Wali Kelas';
+      }
+
+      if (!teacherNip) {
+        const tMatch = teachers.find((t) => t.nama.trim().toLowerCase() === teacherName.trim().toLowerCase());
+        if (tMatch?.nip) {
+          teacherNip = tMatch.nip;
+        } else {
+          teacherNip = currentClass?.waliKelasNip || currentUser?.nip || schoolProfile.nipWaliKelas || '';
+        }
+      }
+    }
+
+    const cleanNip = teacherNip && teacherNip.trim() !== '' && teacherNip.trim() !== '-' ? teacherNip.trim() : (schoolProfile.nipWaliKelas || '-');
+
+    return {
+      name: teacherName,
+      nip: cleanNip,
+    };
+  }, [attendanceType, subjectId, subjectName, subjects, teachers, currentUser, currentClass, classId, schoolProfile]);
+
   // Format date display for signature & headers
   const formatReportDateIndo = (dateStr: string) => {
     try {
@@ -1041,18 +1150,10 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
               </p>
               <div className="h-14 sm:h-20" />
               <p className="font-bold underline text-sm uppercase">
-                {attendanceType === 'SUBJECT'
-                  ? (currentUser?.role === 'GURU' && currentUser.subjectId
-                      ? currentUser.name
-                      : teachers.find((t) => t.specialization?.toLowerCase().includes((subjectName || '').toLowerCase()))?.name || schoolProfile.namaWaliKelas)
-                  : (currentClass?.waliKelasName || (currentUser?.role === 'GURU' && currentUser.classIds?.length ? currentUser.name : schoolProfile.namaWaliKelas))}
+                {resolvedTeacherInfo.name}
               </p>
               <p className="text-slate-600 font-mono">
-                {attendanceType === 'SUBJECT'
-                  ? (currentUser?.role === 'GURU' && currentUser.subjectId
-                      ? `NIP. ${currentUser.nip || schoolProfile.nipWaliKelas || '-'}`
-                      : `NIP. ${schoolProfile.nipWaliKelas || '-'}`)
-                  : (currentClass?.waliKelasNip ? `NIP. ${currentClass.waliKelasNip}` : `NIP. ${currentUser?.nip || schoolProfile.nipWaliKelas}`)}
+                {resolvedTeacherInfo.nip && resolvedTeacherInfo.nip !== '-' ? `NIP. ${resolvedTeacherInfo.nip}` : 'NIP. -'}
               </p>
             </div>
           </div>

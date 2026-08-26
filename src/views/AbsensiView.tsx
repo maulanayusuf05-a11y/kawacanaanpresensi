@@ -241,7 +241,7 @@ export const AbsensiView: React.FC = () => {
         ...r,
         status: 'Hadir',
         checkInTime: systemConfig.defaultCheckInTime,
-        checkOutTime: attendanceMode === 'DAILY' ? systemConfig.defaultCheckOutTime : r.checkOutTime,
+        checkOutTime: r.checkOutTime || '',
       }))
     );
     showToast('Semua siswa diatur ke status Hadir');

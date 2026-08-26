@@ -376,37 +376,10 @@ export const DashboardView: React.FC = () => {
 
         {/* Lencana dan Status di Sebelah Kanan (Sejajar) */}
         <div className="flex flex-wrap items-center md:justify-end gap-2 shrink-0">
-          {/* Lencana Kode Undangan Sekolah (Bila Ruang Kerja Sekolah) */}
-          {!isPersonalWorkspace && currentUser?.role !== 'SUPER_ADMIN' && (
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-xs shrink-0 font-mono">
-              <Key size={13} className="text-amber-700 shrink-0" />
-              <span>Kode: {cleanInvitationCode}</span>
-              <button
-                type="button"
-                onClick={handleCopyInvitationCode}
-                title="Salin Kode Undangan"
-                className="text-amber-700 hover:text-amber-950 p-0.5 cursor-pointer ml-0.5"
-              >
-                {copiedCode ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
-              </button>
-            </div>
-          )}
-
           {!isPersonalWorkspace && (
             <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
               {userScope.roleBadgeLabel}
             </span>
-          )}
-
-          {/* Lencana Gabungan Masa Berlaku & Paket Layanan dari Superadmin */}
-          {currentUser?.role !== 'SUPER_ADMIN' && (
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-gradient-to-r from-indigo-50 via-blue-50 to-indigo-50 text-indigo-900 border border-indigo-200 shadow-xs shrink-0">
-              <Sparkles size={13} className="text-indigo-600 shrink-0" />
-              <span>
-                {packageInfo.planName}
-                {packageInfo.expiryFormatted ? ` (s.d. ${packageInfo.expiryFormatted})` : ''}
-              </span>
-            </div>
           )}
         </div>
       </div>

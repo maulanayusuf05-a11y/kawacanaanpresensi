@@ -16,10 +16,24 @@ import {
   UserX,
   UserCheck,
   CheckCircle2,
-  ShieldCheck
+  ShieldCheck,
+  FileSpreadsheet,
+  UploadCloud,
+  FileText,
+  Download,
+  Check,
+  AlertCircle
 } from 'lucide-react';
 import { validateTeacherRoleAssignment } from '../utils/packageSystem';
 import { getFaseByClassName, getFaseByGrade, getFaseBadgeColor, getGradeFromClassName, formatClassDisplay } from '../utils/faseKurikulum';
+
+interface ParsedClassItem {
+  name: string;
+  grade: number;
+  waliKelasNameInput?: string;
+  isValid: boolean;
+  error?: string;
+}
 
 export const DataKelasView: React.FC = () => {
   const {
@@ -33,6 +47,7 @@ export const DataKelasView: React.FC = () => {
     addClass,
     updateClass,
     deleteClass,
+    importClasses,
     deleteStudentsByClass,
     deleteStudent,
     updateStudent,
@@ -126,6 +141,14 @@ export const DataKelasView: React.FC = () => {
 
   // Delete All Students in Class Confirmation Modal
   const [purgeClassModal, setPurgeClassModal] = useState<SchoolClass | null>(null);
+
+  // Import Kelas Modal State
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importTab, setImportTab] = useState<'upload' | 'paste'>('upload');
+  const [importMode, setImportMode] = useState<'append' | 'replace'>('append');
+  const [fileName, setFileName] = useState('');
+  const [pasteText, setPasteText] = useState('');
+  const [parsedClasses, setParsedClasses] = useState<ParsedClassItem[]>([]);
 
   // Calon wali kelas bersumber dari master Data Guru (teachers)
   // Dilengkapi pemetaan akun jika guru sudah terhubung dengan user profile
@@ -278,18 +301,38 @@ export const DataKelasView: React.FC = () => {
     const matchNumber = name.match(/\d+/);
     const autoGrade = matchNumber ? parseInt(matchNumber[0], 10) : 1;
 
-    const payload = {
-      name: name.trim(),
-      grade: autoGrade,
-      academicYear: editing ? editing.academicYear : '',
-      waliKelasId: waliKelasId || null,
-    };
-    if (editing) await updateClass(editing.id, payload);
-    else await addClass(payload);
+    // Cari nama wali kelas dari waliCandidates
+    const selectedCandidate = waliCandidates.find((w) => w.id === waliKelasId);
+    const resolvedWaliName = selectedCandidate ? selectedCandidate.name : null;
+
+    if (editing) {
+      await updateClass(editing.id, {
+        name: name.trim(),
+        grade: grade || autoGrade,
+        academicYear: schoolProfile?.tahunPelajaran || editing.academicYear,
+        waliKelasId: waliKelasId || null,
+        waliKelasName: resolvedWaliName || editing.waliKelasName || null,
+      });
+      showToast('Data rombongan belajar berhasil diperbarui', 'success');
+    } else {
+      await addClass({
+        name: name.trim(),
+        grade: grade || autoGrade,
+        academicYear: schoolProfile?.tahunPelajaran || '2025/2026',
+        waliKelasId: waliKelasId || null,
+        waliKelasName: resolvedWaliName || null,
+      });
+      showToast('Rombongan belajar baru berhasil ditambahkan', 'success');
+    }
     setOpen(false);
   };
 
-  const handleSaveQuickWali = async (e: React.FormEvent) => {
+  const openQuickWaliModal = (c: SchoolClass) => {
+    setAssignWaliModal(c);
+    setQuickWaliId(c.waliKelasId || '');
+  };
+
+  const saveQuickWali = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!assignWaliModal) return;
 
@@ -307,12 +350,15 @@ export const DataKelasView: React.FC = () => {
       }
     }
 
+    const selectedCandidate = waliCandidates.find((w) => w.id === quickWaliId);
+    const resolvedWaliName = selectedCandidate ? selectedCandidate.name : null;
+
     await updateClass(assignWaliModal.id, {
-      name: assignWaliModal.name,
-      grade: assignWaliModal.grade,
-      academicYear: assignWaliModal.academicYear,
+      ...assignWaliModal,
       waliKelasId: quickWaliId || null,
+      waliKelasName: resolvedWaliName,
     });
+    showToast(`Wali kelas untuk ${assignWaliModal.name} berhasil diperbarui`, 'success');
     setAssignWaliModal(null);
   };
 
@@ -337,6 +383,148 @@ export const DataKelasView: React.FC = () => {
     });
     showToast(`Siswa ${student.nama} dikeluarkan dari kelas`, 'info');
   };
+
+  // Download Template CSV Kelas
+  const handleDownloadTemplate = () => {
+    const header = 'NAMA KELAS,TINGKAT KELAS,NAMA WALI KELAS\n';
+    const sampleRows = [
+      'Kelas 1A,1,Budi Santoso, S.Pd.',
+      'Kelas 1B,1,Siti Aminah, M.Pd.',
+      'Kelas 2A,2,Rahmat Hidayat, S.Pd.',
+      'Kelas 3A,3,Dewi Lestari, S.Pd.',
+      'Kelas 4A,4,',
+      'Kelas 5A,5,',
+      'Kelas 6A,6,',
+    ].join('\n');
+
+    const csvContent = '\uFEFF' + header + sampleRows;
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'Template_Import_Data_Kelas.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    showToast('Template file CSV Kelas berhasil diunduh. Silakan isi dan unggah kembali.', 'success');
+  };
+
+  // Parser helper function for CSV / TSV text for Classes
+  const parseRawTextToClasses = (text: string): ParsedClassItem[] => {
+    if (!text.trim()) return [];
+
+    const lines = text
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+
+    if (lines.length === 0) return [];
+
+    const results: ParsedClassItem[] = [];
+
+    const firstLineLower = lines[0].toLowerCase();
+    const hasHeader =
+      firstLineLower.includes('kelas') ||
+      firstLineLower.includes('tingkat') ||
+      firstLineLower.includes('grade') ||
+      firstLineLower.includes('wali') ||
+      firstLineLower.includes('rombel');
+
+    const dataLines = hasHeader ? lines.slice(1) : lines;
+
+    dataLines.forEach((line) => {
+      let tokens: string[] = [];
+      if (line.includes('\t')) {
+        tokens = line.split('\t');
+      } else if (line.includes(';')) {
+        tokens = line.split(';');
+      } else {
+        tokens = line.split(',');
+      }
+
+      tokens = tokens.map((t) => t.trim().replace(/^["']|["']$/g, ''));
+
+      if (tokens.length >= 1 && tokens[0]) {
+        const rawName = tokens[0] || '';
+        const rawGrade = tokens[1] || '';
+        const rawWali = tokens[2] || '';
+
+        // Auto determine grade
+        let gradeNum = 1;
+        const parsedGrade = parseInt(rawGrade, 10);
+        if (!isNaN(parsedGrade) && parsedGrade >= 1 && parsedGrade <= 12) {
+          gradeNum = parsedGrade;
+        } else {
+          const matchNum = rawName.match(/\d+/);
+          if (matchNum) {
+            gradeNum = parseInt(matchNum[0], 10);
+          }
+        }
+
+        const isValid = rawName.trim().length > 0;
+        let error = undefined;
+        if (!rawName.trim()) error = 'Nama kelas kosong';
+
+        results.push({
+          name: rawName.trim(),
+          grade: gradeNum,
+          waliKelasNameInput: rawWali.trim() || undefined,
+          isValid,
+          error,
+        });
+      }
+    });
+
+    return results;
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      const parsed = parseRawTextToClasses(content);
+      setParsedClasses(parsed);
+      if (parsed.length === 0) {
+        showToast('Tidak ada data kelas yang dapat dibaca dari file ini', 'error');
+      } else {
+        showToast(`Berhasil membaca ${parsed.length} baris data kelas dari ${file.name}`);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handlePasteChange = (text: string) => {
+    setPasteText(text);
+    const parsed = parseRawTextToClasses(text);
+    setParsedClasses(parsed);
+  };
+
+  const handleExecuteImport = async () => {
+    const validOnes = parsedClasses.filter((p) => p.isValid);
+    if (validOnes.length === 0) {
+      showToast('Tidak ada data kelas yang valid untuk diimpor', 'error');
+      return;
+    }
+
+    const payload = validOnes.map((c) => ({
+      name: c.name,
+      grade: c.grade,
+      waliKelasNameInput: c.waliKelasNameInput,
+    }));
+
+    await importClasses(payload, importMode === 'replace');
+    setIsImportModalOpen(false);
+    setParsedClasses([]);
+    setPasteText('');
+    setFileName('');
+  };
+
+  const validCount = parsedClasses.filter((p) => p.isValid).length;
 
   return (
     <div className="w-full space-y-6 animate-in fade-in duration-200">
@@ -374,15 +562,34 @@ export const DataKelasView: React.FC = () => {
               )}
             </div>
           </div>
-          {canAddClass && (
-            <button
-              onClick={openAdd}
-              id="btn-tambah-kelas"
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md shadow-blue-600/20 transition-all cursor-pointer"
-            >
-              <Plus size={16} /> Tambah Kelas
-            </button>
-          )}
+
+          <div className="flex items-center gap-2">
+            {canAddClass && !isPersonalWorkspace && (
+              <button
+                onClick={() => {
+                  setParsedClasses([]);
+                  setPasteText('');
+                  setFileName('');
+                  setIsImportModalOpen(true);
+                }}
+                id="btn-import-kelas-modal"
+                className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer"
+              >
+                <FileSpreadsheet size={15} />
+                <span>Import Kelas</span>
+              </button>
+            )}
+
+            {canAddClass && (
+              <button
+                onClick={openAdd}
+                id="btn-tambah-kelas"
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md shadow-blue-600/20 transition-all cursor-pointer"
+              >
+                <Plus size={16} /> Tambah Kelas
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Filter & Search Bar */}
@@ -448,120 +655,105 @@ export const DataKelasView: React.FC = () => {
                   const effectiveWaliName = matchedTeacher
                     ? matchedTeacher.nama
                     : isPersonalWorkspace
-                    ? (currentUser?.name && (c.waliKelasId === currentUser.id || c.waliKelasName === currentUser.name) ? currentUser.name : null)
-                    : c.waliKelasName || null;
+                    ? currentUser?.name || 'Pendidik Mandiri'
+                    : c.waliKelasName || 'Belum Ditugaskan';
+
+                  const fase = getFaseByClassName(c.name, c.grade);
+                  const faseBadgeClass = getFaseBadgeColor(fase);
 
                   return (
                     <tr key={c.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-3.5 px-4 text-center font-bold text-slate-400">
+                      <td className="py-3.5 px-4 text-center text-slate-400 font-semibold">
                         {startIndex + idx + 1}
                       </td>
-                      <td className="py-3.5 px-4 font-semibold text-slate-800">
+                      <td className="py-3.5 px-4">
                         <div className="flex items-center gap-2">
-                          {effectiveWaliName ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold text-[11px]">
-                              <UserCheck size={13} className="text-emerald-600" />
-                              {effectiveWaliName}
-                            </span>
-                          ) : (
-                            <span className="text-slate-400 italic text-[11px]">Belum ditentukan</span>
-                          )}
+                          <span
+                            className={`font-bold ${
+                              effectiveWaliName === 'Belum Ditugaskan'
+                                ? 'text-slate-400 italic'
+                                : 'text-slate-900'
+                            }`}
+                          >
+                            {effectiveWaliName}
+                          </span>
                           {isAdmin && (
                             <button
                               type="button"
-                              onClick={() => {
-                                setAssignWaliModal(c);
-                                setQuickWaliId(c.waliKelasId || '');
-                              }}
-                              className="px-2 py-0.5 rounded text-[10px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 transition cursor-pointer"
-                              title="Tentukan / ganti wali kelas"
+                              onClick={() => openQuickWaliModal(c)}
+                              className="p-1 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                              title="Ganti / Tetapkan Wali Kelas"
                             >
-                              {c.waliKelasId ? 'Ganti' : '+ Wali'}
+                              <Edit2 size={12} />
                             </button>
                           )}
                         </div>
                       </td>
-                      <td className="py-3.5 px-4 font-black text-slate-900 text-sm">
+                      <td className="py-3.5 px-4">
                         <div className="flex items-center gap-2">
-                          <span>{c.name}</span>
+                          <span className="font-extrabold text-blue-700 text-sm">
+                            {formatClassDisplay(c.name, c.grade)}
+                          </span>
                           <span
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black border ${
-                              getFaseBadgeColor(getFaseByClassName(c.name, c.grade)).bg
-                            }`}
+                            className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${faseBadgeClass}`}
                           >
-                            <span
-                              className={`w-1.5 h-1.5 rounded-full ${
-                                getFaseBadgeColor(getFaseByClassName(c.name, c.grade)).dot
-                              }`}
-                            />
-                            {getFaseByClassName(c.name, c.grade)}
+                            {fase}
                           </span>
                         </div>
                       </td>
-                      <td className="py-3.5 px-4 text-center font-bold text-blue-700 bg-blue-50/30">
-                        <span className="inline-block px-2.5 py-0.5 rounded-full bg-blue-100/80 text-blue-800 text-xs">
-                          {countL} L
-                        </span>
+                      <td className="py-3.5 px-4 text-center font-bold text-blue-600 bg-blue-50/20">
+                        {countL}
                       </td>
-                      <td className="py-3.5 px-4 text-center font-bold text-pink-700 bg-pink-50/30">
-                        <span className="inline-block px-2.5 py-0.5 rounded-full bg-pink-100/80 text-pink-800 text-xs">
-                          {countP} P
-                        </span>
+                      <td className="py-3.5 px-4 text-center font-bold text-pink-600 bg-pink-50/20">
+                        {countP}
                       </td>
-                      <td className="py-3.5 px-4 text-center">
-                        <button
-                          onClick={() => {
-                            setViewingClass(c);
-                            setStudentSearchTerm('');
-                          }}
-                          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-black text-xs border border-emerald-200 transition-colors cursor-pointer"
-                          title="Klik untuk melihat daftar siswa di kelas ini"
-                        >
-                          <Users size={13} />
-                          <span>{totalCount} Siswa</span>
-                          <Eye size={12} className="ml-0.5 text-emerald-600" />
-                        </button>
+                      <td className="py-3.5 px-4 text-center font-extrabold text-slate-900">
+                        <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-lg bg-slate-100 font-black">
+                          {totalCount}
+                        </span>
                       </td>
                       <td className="py-3.5 px-4 text-center">
                         <div className="flex items-center justify-center gap-1.5">
                           <button
+                            type="button"
                             onClick={() => {
                               setViewingClass(c);
                               setStudentSearchTerm('');
                             }}
                             className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
-                            title="Tampilkan Siswa dalam Kelas Ini"
+                            title="Lihat Data Siswa di Kelas Ini"
                           >
-                            <Users size={15} />
+                            <Eye size={15} />
                           </button>
-                          {canManageKelas && (
-                            <>
-                              <button
-                                onClick={() => openEdit(c)}
-                                className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                                title="Edit Data Kelas"
-                              >
-                                <Edit2 size={15} />
-                              </button>
-                              {canDeleteClass && totalCount > 0 && (
-                                <button
-                                  onClick={() => setPurgeClassModal(c)}
-                                  className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
-                                  title="Hapus Semua Siswa dalam Kelas Ini"
-                                >
-                                  <UserX size={15} />
-                                </button>
-                              )}
-                              {canDeleteClass && (
-                                <button
-                                  onClick={() => setDeleting(c)}
-                                  className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                                  title="Hapus Kelas"
-                                >
-                                  <Trash2 size={15} />
-                                </button>
-                              )}
-                            </>
+                          {canEditClass && (
+                            <button
+                              type="button"
+                              onClick={() => openEdit(c)}
+                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                              title="Edit Rombel"
+                            >
+                              <Edit2 size={15} />
+                            </button>
+                          )}
+                          {isAdmin && totalCount > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setPurgeClassModal(c)}
+                              className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                              title="Hapus Semua Siswa di Kelas Ini"
+                            >
+                              <UserX size={15} />
+                            </button>
+                          )}
+                          {canDeleteClass && (
+                            <button
+                              type="button"
+                              onClick={() => setDeleting(c)}
+                              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              title="Hapus Kelas"
+                            >
+                              <Trash2 size={15} />
+                            </button>
                           )}
                         </div>
                       </td>
@@ -571,9 +763,7 @@ export const DataKelasView: React.FC = () => {
               ) : (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-slate-400">
-                    {searchTerm
-                      ? 'Tidak ditemukan kelas yang cocok dengan pencarian.'
-                      : 'Belum ada kelas. Klik tombol Tambah Kelas untuk mulai.'}
+                    {searchTerm ? 'Tidak ada kelas yang cocok dengan pencarian.' : 'Belum ada data rombongan belajar.'}
                   </td>
                 </tr>
               )}
@@ -581,93 +771,413 @@ export const DataKelasView: React.FC = () => {
           </table>
         </div>
 
-        {/* Pagination Controls */}
+        {/* Pagination Bar */}
         {totalPages > 1 && (
           <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs text-slate-500">
             <div>
-              Menampilkan {startIndex + 1} - {Math.min(startIndex + pageSize, filteredClasses.length)} dari {filteredClasses.length} kelas
+              Menampilkan {startIndex + 1} s.d {Math.min(startIndex + pageSize, filteredClasses.length)} dari {filteredClasses.length} kelas
             </div>
             <div className="flex items-center gap-1">
               <button
+                type="button"
                 disabled={currentPage === 1}
-                onClick={() => setCurrentPage((p) => p - 1)}
-                className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-30 cursor-pointer"
               >
-                <ChevronLeft size={14} />
+                <ChevronLeft size={16} />
               </button>
-              <span className="px-3 py-1 font-bold text-slate-700">
-                Hal {currentPage} / {totalPages}
+              <span className="px-3 font-bold text-slate-800">
+                {currentPage} / {totalPages}
               </span>
               <button
+                type="button"
                 disabled={currentPage === totalPages}
-                onClick={() => setCurrentPage((p) => p + 1)}
-                className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                className="p-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-30 cursor-pointer"
               >
-                <ChevronRight size={14} />
+                <ChevronRight size={16} />
               </button>
             </div>
           </div>
         )}
       </div>
 
-      {/* Modal: Tentukan Wali Kelas Cepat */}
-      {assignWaliModal && (
+      {/* Modal Import Data Kelas (Ruang Kerja Sekolah) */}
+      {isImportModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 text-slate-800">
-            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 text-slate-800 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100 shrink-0">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-                  <UserCheck size={18} />
+                <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                  <FileSpreadsheet size={18} />
                 </div>
-                <h3 className="font-black text-slate-900 text-sm">
-                  Tentukan Wali Kelas ({assignWaliModal.name})
-                </h3>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">Import Data Rombongan Belajar (Kelas)</h3>
+                  <p className="text-xs text-slate-500">Unggah file CSV/Excel atau tempel teks daftar rombel kelas</p>
+                </div>
               </div>
               <button
-                onClick={() => setAssignWaliModal(null)}
+                onClick={() => setIsImportModalOpen(false)}
                 className="text-slate-400 hover:text-slate-700 cursor-pointer"
               >
-                <X size={17} />
+                <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleSaveQuickWali} className="space-y-4 pt-4 text-xs">
-              <div className="p-3 bg-blue-50/60 border border-blue-100 rounded-xl text-blue-900 space-y-1">
-                <p className="font-bold">Kelas: {assignWaliModal.name}</p>
-                <p className="text-[11px] text-blue-700">
-                  Wali kelas memiliki wewenang untuk mengisi absensi harian dan rekap kehadiran siswa di kelas ini.
-                </p>
+            <div className="space-y-4 py-4 overflow-y-auto flex-1 pr-1">
+              {/* Step 1: Download Template */}
+              <div className="p-3.5 bg-emerald-50/50 rounded-2xl border border-emerald-100 flex items-center justify-between gap-3">
+                <div>
+                  <h4 className="font-extrabold text-xs text-emerald-950">Gunakan Template Standar Kelas</h4>
+                  <p className="text-[11px] text-emerald-800 mt-0.5">
+                    Format: <strong>NAMA KELAS, TINGKAT KELAS (1-12), NAMA WALI KELAS</strong>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleDownloadTemplate}
+                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 shrink-0 cursor-pointer"
+                >
+                  <Download size={13} />
+                  <span>Unduh Template CSV</span>
+                </button>
+              </div>
+
+              {/* Step 2: Tab Selector (Upload File vs Tempel Teks) */}
+              <div>
+                <label className="block text-[11px] font-extrabold text-slate-700 uppercase tracking-wider mb-2">
+                  Metode Input Data Kelas
+                </label>
+                <div className="flex rounded-xl bg-slate-100 p-1 border border-slate-200 text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setImportTab('upload')}
+                    className={`flex-1 py-2 rounded-lg flex items-center justify-center gap-2 transition cursor-pointer ${
+                      importTab === 'upload' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <UploadCloud size={14} />
+                    <span>Unggah File (.csv / .txt)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setImportTab('paste')}
+                    className={`flex-1 py-2 rounded-lg flex items-center justify-center gap-2 transition cursor-pointer ${
+                      importTab === 'paste' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <FileText size={14} />
+                    <span>Tempel Data (Salin dari Excel)</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Upload File Body */}
+              {importTab === 'upload' ? (
+                <div>
+                  <label className="border-2 border-dashed border-slate-200 hover:border-blue-500 rounded-2xl p-6 flex flex-col items-center justify-center gap-2 cursor-pointer bg-slate-50 hover:bg-blue-50/20 transition-all">
+                    <UploadCloud size={28} className="text-slate-400" />
+                    <span className="text-xs font-extrabold text-slate-700">
+                      {fileName ? `File terpilih: ${fileName}` : 'Klik untuk memilih file CSV / TXT'}
+                    </span>
+                    <span className="text-[11px] text-slate-400">Mendukung format file dengan pemisah koma, titik koma, atau tab</span>
+                    <input
+                      type="file"
+                      accept=".csv, .txt, text/csv, text/plain"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              ) : (
+                <div>
+                  <textarea
+                    rows={4}
+                    value={pasteText}
+                    onChange={(e) => handlePasteChange(e.target.value)}
+                    placeholder="Tempel data kelas dari spreadsheet Excel di sini...&#10;Contoh:&#10;Kelas 1A&#9;1&#9;Budi Santoso, S.Pd.&#10;Kelas 1B&#9;1&#9;Siti Aminah, M.Pd.&#10;Kelas 2A&#9;2&#9;Rahmat Hidayat, S.Pd."
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-500/10"
+                  />
+                </div>
+              )}
+
+              {/* Data Preview Table */}
+              {parsedClasses.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider">
+                      Pratinjau Data ({parsedClasses.length} Kelas Terdeteksi)
+                    </label>
+                    <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                      {validCount} Kelas Valid
+                    </span>
+                  </div>
+
+                  <div className="max-h-48 overflow-y-auto border border-slate-200 rounded-xl">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead className="bg-slate-50 sticky top-0 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase">
+                        <tr>
+                          <th className="p-2 w-8">#</th>
+                          <th className="p-2">Nama Kelas</th>
+                          <th className="p-2 text-center w-20">Tingkat</th>
+                          <th className="p-2">Calon Wali Kelas</th>
+                          <th className="p-2 text-center w-20">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {parsedClasses.map((item, i) => (
+                          <tr key={i} className={item.isValid ? 'hover:bg-slate-50' : 'bg-rose-50/40'}>
+                            <td className="p-2 text-slate-400 font-mono text-[11px]">{i + 1}</td>
+                            <td className="p-2 font-bold text-slate-800">{item.name}</td>
+                            <td className="p-2 text-center font-bold text-blue-700">Tingkat {item.grade}</td>
+                            <td className="p-2 text-slate-600 font-medium">
+                              {item.waliKelasNameInput || <span className="text-slate-400 italic">Belum ditentukan</span>}
+                            </td>
+                            <td className="p-2 text-center">
+                              {item.isValid ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                  <Check size={10} /> Valid
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
+                                  {item.error || 'Error'}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 3: Import Mode Option */}
+              <div className="space-y-2 pt-2 border-t border-slate-100">
+                <label className="block text-[11px] font-extrabold text-slate-700 uppercase tracking-wider">
+                  Opsi Penempatan Data Kelas
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <label
+                    className={`flex items-start gap-2.5 p-3 rounded-2xl border cursor-pointer transition-all ${
+                      importMode === 'append'
+                        ? 'bg-blue-50/70 border-blue-500 ring-2 ring-blue-500/20 text-slate-900'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="classImportMode"
+                      checked={importMode === 'append'}
+                      onChange={() => setImportMode('append')}
+                      className="mt-0.5"
+                    />
+                    <div>
+                      <p className="font-extrabold text-xs text-slate-900">
+                        Tambahkan ke Data Kelas Saat Ini
+                      </p>
+                      <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                        Menyisipkan rombel baru tanpa menghapus daftar kelas yang sudah ada.
+                      </p>
+                    </div>
+                  </label>
+
+                  <label
+                    className={`flex items-start gap-2.5 p-3 rounded-2xl border cursor-pointer transition-all ${
+                      importMode === 'replace'
+                        ? 'bg-blue-50/70 border-blue-500 ring-2 ring-blue-500/20 text-slate-900'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="classImportMode"
+                      checked={importMode === 'replace'}
+                      onChange={() => setImportMode('replace')}
+                      className="mt-0.5"
+                    />
+                    <div>
+                      <p className="font-extrabold text-xs text-slate-900">
+                        Gantikan Seluruh Data Kelas
+                      </p>
+                      <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                        Menghapus data kelas lama dan mengisi dengan daftar rombel yang baru diimpor.
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer Modal Actions */}
+            <div className="flex items-center justify-between pt-4 border-t border-slate-100 shrink-0">
+              <span className="text-xs font-semibold text-slate-500">
+                {validCount > 0 ? `${validCount} kelas siap diproses` : 'Pilih file/tempel data untuk mulai'}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsImportModalOpen(false)}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  disabled={validCount === 0}
+                  onClick={handleExecuteImport}
+                  className="px-5 py-2.5 text-xs font-extrabold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Check size={14} />
+                  <span>Proses Import ({validCount} Kelas)</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Add / Edit Single Class */}
+      {open && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 text-slate-800 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h3 className="font-black text-slate-900 text-base">
+                {editing ? 'Edit Rombongan Belajar' : 'Tambah Rombel Kelas Baru'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={save} className="space-y-4 pt-3 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Nama Rombel / Kelas *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: Kelas 1A, Kelas 6B, dll."
+                  value={name}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    const matchNumber = e.target.value.match(/\d+/);
+                    if (matchNumber) {
+                      setGrade(parseInt(matchNumber[0], 10));
+                    }
+                  }}
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:bg-white focus:border-blue-600 outline-none"
+                />
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">
-                  PILIH WALI KELAS (DARI DATA GURU)
-                </label>
+                <label className="block font-bold text-slate-700 mb-1">Tingkat Kelas (Grade)</label>
                 <select
-                  value={quickWaliId}
-                  onChange={(e) => setQuickWaliId(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-bold text-slate-900 focus:border-blue-600 focus:bg-white outline-none transition-all cursor-pointer"
+                  value={grade}
+                  onChange={(e) => setGrade(Number(e.target.value))}
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:border-blue-600 outline-none cursor-pointer"
                 >
-                  <option value="">-- Kosongkan / Belum Ditentukan --</option>
-                  {waliCandidates.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name} {u.assignedClassName ? `(Saat ini Wali di: ${u.assignedClassName})` : '(Tersedia)'}
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((g) => (
+                    <option key={g} value={g}>
+                      Tingkat {g} ({getFaseByGrade(g)})
                     </option>
                   ))}
                 </select>
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+              {!isPersonalWorkspace && (
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Wali Kelas Penanggung Jawab</label>
+                  <select
+                    value={waliKelasId}
+                    onChange={(e) => setWaliKelasId(e.target.value)}
+                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:border-blue-600 outline-none cursor-pointer"
+                  >
+                    <option value="">-- Belum Ditugaskan --</option>
+                    {waliCandidates.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.name} ({w.role}) {w.assignedClassName ? `• Saat ini di ${w.assignedClassName}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Daftar wali kelas diambil dari data Pendidik (Data Guru) & Akun Terdaftar.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setAssignWaliModal(null)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                  onClick={() => setOpen(false)}
+                  className="px-4 py-2 text-slate-600 font-bold hover:bg-slate-100 rounded-xl cursor-pointer"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md transition-all cursor-pointer"
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md transition-all cursor-pointer"
+                >
+                  Simpan Rombel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Quick Assign Wali Kelas */}
+      {assignWaliModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 text-slate-800 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h3 className="font-black text-slate-900 text-base">
+                Tetapkan Wali Kelas untuk {assignWaliModal.name}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setAssignWaliModal(null)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={saveQuickWali} className="space-y-4 pt-3 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Pilih Pendidik (Wali Kelas)</label>
+                <select
+                  value={quickWaliId}
+                  onChange={(e) => setQuickWaliId(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:border-blue-600 outline-none cursor-pointer"
+                >
+                  <option value="">-- Kosongkan / Lepas Penugasan --</option>
+                  {waliCandidates.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name} ({w.role}) {w.assignedClassName ? `• Saat ini di ${w.assignedClassName}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="p-3 bg-blue-50 rounded-xl text-[11px] text-blue-800 leading-relaxed">
+                Guru yang dipilih akan secara otomatis terhubung dengan cetak laporan, rekap kehadiran, dan administrasi kelas <strong>{assignWaliModal.name}</strong>.
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setAssignWaliModal(null)}
+                  className="px-4 py-2 text-slate-600 font-bold hover:bg-slate-100 rounded-xl cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md transition-all cursor-pointer"
                 >
                   Simpan Penugasan
                 </button>
@@ -677,123 +1187,31 @@ export const DataKelasView: React.FC = () => {
         </div>
       )}
 
-      {/* Modal: Tambah / Edit Kelas (Hanya 2 Form: Wali Kelas & Nama Kelas) */}
-      {open && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 text-slate-800">
-            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
-              <h3 className="font-black text-slate-900 text-sm">
-                {editing ? 'Edit Data Kelas' : 'Tambah Rombongan Belajar Baru'}
-              </h3>
-              <button
-                onClick={() => setOpen(false)}
-                className="text-slate-400 hover:text-slate-700 cursor-pointer"
-              >
-                <X size={17} />
-              </button>
-            </div>
-            <form onSubmit={save} className="space-y-4 pt-4">
-              {/* Form Pertama: Wali Kelas (Diambil dari sumber Data Guru) */}
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">
-                  1. WALI KELAS
-                </label>
-                <select
-                  value={waliKelasId}
-                  onChange={(e) => setWaliKelasId(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-bold text-slate-900 focus:border-blue-600 focus:bg-white outline-none transition-all cursor-pointer"
-                >
-                  <option value="">-- Pilih Wali Kelas (Belum Ditentukan) --</option>
-                  {waliCandidates.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name} {u.assignedClassName && u.assignedClassName !== editing?.name ? `(Wali di: ${u.assignedClassName})` : ''}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[10px] text-slate-400 mt-1">
-                  Data diambil dari referensi Master Data Guru.
-                </p>
-              </div>
-
-              {/* Form Kedua: Kelas */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                    2. KELAS
-                  </label>
-                  {name.trim() && (
-                    <span
-                      className={`text-[10px] font-black px-2 py-0.5 rounded-md border ${
-                        getFaseBadgeColor(getFaseByClassName(name)).bg
-                      }`}
-                    >
-                      {getFaseBadgeColor(getFaseByClassName(name)).label}
-                    </span>
-                  )}
-                </div>
-                <input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Contoh: Kelas 1A"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-900 focus:border-blue-600 focus:bg-white outline-none transition-all"
-                  required
-                />
-                <p className="text-[10px] text-slate-400 mt-1">
-                  Tulis nama kelas lengkap (contoh: <strong>Kelas 1A</strong>, <strong>Kelas 2B</strong>, <strong>Kelas 6</strong>). Sistem otomatis menentukan Fase A (Kelas 1-2), Fase B (Kelas 3-4), atau Fase C (Kelas 5-6).
-                </p>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md transition-all cursor-pointer"
-                >
-                  Simpan Kelas
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: View Siswa Dalam Kelas */}
+      {/* Modal: View Students in Class */}
       {viewingClass && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 text-slate-800">
+          <div className="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-2xl border border-slate-200 text-slate-800 animate-in fade-in zoom-in-95 max-h-[90vh] flex flex-col">
             {/* Header Modal */}
-            <div className="flex justify-between items-start pb-4 border-b border-slate-100 shrink-0">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-1 bg-blue-50 text-blue-700 font-black text-xs rounded-lg">
-                    {formatClassDisplay(viewingClass.name)}
-                  </span>
-                  <span
-                    className={`px-2.5 py-1 rounded-lg text-xs font-black border ${
-                      getFaseBadgeColor(getFaseByClassName(viewingClass.name, viewingClass.grade)).bg
-                    }`}
-                  >
-                    {getFaseByClassName(viewingClass.name, viewingClass.grade)}
-                  </span>
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-black">
+                  <Users size={20} />
                 </div>
-                <h3 className="text-base font-black text-slate-900">
-                  Daftar Siswa Terdaftar
-                </h3>
-                <p className="text-xs text-slate-500">
-                  Wali Kelas: <strong className="text-slate-700">{viewingClass.waliKelasName || 'Belum ditentukan'}</strong>
-                </p>
+                <div>
+                  <h3 className="font-black text-slate-900 text-base">
+                    Daftar Siswa {viewingClass.name}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Wali Kelas: {viewingClass.waliKelasName || 'Belum Ditugaskan'} • Tahun Pelajaran {viewingClass.academicYear}
+                  </p>
+                </div>
               </div>
               <button
+                type="button"
                 onClick={() => setViewingClass(null)}
-                className="text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
               >
-                <X size={18} />
+                <X size={20} />
               </button>
             </div>
 
