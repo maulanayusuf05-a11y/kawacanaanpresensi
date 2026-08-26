@@ -55,6 +55,7 @@ const emptyUser=(p:any):UserAccount=>{
     isGoogleAuth: isGoogle,
     studentId: p.student_id || null,
     schoolId: p.school_id || null,
+    schoolCode: p.school_code || p.schoolCode || p.code || null,
     mustChangePassword: !!p.must_change_password,
     classIds: p.class_ids || [],
     classNames: p.class_names || [],
@@ -136,8 +137,8 @@ const dbAttendance=(r:any, students:Student[]):AttendanceRecord=>({id:r.id,date:
 const dbEvent=(e:any):AcademicEvent=>({id:e.id,date:e.date,dateDisplay:e.date_display||e.date,title:e.title,isEffective:e.is_effective,notes:e.notes||''});
 const formatFullAlamat=(p:{jalan?:string;desaKelurahan?:string;kecamatan?:string;kabupatenKota?:string;provinsi?:string;kodePos?:string}):string=>{const parts=[p.jalan,p.desaKelurahan?`Desa/Kel. ${p.desaKelurahan}`:'',p.kecamatan?`Kec. ${p.kecamatan}`:'',p.kabupatenKota,p.provinsi,p.kodePos?`Kode Pos ${p.kodePos}`:''].filter(Boolean);return parts.join(', ');};
 
-const dbSchool=(p:any):SchoolProfile=>{
-  if(!p) return { ...INITIAL_SCHOOL_PROFILE };
+const dbSchool=(p:any, extraCode?:string):SchoolProfile=>{
+  if(!p) return { ...INITIAL_SCHOOL_PROFILE, kodeSekolah: extraCode ? String(extraCode).replace(/^SCH-?/i, '').trim().toUpperCase() : '' };
   let ext:any={};
   const rawAlamat = String(p.alamat || '').trim();
   if(rawAlamat.startsWith('{') || rawAlamat.startsWith('__EXTJSON__:')){
@@ -146,6 +147,8 @@ const dbSchool=(p:any):SchoolProfile=>{
       ext = JSON.parse(raw);
     }catch(_){}
   }
+  const rawCode = extraCode || p.code || p.kode_sekolah || p.kodeSekolah || ext.kodeSekolah || ext.kode_sekolah || '';
+  const cleanKodeSekolah = rawCode ? String(rawCode).replace(/^SCH-?/i, '').trim().toUpperCase() : '';
   const jenjang = ext.jenjang || p.jenjang || 'SD/MI';
   const jalan = (ext.jalan !== undefined && ext.jalan !== null) ? ext.jalan : (p.jalan || (rawAlamat.startsWith('__EXTJSON__:') || rawAlamat.startsWith('{') ? '' : rawAlamat));
   const desaKelurahan = ext.desaKelurahan || ext.desa_kelurahan || ext.kelurahan || p.desa_kelurahan || p.kelurahan || p.desaKelurahan || '';
@@ -171,6 +174,7 @@ const dbSchool=(p:any):SchoolProfile=>{
     namaSekolah: p.nama_sekolah || p.namaSekolah || ext.namaSekolah || '',
     jenjang,
     npsn: p.npsn || ext.npsn || '',
+    kodeSekolah: cleanKodeSekolah,
     alamat: fullAlamat,
     jalan,
     desaKelurahan,
@@ -272,10 +276,11 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
  const loadDataForSchool = async (schoolId: string, baseProfile: any, targetRole: UserRole) => {
    let tenantSchool: any = null;
    try {
-     const res = await supabase.from('schools').select('name,npsn,plan,status,subscription_expires_at,max_teachers,max_students,max_classes').eq('id',schoolId).maybeSingle();
+     const res = await supabase.from('schools').select('name,npsn,code,plan,status,subscription_expires_at,max_teachers,max_students,max_classes,workspace_type,is_personal').eq('id',schoolId).maybeSingle();
      tenantSchool = res.data;
    } catch (_) {}
-   const hydratedBase={...baseProfile,school_id:schoolId,role:targetRole,subscription_plan:tenantSchool?.plan || 'teacher',subscription_status:tenantSchool?.status || 'active',subscription_expires_at:tenantSchool?.subscription_expires_at,max_teachers:tenantSchool?.max_teachers,max_students:tenantSchool?.max_students,max_classes:tenantSchool?.max_classes};
+   let authoritativeSchoolCode = tenantSchool?.code ? String(tenantSchool.code).replace(/^SCH-?/i, '').trim().toUpperCase() : '';
+   const hydratedBase={...baseProfile,school_id:schoolId,school_code:authoritativeSchoolCode || null,role:targetRole,subscription_plan:tenantSchool?.plan || 'teacher',subscription_status:tenantSchool?.status || 'active',subscription_expires_at:tenantSchool?.subscription_expires_at,max_teachers:tenantSchool?.max_teachers,max_students:tenantSchool?.max_students,max_classes:tenantSchool?.max_classes};
    
    const [,stu,school,config,events,effective,attendance,allProfiles,classRows,teacherAssignments,teacherRows]=await Promise.all([
     supabase.from('profiles').select('*').eq('id',baseProfile.id).maybeSingle(), 
@@ -338,7 +343,7 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
      return {...u,classIds:aa.map((x:any)=>x.id),classNames:aa.map((x:any)=>x.name).filter(Boolean)};
    }); 
    const matchedMe = hydratedUsers.find((u:any)=>u.id===baseProfile.id);
-   const me={...emptyUser(hydratedBase),...(matchedMe||{})}; 
+   const me={...emptyUser(hydratedBase),...(matchedMe||{}),schoolCode:authoritativeSchoolCode || (baseProfile as any)?.school_code || (baseProfile as any)?.schoolCode || null}; 
    if (baseProfile.role === 'WALI KELAS' && (!me.classIds || me.classIds.length === 0)) {
      const myWaliClasses = classList.filter((c: any) => c.waliKelasId === me.id || (c.waliKelasName && me.name && c.waliKelasName.trim().toLowerCase() === me.name.trim().toLowerCase()));
      if (myWaliClasses.length > 0) {
@@ -349,7 +354,7 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
    setCurrentUser(me); 
    setUsers(hydratedUsers); 
    let rawSchoolData = school.data;
-   if (!rawSchoolData && schoolId) {
+   if ((!rawSchoolData || !authoritativeSchoolCode) && schoolId) {
      try {
        const { data: sessionData } = await supabase.auth.getSession();
        const token = sessionData.session?.access_token || '';
@@ -362,12 +367,17 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
          body: JSON.stringify({ action: 'get_school_profile', school_id: schoolId })
        });
        const json = await res.json();
-       if (json.ok && json.profile) {
-         rawSchoolData = json.profile;
+       if (json.ok) {
+         if (json.profile && !rawSchoolData) {
+           rawSchoolData = json.profile;
+         }
+         if (!authoritativeSchoolCode && json.school?.code) {
+           authoritativeSchoolCode = String(json.school.code).replace(/^SCH-?/i, '').trim().toUpperCase();
+         }
        }
      } catch (_) {}
    }
-   let loadedSchool = rawSchoolData ? dbSchool(rawSchoolData) : { ...INITIAL_SCHOOL_PROFILE };
+   let loadedSchool = rawSchoolData ? dbSchool(rawSchoolData, authoritativeSchoolCode) : dbSchool(null, authoritativeSchoolCode);
 
    if (schoolId) {
      try {
@@ -379,6 +389,7 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
            namaSekolah: loadedSchool.namaSekolah || cached.namaSekolah || '',
            jenjang: loadedSchool.jenjang || cached.jenjang || 'SD/MI',
            npsn: loadedSchool.npsn || cached.npsn || '',
+           kodeSekolah: authoritativeSchoolCode || loadedSchool.kodeSekolah || cached.kodeSekolah || '',
            jalan: loadedSchool.jalan || cached.jalan || '',
            desaKelurahan: loadedSchool.desaKelurahan || cached.desaKelurahan || '',
            kecamatan: loadedSchool.kecamatan || cached.kecamatan || '',
@@ -527,7 +538,8 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
 
    // Fallback jika belum ada record multi-workspace di endpoint: bangun dari baseProfile
    if (memberships.length === 0 && baseProfile && baseProfile.school_id) {
-     const { data: schoolRow } = await supabase.from('schools').select('name, npsn, plan, workspace_type, is_personal').eq('id', baseProfile.school_id).maybeSingle();
+     const { data: schoolRow } = await supabase.from('schools').select('name, npsn, code, plan, workspace_type, is_personal').eq('id', baseProfile.school_id).maybeSingle();
+     const schoolRowCode = schoolRow?.code ? String(schoolRow.code).replace(/^SCH-?/i, '').trim().toUpperCase() : null;
      const isPersonal =
        (baseProfile as any).workspace_type === 'personal' ||
        (baseProfile as any).registration_mode === 'personal' ||
@@ -539,6 +551,7 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
        id: 'ws-mem-' + baseProfile.id,
        userId: baseProfile.id,
        workspaceId: baseProfile.school_id,
+       workspaceCode: schoolRowCode,
        role: baseProfile.role as UserRole,
        workspaceName: schoolRow?.name || (isPersonal ? 'Ruang Kerja Individu' : 'Ruang Kerja Sekolah'),
        workspaceType: isPersonal ? 'personal' : 'school',
@@ -670,6 +683,7 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
 
     const normalizedProfile: SchoolProfile = {
       ...p,
+      kodeSekolah: p.kodeSekolah || schoolProfile.kodeSekolah || '',
       alamat: fullAlamat,
       jenjang: p.jenjang || 'SD/MI',
       jalan: p.jalan || '',

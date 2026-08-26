@@ -22,12 +22,24 @@ import {
 
 export const DataSekolahView: React.FC = () => {
   const { schoolProfile, updateSchoolProfile, currentUser, showToast, activeWorkspace } = useApp();
-  const [formData, setFormData] = useState<SchoolProfile>(() => ({
-    ...schoolProfile,
-    jenjang: 'SD/MI',
-    tahunPelajaran: schoolProfile.tahunPelajaran || '2025/2026',
-    semester: schoolProfile.semester || '1 (Ganjil)',
-  }));
+  const schoolId = currentUser?.schoolId || activeWorkspace?.workspaceId || 'default';
+  const draftKey = `kawacanaan_draft_school_profile_${schoolId}`;
+
+  const [formData, setFormData] = useState<SchoolProfile>(() => {
+    let base = { ...schoolProfile };
+    try {
+      const cached = localStorage.getItem(`kawacanaan_school_profile_${schoolId}`);
+      if (cached) {
+        base = { ...base, ...JSON.parse(cached) };
+      }
+    } catch (_) {}
+    return {
+      ...base,
+      jenjang: 'SD/MI',
+      tahunPelajaran: base.tahunPelajaran || '2025/2026',
+      semester: base.semester || '1 (Ganjil)',
+    };
+  });
   const [saving, setSaving] = useState(false);
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [lookupSuccess, setLookupSuccess] = useState<boolean | null>(null);
@@ -35,8 +47,10 @@ export const DataSekolahView: React.FC = () => {
   const isDirtyRef = React.useRef(false);
 
   const rawSchoolCode =
+    formData.kodeSekolah ||
     schoolProfile.kodeSekolah ||
-    schoolProfile.npsn ||
+    activeWorkspace?.workspaceCode ||
+    currentUser?.schoolCode ||
     (currentUser?.schoolId ? currentUser.schoolId.slice(0, 8).toUpperCase() : '');
   const activeSchoolCode = rawSchoolCode
     ? rawSchoolCode.replace(/^SCH-?/i, '').trim().toUpperCase()
@@ -61,22 +75,42 @@ export const DataSekolahView: React.FC = () => {
     window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
   };
 
-  // Sinkronisasi state form jika schoolProfile pada context berubah dan user sedang tidak mengetik form baru
+  // Sinkronisasi stabil: Hanya memperbarui data jika form belum diubah user dan konteks membawa data valid
   useEffect(() => {
     if (!isDirtyRef.current) {
-      setFormData({
+      setFormData((prev) => ({
+        ...prev,
         ...schoolProfile,
-        jenjang: 'SD/MI', // Mutlak SD/MI
-        tahunPelajaran: schoolProfile.tahunPelajaran || '2025/2026',
-        semester: schoolProfile.semester || '1 (Ganjil)',
-      });
+        namaSekolah: schoolProfile.namaSekolah || prev.namaSekolah || '',
+        npsn: schoolProfile.npsn || prev.npsn || '',
+        jalan: schoolProfile.jalan || prev.jalan || '',
+        desaKelurahan: schoolProfile.desaKelurahan || prev.desaKelurahan || '',
+        kecamatan: schoolProfile.kecamatan || prev.kecamatan || '',
+        kabupatenKota: schoolProfile.kabupatenKota || prev.kabupatenKota || '',
+        provinsi: schoolProfile.provinsi || prev.provinsi || '',
+        kodePos: schoolProfile.kodePos || prev.kodePos || '',
+        teleponFax: schoolProfile.teleponFax || prev.teleponFax || '',
+        email: schoolProfile.email || prev.email || '',
+        website: schoolProfile.website || prev.website || '',
+        namaKepalaSekolah: schoolProfile.namaKepalaSekolah || prev.namaKepalaSekolah || '',
+        nipKepalaSekolah: schoolProfile.nipKepalaSekolah || prev.nipKepalaSekolah || '',
+        jenjang: 'SD/MI',
+        tahunPelajaran: schoolProfile.tahunPelajaran || prev.tahunPelajaran || '2025/2026',
+        semester: schoolProfile.semester || prev.semester || '1 (Ganjil)',
+      }));
     }
   }, [schoolProfile]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     isDirtyRef.current = true;
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormData((prev) => {
+      const next = { ...prev, [name]: value };
+      try {
+        localStorage.setItem(`kawacanaan_school_profile_${schoolId}`, JSON.stringify(next));
+      } catch (_) {}
+      return next;
+    });
   };
 
   // Otomatis tarik data dari Kemendikdasmen berdasarkan NPSN

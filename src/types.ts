@@ -48,6 +48,7 @@ export interface WorkspaceMembership {
   studentId?: string | null;
   studentName?: string | null;
   npsn?: string | null;
+  workspaceCode?: string | null;
   subscriptionPlan?: string | null;
   subscription?: WorkspaceSubscription;
   joinedAt?: string;
@@ -151,6 +152,7 @@ export interface UserAccount {
   isGoogleAuth?: boolean;
   studentId?: string | null;
   schoolId?: string | null;
+  schoolCode?: string | null;
   subscriptionPlan?: string | null;
   subscriptionStatus?: string | null;
   subscriptionExpiresAt?: string | null;

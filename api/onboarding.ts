@@ -268,6 +268,15 @@ export default async function handler(req: any, res: any) {
         const { data: school } = await db.from('schools').select('*').eq('id', targetSchoolId).maybeSingle();
         const { data: sp } = await db.from('school_profile').select('*').eq('school_id', targetSchoolId).maybeSingle();
 
+        // Pastikan kode sekolah selalu tersedia dan konsisten dengan Superadmin
+        let schoolCode = school?.code ? String(school.code).replace(/^SCH-?/i, '').trim().toUpperCase() : '';
+        if (school && !schoolCode) {
+          schoolCode = generateSchoolInviteCode();
+          try {
+            await db.from('schools').update({ code: schoolCode }).eq('id', targetSchoolId);
+          } catch (_) {}
+        }
+
         const isPersonal =
           (profile as any)?.workspace_type === 'personal' ||
           (profile as any)?.registration_mode === 'personal' ||
@@ -283,6 +292,7 @@ export default async function handler(req: any, res: any) {
           id: `ws-mem-${userId}`,
           userId: userId,
           workspaceId: targetSchoolId,
+          workspaceCode: schoolCode || null,
           role: userRole,
           workspaceName: school?.name || sp?.nama_sekolah || (isPersonal ? 'Ruang Kerja Individu' : 'Ruang Kerja Sekolah'),
           workspaceType: isPersonal ? 'personal' : 'school',
@@ -330,35 +340,45 @@ export default async function handler(req: any, res: any) {
       const namaWaliKelas = String(body.namaWaliKelas || body.nama_wali_kelas || '').trim();
       const nipWaliKelas = String(body.nipWaliKelas || body.nip_wali_kelas || '').trim();
 
-      // 1. Simpan ke tabel school_profile
-      const profilePayload: any = {
+      // 1. Simpan ke tabel school_profile secara aman dan kompatibel dengan semua versi schema
+      const safeProfilePayload: any = {
         school_id: schoolId,
         nama_sekolah: namaSekolah,
         npsn: npsn || null,
-        jenjang,
         alamat,
         tahun_pelajaran: tahunPelajaran,
         semester,
         kelas,
         nama_kepala_sekolah: namaKepalaSekolah,
         nip_kepala_sekolah: nipKepalaSekolah,
-        nama_wali_kelas: namaWaliKelas,
-        nip_wali_kelas: nipWaliKelas,
       };
 
       let spData = null;
       try {
-        const { data: sp, error: spErr } = await db.from('school_profile').upsert(profilePayload, { onConflict: 'school_id' }).select().single();
-        if (spErr) {
-          console.warn('Upsert school_profile single() fallback:', spErr.message);
-          await db.from('school_profile').upsert(profilePayload, { onConflict: 'school_id' });
+        // Cek keberadaan record terlebih dahulu untuk menghindari kegagalan unique constraint
+        const { data: existingSp } = await db.from('school_profile').select('id, school_id').eq('school_id', schoolId).maybeSingle();
+        if (existingSp?.id) {
+          const { data: updatedSp, error: updateErr } = await db.from('school_profile').update(safeProfilePayload).eq('id', existingSp.id).select().maybeSingle();
+          if (!updateErr && updatedSp) {
+            spData = updatedSp;
+          } else {
+            const { error: updateBySchoolErr } = await db.from('school_profile').update(safeProfilePayload).eq('school_id', schoolId);
+            if (!updateBySchoolErr) spData = { ...existingSp, ...safeProfilePayload };
+          }
         } else {
-          spData = sp;
+          const { data: insertedSp, error: insertErr } = await db.from('school_profile').insert(safeProfilePayload).select().maybeSingle();
+          if (!insertErr && insertedSp) {
+            spData = insertedSp;
+          } else {
+            // Coba upsert dengan onConflict jika insert gagal
+            const { data: upsertedSp } = await db.from('school_profile').upsert(safeProfilePayload, { onConflict: 'school_id' }).select().maybeSingle();
+            spData = upsertedSp || safeProfilePayload;
+          }
         }
       } catch (upsertErr: any) {
         console.warn('Upsert school_profile error:', upsertErr?.message);
         try {
-          await db.from('school_profile').upsert(profilePayload, { onConflict: 'school_id' });
+          await db.from('school_profile').upsert(safeProfilePayload, { onConflict: 'school_id' });
         } catch (_) {}
       }
 
@@ -382,7 +402,7 @@ export default async function handler(req: any, res: any) {
         ok: true,
         success: true,
         message: 'Identitas satuan pendidikan berhasil disimpan dan terintegrasi.',
-        profile: spData || profilePayload,
+        profile: spData || safeProfilePayload,
       });
     }
 
@@ -391,14 +411,24 @@ export default async function handler(req: any, res: any) {
       if (!schoolId) {
         return json(res, 400, { error: 'ID sekolah wajib disertakan.' });
       }
-      const [{ data: sp }, { data: sch }] = await Promise.all([
+      let [{ data: sp }, { data: sch }] = await Promise.all([
         db.from('school_profile').select('*').eq('school_id', schoolId).maybeSingle(),
         db.from('schools').select('id, name, npsn, code, plan, status, workspace_type, is_personal').eq('id', schoolId).maybeSingle()
       ]);
+
+      let schoolCode = sch?.code ? String(sch.code).replace(/^SCH-?/i, '').trim().toUpperCase() : '';
+      if (sch && !schoolCode) {
+        schoolCode = generateSchoolInviteCode();
+        try {
+          await db.from('schools').update({ code: schoolCode }).eq('id', schoolId);
+          if (sch) sch.code = schoolCode;
+        } catch (_) {}
+      }
+
       return json(res, 200, {
         ok: true,
-        profile: sp || null,
-        school: sch || null
+        profile: sp ? { ...sp, kode_sekolah: schoolCode, kodeSekolah: schoolCode } : null,
+        school: sch ? { ...sch, code: schoolCode } : null
       });
     }
 
