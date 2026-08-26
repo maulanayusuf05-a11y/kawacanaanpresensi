@@ -8,17 +8,17 @@ import { DataKelasView } from './DataKelasView';
 import { DataMapelView } from './DataMapelView';
 import { getUserRoleScope } from '../utils/userScope';
 
-type ReferensiTab = 'sekolah' | 'guru' | 'siswa' | 'kelas' | 'mapel';
+type ReferensiTab = 'sekolah' | 'guru' | 'kelas' | 'siswa' | 'mapel';
 
 const TAB_LABELS: Record<ReferensiTab, string> = {
   sekolah: 'Identitas Sekolah',
   guru: 'Data Guru',
-  siswa: 'Data Siswa',
   kelas: 'Data Kelas',
+  siswa: 'Data Siswa',
   mapel: 'Data Mata Pelajaran',
 };
 
-const TAB_ORDER: ReferensiTab[] = ['sekolah', 'guru', 'siswa', 'kelas', 'mapel'];
+const TAB_ORDER: ReferensiTab[] = ['sekolah', 'guru', 'kelas', 'siswa', 'mapel'];
 
 export const DataReferensiView: React.FC = () => {
   const { currentUser, setActiveView, classes, subjects, teachers } = useApp();
@@ -31,9 +31,7 @@ export const DataReferensiView: React.FC = () => {
   const allowedTabs = useMemo<ReferensiTab[]>(() => {
     if (!currentUser) return [];
     if (currentUser.role === 'ADMIN' || currentUser.role === 'SUPER_ADMIN') return TAB_ORDER;
-    if (currentUser.role === 'GURU' || currentUser.role === 'WALI KELAS' || currentUser.role === 'GURU MAPEL') return ['sekolah', 'guru', 'siswa', 'kelas', 'mapel'];
-    if (currentUser.role === 'KEPALA SEKOLAH') return ['sekolah', 'guru', 'siswa', 'kelas', 'mapel'];
-    return ['sekolah', 'guru', 'siswa', 'kelas', 'mapel'];
+    return ['sekolah', 'guru', 'kelas', 'siswa', 'mapel'];
   }, [currentUser]);
 
   // If Guru Mapel, prioritize 'mapel' tab by default
@@ -106,13 +104,13 @@ export const DataReferensiView: React.FC = () => {
           <DataGuruView />
         </div>
       )}
+      {currentTab === 'kelas' && <DataKelasView />}
+      {currentTab === 'siswa' && <DataSiswaView />}
       {currentTab === 'mapel' && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
           <DataMapelView />
         </div>
       )}
-      {currentTab === 'siswa' && <DataSiswaView />}
-      {currentTab === 'kelas' && <DataKelasView />}
     </div>
   );
 };

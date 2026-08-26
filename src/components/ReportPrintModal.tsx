@@ -4,6 +4,7 @@ import { AttendanceType } from '../types';
 import { SchoolLogo } from './SchoolLogo';
 import { Printer, X, Download } from 'lucide-react';
 import { formatSubjectTeacherTitle, formatHomeroomTeacherTitle } from '../utils/formatTeacherTitle';
+import { getFaseByClassName, formatClassDisplay, formatClassClean } from '../utils/faseKurikulum';
 
 interface ReportPrintModalProps {
   isOpen: boolean;
@@ -43,7 +44,10 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
     return null;
   }, [classes, classId]);
 
-  const activeClassName = currentClass?.name || className || schoolProfile.kelas || 'Semua Kelas';
+  const rawClassName = currentClass?.name || className || schoolProfile.kelas || '6A';
+  const activeClassName = formatClassDisplay(rawClassName);
+  const activeClassClean = formatClassClean(rawClassName);
+  const activeFase = getFaseByClassName(rawClassName, currentClass?.grade);
 
   // Filter students based on class selection
   const targetStudents = useMemo(() => {
@@ -542,7 +546,7 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
                       {schoolProfile.alamat || 'Jl. Pendidikan No. 123, Kel. Merdeka, Kec. Nusantara, Kota Jakarta'}
                     </p>
                     <p className="text-[10px] sm:text-[11px] text-slate-600 font-semibold">
-                      NPSN: {schoolProfile.npsn || '20104501'} | KELAS: {schoolProfile.kelas || '6A'}
+                      NPSN: {schoolProfile.npsn || '20104501'} | KELAS: {activeClassClean} | FASE: {activeFase.toUpperCase()}
                     </p>
                   </div>
                   <div className="w-16 hidden sm:block" />
@@ -564,7 +568,7 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
                 <>HARI/TANGGAL: {getDayNameIndo(selectedDate).toUpperCase()}, {formatReportDateIndo(selectedDate).toUpperCase()} | SEMESTER: {schoolProfile.semester.toUpperCase()} (TP: {schoolProfile.tahunPelajaran})</>
               )}
               {reportType === 'Laporan Mingguan' && (
-                <>PERIODE: {selectedWeek.toUpperCase()} ({month.toUpperCase()} {year}) | KELAS: {schoolProfile.kelas} (TP: {schoolProfile.tahunPelajaran})</>
+                <>PERIODE: {selectedWeek.toUpperCase()} ({month.toUpperCase()} {year}) | KELAS: {activeClassClean} (TP: {schoolProfile.tahunPelajaran})</>
               )}
               {reportType === 'Laporan Bulanan' && (
                 <>BULAN: {month.toUpperCase()} {year} | SEMESTER: {schoolProfile.semester.toUpperCase()} (TP: {schoolProfile.tahunPelajaran})</>
@@ -579,7 +583,7 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 text-xs font-sans mb-4 border border-slate-200 p-3 rounded-lg bg-slate-50/50">
             <div>
               <p><span className="font-semibold text-slate-600">Satuan Pendidikan:</span> {schoolProfile.namaSekolah}</p>
-              <p><span className="font-semibold text-slate-600">Kelas / Fase:</span> {activeClassName} / Fase C</p>
+              <p><span className="font-semibold text-slate-600">Kelas / Fase:</span> {activeClassName} / {activeFase}</p>
               {attendanceType === 'SUBJECT' ? (
                 <p><span className="font-semibold text-slate-600">Mata Pelajaran:</span> <strong className="text-blue-900">{subjectName || 'Mata Pelajaran Khusus'}</strong></p>
               ) : (
@@ -985,28 +989,28 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
                 <strong>Catatan Evaluasi:</strong>{' '}
                 {reportType === 'Laporan Harian' ? (
                   <>
-                    Tingkat kehadiran siswa pada tanggal {formatReportDateIndo(selectedDate)} tercatat sebesar{' '}
+                    Tingkat kehadiran siswa {activeClassName} pada tanggal {formatReportDateIndo(selectedDate)} tercatat sebesar{' '}
                     <span className="font-extrabold text-blue-900 bg-blue-50 px-1 py-0.5 rounded border border-blue-200">
                       {formatPct(dailyPctHadir)}%
                     </span>.
                   </>
                 ) : reportType === 'Laporan Mingguan' ? (
                   <>
-                    Tingkat kehadiran kumulatif siswa selama {selectedWeek} ({month} {year}) tercatat sebesar{' '}
+                    Tingkat kehadiran kumulatif siswa {activeClassName} selama {selectedWeek} ({month} {year}) tercatat sebesar{' '}
                     <span className="font-extrabold text-blue-900 bg-blue-50 px-1 py-0.5 rounded border border-blue-200">
                       {formatPct(weeklyPctHadir)}%
                     </span>.
                   </>
                 ) : reportType === 'Laporan Semester' ? (
                   <>
-                    Rata-rata persentase kehadiran kumulatif siswa selama Semester {month === 'Januari' ? 'Genap' : 'Ganjil'} ({schoolProfile.tahunPelajaran}) tercatat sebesar{' '}
+                    Rata-rata persentase kehadiran kumulatif siswa {activeClassName} selama Semester {month === 'Januari' ? 'Genap' : 'Ganjil'} ({schoolProfile.tahunPelajaran}) tercatat sebesar{' '}
                     <span className="font-extrabold text-blue-900 bg-blue-50 px-1 py-0.5 rounded border border-blue-200">
                       {formatPct(semesterPctHadir)}%
                     </span>.
                   </>
                 ) : (
                   <>
-                    Rata-rata persentase kehadiran kumulatif siswa kelas {schoolProfile.kelas || '6A'} berada pada angka{' '}
+                    Rata-rata persentase kehadiran kumulatif siswa {activeClassName} berada pada angka{' '}
                     <span className="font-extrabold text-blue-900 bg-blue-50 px-1 py-0.5 rounded border border-blue-200">
                       {formatPct(avgStudentAttendance)}%
                     </span>.

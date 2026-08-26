@@ -21,6 +21,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { ReportPrintModal } from '../components/ReportPrintModal';
+import { getFaseByClassName, formatClassDisplay } from '../utils/faseKurikulum';
 
 export const RekapitulasiView: React.FC = () => {
   const {
@@ -579,10 +580,10 @@ export const RekapitulasiView: React.FC = () => {
                   <option value="">Semua Kelas ({students.length} Siswa)</option>
                 )}
                 {selectableClasses.map((c) => {
-                  const label = c.name.toLowerCase().startsWith('kelas') ? c.name.toUpperCase() : `KELAS ${c.name.toUpperCase()}`;
+                  const label = `${formatClassDisplay(c.name).toUpperCase()} (${getFaseByClassName(c.name, c.grade)})`;
                   return (
                     <option key={c.id} value={c.id}>
-                      {userScope.isGuruMapel ? label : `${c.name} ${c.waliKelasName ? `(${c.waliKelasName})` : ''}`}
+                      {userScope.isGuruMapel ? label : `${c.name} (${getFaseByClassName(c.name, c.grade)}) ${c.waliKelasName ? `• Wali: ${c.waliKelasName}` : ''}`}
                     </option>
                   );
                 })}

@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import { Subject } from '../types';
 import { getUserRoleScope } from '../utils/userScope';
 import { validateTeacherRoleAssignment } from '../utils/packageSystem';
+import { getFaseByClassName } from '../utils/faseKurikulum';
 import {
   Plus,
   Edit2,
@@ -436,7 +437,7 @@ export const DataMapelView: React.FC = () => {
                 <option value="ALL">Semua Rombel</option>
                 {classes.map((cls) => (
                   <option key={cls.id} value={cls.id}>
-                    {cls.name}
+                    {cls.name} ({getFaseByClassName(cls.name, cls.grade)})
                   </option>
                 ))}
               </select>

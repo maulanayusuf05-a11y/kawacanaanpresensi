@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { AttendanceRecord, AttendanceStatus, AttendanceType } from '../types';
 import { getUserRoleScope } from '../utils/userScope';
+import { getFaseByClassName, formatClassDisplay } from '../utils/faseKurikulum';
 import {
   ArrowLeft,
   ClipboardList,
@@ -525,7 +526,7 @@ export const AbsensiView: React.FC = () => {
                   >
                     {availableClasses.map((cls) => (
                       <option key={cls.id} value={cls.id}>
-                        {cls.name} {cls.waliKelasName ? `(Wali: ${cls.waliKelasName})` : ''}
+                        {cls.name} ({getFaseByClassName(cls.name, cls.grade)}) {cls.waliKelasName ? `• Wali: ${cls.waliKelasName}` : ''}
                       </option>
                     ))}
                   </select>
@@ -576,10 +577,10 @@ export const AbsensiView: React.FC = () => {
                       className="px-3.5 py-2 bg-white border border-blue-300 text-blue-900 text-xs font-bold rounded-xl shadow-xs outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer min-w-[140px]"
                     >
                       {availableClasses.map((cls) => {
-                        const label = cls.name.toLowerCase().startsWith('kelas') ? cls.name.toUpperCase() : `KELAS ${cls.name.toUpperCase()}`;
+                        const label = `${formatClassDisplay(cls.name).toUpperCase()} (${getFaseByClassName(cls.name, cls.grade)})`;
                         return (
                           <option key={cls.id} value={cls.id}>
-                            {userScope.isGuruMapel ? label : `${cls.name} ${cls.waliKelasName ? `(Wali: ${cls.waliKelasName})` : ''}`}
+                            {userScope.isGuruMapel ? label : `${cls.name} (${getFaseByClassName(cls.name, cls.grade)}) ${cls.waliKelasName ? `• Wali: ${cls.waliKelasName}` : ''}`}
                           </option>
                         );
                       })}

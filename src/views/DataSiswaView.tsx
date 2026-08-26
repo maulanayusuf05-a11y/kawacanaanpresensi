@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { Student } from '../types';
+import { getFaseByClassName, getFaseBadgeColor, formatClassDisplay } from '../utils/faseKurikulum';
 import {
   Users,
   Search,
@@ -503,7 +504,7 @@ export const DataSiswaView: React.FC = () => {
                     ).length;
                     return (
                       <option key={c.id} value={c.id}>
-                        {c.name} ({count} siswa)
+                        {c.name} ({getFaseByClassName(c.name, c.grade)}) - {count} siswa
                       </option>
                     );
                   })}
@@ -583,7 +584,20 @@ export const DataSiswaView: React.FC = () => {
                     <td className="py-3.5 px-4 font-bold text-slate-900 tracking-tight">
                       {s.nama}
                     </td>
-                    <td className="py-3.5 px-4 text-center font-bold text-slate-600">{s.className || 'Belum ada kelas'}</td>
+                    <td className="py-3.5 px-4 text-center font-bold text-slate-600">
+                      <div className="inline-flex items-center justify-center gap-1.5">
+                        <span>{s.className || 'Belum ada kelas'}</span>
+                        {s.className && (
+                          <span
+                            className={`text-[10px] font-black px-1.5 py-0.5 rounded border ${
+                              getFaseBadgeColor(getFaseByClassName(s.className)).bg
+                            }`}
+                          >
+                            {getFaseByClassName(s.className)}
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="py-3.5 px-4 text-center">
                       <span
                         className={`inline-block px-3 py-1 rounded-full text-[11px] font-bold border ${
@@ -709,7 +723,7 @@ export const DataSiswaView: React.FC = () => {
                 {availableClasses.length > 1 && <option value="">Pilih kelas...</option>}
                 {availableClasses.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name}
+                    {c.name} ({getFaseByClassName(c.name, c.grade)})
                   </option>
                 ))}
               </select>
@@ -1032,7 +1046,7 @@ export const DataSiswaView: React.FC = () => {
                   {availableClasses.length > 1 && <option value="">Pilih kelas siswa...</option>}
                   {availableClasses.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name}
+                      {c.name} ({getFaseByClassName(c.name, c.grade)})
                     </option>
                   ))}
                 </select>

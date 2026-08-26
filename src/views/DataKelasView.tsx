@@ -19,6 +19,7 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { validateTeacherRoleAssignment } from '../utils/packageSystem';
+import { getFaseByClassName, getFaseByGrade, getFaseBadgeColor, getGradeFromClassName, formatClassDisplay } from '../utils/faseKurikulum';
 
 export const DataKelasView: React.FC = () => {
   const {
@@ -481,7 +482,21 @@ export const DataKelasView: React.FC = () => {
                         </div>
                       </td>
                       <td className="py-3.5 px-4 font-black text-slate-900 text-sm">
-                        {c.name}
+                        <div className="flex items-center gap-2">
+                          <span>{c.name}</span>
+                          <span
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black border ${
+                              getFaseBadgeColor(getFaseByClassName(c.name, c.grade)).bg
+                            }`}
+                          >
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                getFaseBadgeColor(getFaseByClassName(c.name, c.grade)).dot
+                              }`}
+                            />
+                            {getFaseByClassName(c.name, c.grade)}
+                          </span>
+                        </div>
                       </td>
                       <td className="py-3.5 px-4 text-center font-bold text-blue-700 bg-blue-50/30">
                         <span className="inline-block px-2.5 py-0.5 rounded-full bg-blue-100/80 text-blue-800 text-xs">
@@ -702,9 +717,20 @@ export const DataKelasView: React.FC = () => {
 
               {/* Form Kedua: Kelas */}
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">
-                  2. KELAS
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                    2. KELAS
+                  </label>
+                  {name.trim() && (
+                    <span
+                      className={`text-[10px] font-black px-2 py-0.5 rounded-md border ${
+                        getFaseBadgeColor(getFaseByClassName(name)).bg
+                      }`}
+                    >
+                      {getFaseBadgeColor(getFaseByClassName(name)).label}
+                    </span>
+                  )}
+                </div>
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -713,7 +739,7 @@ export const DataKelasView: React.FC = () => {
                   required
                 />
                 <p className="text-[10px] text-slate-400 mt-1">
-                  Tulis nama kelas lengkap (contoh: <strong>Kelas 1A</strong>, <strong>Kelas 2B</strong>, <strong>Kelas 6</strong>).
+                  Tulis nama kelas lengkap (contoh: <strong>Kelas 1A</strong>, <strong>Kelas 2B</strong>, <strong>Kelas 6</strong>). Sistem otomatis menentukan Fase A (Kelas 1-2), Fase B (Kelas 3-4), atau Fase C (Kelas 5-6).
                 </p>
               </div>
 
@@ -746,7 +772,14 @@ export const DataKelasView: React.FC = () => {
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <span className="px-2.5 py-1 bg-blue-50 text-blue-700 font-black text-xs rounded-lg">
-                    Kelas {viewingClass.name}
+                    {formatClassDisplay(viewingClass.name)}
+                  </span>
+                  <span
+                    className={`px-2.5 py-1 rounded-lg text-xs font-black border ${
+                      getFaseBadgeColor(getFaseByClassName(viewingClass.name, viewingClass.grade)).bg
+                    }`}
+                  >
+                    {getFaseByClassName(viewingClass.name, viewingClass.grade)}
                   </span>
                 </div>
                 <h3 className="text-base font-black text-slate-900">

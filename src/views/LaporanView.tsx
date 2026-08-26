@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { ReportPrintModal } from '../components/ReportPrintModal';
 import { getUserRoleScope } from '../utils/userScope';
+import { getFaseByClassName, formatClassDisplay } from '../utils/faseKurikulum';
 import { ArrowLeft, FileText, Printer, Lock, ShieldCheck, CheckCircle2 } from 'lucide-react';
 
 export const LaporanView: React.FC = () => {
@@ -398,10 +399,10 @@ export const LaporanView: React.FC = () => {
                   <option value="">Semua Kelas ({students.length} Siswa)</option>
                 )}
                 {selectableClasses.map((c) => {
-                  const label = c.name.toLowerCase().startsWith('kelas') ? c.name.toUpperCase() : `KELAS ${c.name.toUpperCase()}`;
+                  const label = `${formatClassDisplay(c.name).toUpperCase()} (${getFaseByClassName(c.name, c.grade)})`;
                   return (
                     <option key={c.id} value={c.id}>
-                      {userScope.isGuruMapel ? label : `${c.name} ${c.waliKelasName ? `• ${c.waliKelasName}` : ''}`}
+                      {userScope.isGuruMapel ? label : `${c.name} (${getFaseByClassName(c.name, c.grade)}) ${c.waliKelasName ? `• ${c.waliKelasName}` : ''}`}
                     </option>
                   );
                 })}
