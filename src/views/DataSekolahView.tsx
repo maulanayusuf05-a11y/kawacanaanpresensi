@@ -370,7 +370,7 @@ export const DataSekolahView: React.FC = () => {
           </div>
         </div>
 
-        {/* ================= SECTION 2: RINCIAN ALAMAT TERSTRUKTUR (KEMENDIKDASMEN) ================= */}
+        {/* ================= SECTION 2: ALAMAT SEKOLAH ================= */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
@@ -378,8 +378,8 @@ export const DataSekolahView: React.FC = () => {
                 <MapPin size={18} />
               </div>
               <div>
-                <h2 className="text-sm font-black text-slate-900">2. Rincian Alamat Sekolah Sesuai Kemendikdasmen</h2>
-                <p className="text-[11px] text-slate-500">Struktur alamat terpisah: Jalan, RT/RW, Desa/Kelurahan, Kecamatan, Kabupaten/Kota, Provinsi, dan Kode Pos.</p>
+                <h2 className="text-sm font-black text-slate-900">2. Alamat Sekolah</h2>
+                <p className="text-[11px] text-slate-500">Struktur alamat satuan pendidikan: Jalan, RT/RW, Desa/Kelurahan, Kecamatan, Kabupaten/Kota, Provinsi, dan Kode Pos.</p>
               </div>
             </div>
           </div>
@@ -582,7 +582,7 @@ export const DataSekolahView: React.FC = () => {
                 <UserCheck size={18} />
               </div>
               <div>
-                <h2 className="text-sm font-black text-slate-900">4. Penanggung Jawab & Kepala Sekolah</h2>
+                <h2 className="text-sm font-black text-slate-900">4. Kepala Sekolah</h2>
                 <p className="text-[11px] text-slate-500">Nama lengkap dan NIP Kepala Sekolah sebagai penandatangan dokumen resmi kehadiran.</p>
               </div>
             </div>

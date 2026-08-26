@@ -135,7 +135,57 @@ const packSubjectCode=(s:Omit<Subject, 'id'>):string=>{
 const dbAttendance=(r:any, students:Student[]):AttendanceRecord=>({id:r.id,date:r.date,studentId:r.student_id,studentName:students.find(s=>s.id===r.student_id)?.nama||'',status:r.status,checkInTime:r.check_in_time?String(r.check_in_time).slice(0,5):'-',checkOutTime:r.check_out_time?String(r.check_out_time).slice(0,5):'-',notes:r.notes||'',type:r.type||'DAILY',subjectId:r.subject_id||null,subjectName:r.subject_name||null,classId:r.class_id||students.find(s=>s.id===r.student_id)?.classId||null,teacherId:r.updated_by||null});
 const dbEvent=(e:any):AcademicEvent=>({id:e.id,date:e.date,dateDisplay:e.date_display||e.date,title:e.title,isEffective:e.is_effective,notes:e.notes||''});
 const formatFullAlamat=(p:{jalan?:string;desaKelurahan?:string;kecamatan?:string;kabupatenKota?:string;provinsi?:string;kodePos?:string}):string=>{const parts=[p.jalan,p.desaKelurahan?`Desa/Kel. ${p.desaKelurahan}`:'',p.kecamatan?`Kec. ${p.kecamatan}`:'',p.kabupatenKota,p.provinsi,p.kodePos?`Kode Pos ${p.kodePos}`:''].filter(Boolean);return parts.join(', ');};
-const dbSchool=(p:any):SchoolProfile=>{let ext:any={};if(p.alamat&&(p.alamat.trim().startsWith('{')||p.alamat.trim().startsWith('__EXTJSON__:'))){try{const raw=p.alamat.trim().startsWith('__EXTJSON__:')?p.alamat.trim().slice(12):p.alamat.trim();ext=JSON.parse(raw)}catch(_){}}const jenjang=ext.jenjang||p.jenjang||'SD';const jalan=ext.jalan||p.jalan||(ext.full?'':(p.alamat||''));const desaKelurahan=ext.desaKelurahan||p.desa_kelurahan||'';const kecamatan=ext.kecamatan||p.kecamatan||'';const kabupatenKota=ext.kabupatenKota||p.kabupaten_kota||'';const provinsi=ext.provinsi||p.provinsi||'';const kodePos=ext.kodePos||p.kode_pos||'';const teleponFax=ext.teleponFax||p.telepon_fax||'';const email=ext.email||p.email||'';const website=ext.website||p.website||'';const fullAlamat=ext.full||formatFullAlamat({jalan,desaKelurahan,kecamatan,kabupatenKota,provinsi,kodePos})||p.alamat||'';return{namaSekolah:p.nama_sekolah||'',jenjang,npsn:p.npsn||'',alamat:fullAlamat,jalan,desaKelurahan,kecamatan,kabupatenKota,provinsi,kodePos,teleponFax,email,website,tahunPelajaran:p.tahun_pelajaran||'2026/2027',semester:p.semester||'1',kelas:p.kelas||'',namaKepalaSekolah:p.nama_kepala_sekolah||'',nipKepalaSekolah:p.nip_kepala_sekolah||'',namaWaliKelas:p.nama_wali_kelas||'',nipWaliKelas:p.nip_wali_kelas||''};};
+
+const dbSchool=(p:any):SchoolProfile=>{
+  if(!p) return { ...INITIAL_SCHOOL_PROFILE };
+  let ext:any={};
+  const rawAlamat = String(p.alamat || '').trim();
+  if(rawAlamat.startsWith('{') || rawAlamat.startsWith('__EXTJSON__:')){
+    try{
+      const raw = rawAlamat.startsWith('__EXTJSON__:') ? rawAlamat.slice(12) : rawAlamat;
+      ext = JSON.parse(raw);
+    }catch(_){}
+  }
+  const jenjang = ext.jenjang || p.jenjang || 'SD';
+  const jalan = (ext.jalan !== undefined && ext.jalan !== null) ? ext.jalan : (p.jalan || (rawAlamat.startsWith('__EXTJSON__:') || rawAlamat.startsWith('{') ? '' : rawAlamat));
+  const desaKelurahan = ext.desaKelurahan || ext.desa_kelurahan || ext.kelurahan || p.desa_kelurahan || p.kelurahan || p.desaKelurahan || '';
+  const kecamatan = ext.kecamatan || p.kecamatan || '';
+  const kabupatenKota = ext.kabupatenKota || ext.kabupaten_kota || ext.kota || p.kabupaten_kota || p.kota || p.kabupatenKota || '';
+  const provinsi = ext.provinsi || p.provinsi || '';
+  const kodePos = ext.kodePos || ext.kode_pos || p.kode_pos || p.kodePos || '';
+  const teleponFax = ext.teleponFax || ext.telepon_fax || ext.telepon || p.telepon_fax || p.telepon || p.teleponFax || '';
+  const email = ext.email || p.email || '';
+  const website = ext.website || p.website || '';
+  
+  const formattedAddress = formatFullAlamat({ jalan, desaKelurahan, kecamatan, kabupatenKota, provinsi, kodePos });
+  const fullAlamat = ext.full || formattedAddress || (rawAlamat.startsWith('__EXTJSON__:') || rawAlamat.startsWith('{') ? '' : rawAlamat);
+
+  const namaKepalaSekolah = p.nama_kepala_sekolah || p.namaKepalaSekolah || ext.namaKepalaSekolah || ext.nama_kepala_sekolah || '';
+  const nipKepalaSekolah = p.nip_kepala_sekolah || p.nipKepalaSekolah || ext.nipKepalaSekolah || ext.nip_kepala_sekolah || '';
+
+  return {
+    namaSekolah: p.nama_sekolah || p.namaSekolah || '',
+    jenjang,
+    npsn: p.npsn || '',
+    alamat: fullAlamat,
+    jalan,
+    desaKelurahan,
+    kecamatan,
+    kabupatenKota,
+    provinsi,
+    kodePos,
+    teleponFax,
+    email,
+    website,
+    tahunPelajaran: p.tahun_pelajaran || p.tahunPelajaran || '2026/2027',
+    semester: p.semester || '1',
+    kelas: p.kelas || '',
+    namaKepalaSekolah,
+    nipKepalaSekolah,
+    namaWaliKelas: p.nama_wali_kelas || p.namaWaliKelas || '',
+    nipWaliKelas: p.nip_wali_kelas || p.nipWaliKelas || ''
+  };
+};
 const dbConfig=(c:any):SystemConfig=>({appTitle:c.app_title||INITIAL_SYSTEM_CONFIG.appTitle,appSubtitle:c.app_subtitle||'',footerCopyright:c.footer_copyright||INITIAL_SYSTEM_CONFIG.footerCopyright,schoolLogoUrl:c.school_logo_url||'',letterheadType:c.letterhead_type||'standard_text',letterheadImageUrl:c.letterhead_image_url||'',showLetterhead:c.show_letterhead??true,defaultCheckInTime:c.default_check_in_time||'06:30 AM',defaultCheckOutTime:c.default_check_out_time||'12:20 PM',reportPlace:c.report_place||'',reportDate:c.report_date||new Date().toISOString().slice(0,10),activeStudyDays:c.active_study_days||[1,2,3,4,5],studentSelfAttendanceEnabled:c.student_self_attendance_enabled??true,checkInStartTime:String(c.check_in_start_time||'06:00').slice(0,5),checkInDeadlineTime:String(c.check_in_deadline_time||'07:00').slice(0,5),checkOutStartTime:String(c.check_out_start_time||'12:30').slice(0,5),autoMarkLate:c.auto_mark_late??true});
 
 export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
@@ -294,7 +344,21 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
    }
    setCurrentUser(me); 
    setUsers(hydratedUsers); 
-   const loadedSchool=school.data?dbSchool(school.data):INITIAL_SCHOOL_PROFILE; 
+   let rawSchoolData = school.data;
+   if (!rawSchoolData && schoolId) {
+     try {
+       const res = await fetch('/api/onboarding', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({ action: 'get_school_profile', school_id: schoolId })
+       });
+       const json = await res.json();
+       if (json.ok && json.profile) {
+         rawSchoolData = json.profile;
+       }
+     } catch (_) {}
+   }
+   const loadedSchool = rawSchoolData ? dbSchool(rawSchoolData) : INITIAL_SCHOOL_PROFILE; 
    const myClass=((me.role==='GURU'||me.role==='WALI KELAS'||me.role==='GURU MAPEL')&&me.classIds?.length===1)?classList.find((c:any)=>c.id===me.classIds?.[0]):null; 
    setSchoolProfile(myClass?{...loadedSchool,kelas:myClass.name,namaWaliKelas:me.name}:loadedSchool); 
    const cfg=config.data?dbConfig(config.data):INITIAL_SYSTEM_CONFIG; 
@@ -557,7 +621,9 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
       kodePos: p.kodePos || '',
       teleponFax: p.teleponFax || '',
       email: p.email || '',
-      website: p.website || ''
+      website: p.website || '',
+      namaKepalaSekolah: p.namaKepalaSekolah || '',
+      nipKepalaSekolah: p.nipKepalaSekolah || ''
     };
     const serializedAlamat = `__EXTJSON__:${JSON.stringify(extPayload)}`;
     const schoolId = currentUser?.schoolId || activeWorkspace?.workspaceId || null;
@@ -610,7 +676,7 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
         nama_wali_kelas: p.namaWaliKelas || '',
         nip_wali_kelas: p.nipWaliKelas || ''
       }, { onConflict: 'school_id' });
-      if (error) return showToast(error.message, 'error');
+      if (error) console.warn('Direct upsert warning:', error.message);
     }
 
     // 3. Update local states

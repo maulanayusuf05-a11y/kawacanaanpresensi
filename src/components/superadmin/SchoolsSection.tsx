@@ -62,6 +62,7 @@ export const SchoolsSection: React.FC<{
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [planFilter, setPlanFilter] = useState('all');
+  const [workspaceFilter, setWorkspaceFilter] = useState('all');
   const [expiryFilter, setExpiryFilter] = useState('all');
 
   // School Detail Selection Context
@@ -80,6 +81,7 @@ export const SchoolsSection: React.FC<{
     name: '',
     npsn: '',
     plan: 'school',
+    workspace_type: 'school',
     status: 'active',
     subscription_started_at: new Date().toISOString().slice(0, 10),
     subscription_expires_at: '',
@@ -208,6 +210,12 @@ export const SchoolsSection: React.FC<{
         (planFilter === 'teacher' && (s.plan === 'teacher' || s.plan === 'guru')) ||
         (planFilter === 'mulai' && (s.plan === 'mulai' || s.plan === 'free'));
 
+      const isPersonal = s.workspace_type === 'personal' || s.is_personal;
+      const matchWorkspace =
+        workspaceFilter === 'all' ||
+        (workspaceFilter === 'school' && !isPersonal) ||
+        (workspaceFilter === 'personal' && isPersonal);
+
       let matchExpiry = true;
       if (expiryFilter === 'expiring') {
         matchExpiry = lifecycle.isExpiringSoon || lifecycle.isGracePeriod;
@@ -217,9 +225,9 @@ export const SchoolsSection: React.FC<{
         matchExpiry = !lifecycle.isSuspended;
       }
 
-      return matchSearch && matchStatus && matchPlan && matchExpiry;
+      return matchSearch && matchStatus && matchPlan && matchWorkspace && matchExpiry;
     });
-  }, [schools, search, statusFilter, planFilter, expiryFilter]);
+  }, [schools, search, statusFilter, planFilter, workspaceFilter, expiryFilter]);
 
   // Handle Save Profile
   const handleSaveProfile = async (e: React.FormEvent) => {
@@ -1058,6 +1066,17 @@ export const SchoolsSection: React.FC<{
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Filter Ruang Kerja */}
+          <select
+            value={workspaceFilter}
+            onChange={(e) => setWorkspaceFilter(e.target.value)}
+            className="px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 bg-white"
+          >
+            <option value="all">Semua Ruang Kerja</option>
+            <option value="school">Ruang Kerja Sekolah</option>
+            <option value="personal">Ruang Kerja Individu</option>
+          </select>
+
           {/* Filter Status */}
           <select
             value={statusFilter}
@@ -1120,11 +1139,13 @@ export const SchoolsSection: React.FC<{
                 <tr className="border-b border-slate-200 text-slate-500 font-bold bg-slate-50/80">
                   <th className="py-3 px-4">Nama Sekolah</th>
                   <th className="py-3 px-4">Kode Undangan</th>
+                  <th className="py-3 px-4">Ruang Kerja</th>
                   <th className="py-3 px-4">NPSN</th>
                   <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4">Paket</th>
                   <th className="py-3 px-4 text-center">Siswa</th>
                   <th className="py-3 px-4 text-center">Guru</th>
+                  <th className="py-3 px-4 text-center">Kepala Sekolah</th>
                   <th className="py-3 px-4">Masa Berlaku</th>
                   <th className="py-3 px-4">Tanggal Dibuat</th>
                   <th className="py-3 px-4 text-right">Tindakan</th>
@@ -1163,6 +1184,26 @@ export const SchoolsSection: React.FC<{
                         </div>
                       </td>
 
+                      <td className="py-3 px-4">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                            s.workspace_type === 'personal' || s.is_personal
+                              ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                              : 'bg-blue-50 text-blue-700 border border-blue-200'
+                          }`}
+                        >
+                          {s.workspace_type === 'personal' || s.is_personal ? (
+                            <>
+                              <User size={11} /> Ruang Kerja Individu
+                            </>
+                          ) : (
+                            <>
+                              <Building2 size={11} /> Ruang Kerja Sekolah
+                            </>
+                          )}
+                        </span>
+                      </td>
+
                       <td className="py-3 px-4 font-mono font-semibold text-slate-700">
                         {s.npsn || '-'}
                       </td>
@@ -1191,6 +1232,25 @@ export const SchoolsSection: React.FC<{
 
                       <td className="py-3 px-4 text-center font-bold text-slate-800">
                         {s.teacher_admin_count || 0}
+                      </td>
+
+                      <td className="py-3 px-4 text-center font-bold text-slate-800">
+                        <div className="inline-flex flex-col items-center">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              (s.headmaster_count || 0) > 0
+                                ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                                : 'bg-slate-50 text-slate-500'
+                            }`}
+                          >
+                            {s.headmaster_count || 0}
+                          </span>
+                          {s.headmaster_name && (
+                            <span className="text-[9px] text-slate-400 font-normal truncate max-w-[100px]" title={s.headmaster_name}>
+                              {s.headmaster_name}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       <td className="py-3 px-4">
@@ -1266,6 +1326,18 @@ export const SchoolsSection: React.FC<{
                   placeholder="Contoh: 20100123"
                   className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs focus:outline-indigo-600"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Tipe Ruang Kerja</label>
+                <select
+                  value={createForm.workspace_type || 'school'}
+                  onChange={(e) => setCreateForm({ ...createForm, workspace_type: e.target.value })}
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs bg-white focus:outline-indigo-600"
+                >
+                  <option value="school">Ruang Kerja Sekolah (Multi-User Guru & Siswa)</option>
+                  <option value="personal">Ruang Kerja Individu (Personal / Guru Tunggal)</option>
+                </select>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

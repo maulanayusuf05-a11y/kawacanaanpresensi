@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { getUserRoleScope } from '../utils/userScope';
 import {
   Users,
   Calendar,
   Building,
+  Building2,
   UserCheck,
   ClipboardList,
   BarChart2,
@@ -20,6 +21,10 @@ import {
   Zap,
   ShieldCheck,
   Clock,
+  Copy,
+  Check,
+  Key,
+  User,
 } from 'lucide-react';
 
 export const DashboardView: React.FC = () => {
@@ -39,6 +44,8 @@ export const DashboardView: React.FC = () => {
     schoolProfile,
     currentAttendanceDate,
   } = useApp();
+
+  const [copiedCode, setCopiedCode] = useState(false);
 
   // Resolve user role scope (Wali Kelas, Guru Mapel, Admin, KS)
   const userScope = React.useMemo(
@@ -311,14 +318,53 @@ export const DashboardView: React.FC = () => {
     amber: 'bg-amber-50 border-amber-100 text-amber-600',
   };
 
+  const cleanInvitationCode = React.useMemo(() => {
+    const raw =
+      schoolProfile?.kodeSekolah ||
+      activeWorkspace?.workspaceCode ||
+      currentUser?.schoolCode ||
+      schoolProfile?.npsn ||
+      (currentUser?.schoolId ? currentUser.schoolId.slice(0, 8) : '9B3366AB');
+    return (raw || '9B3366AB').replace(/^SCH-?/i, '').trim().toUpperCase();
+  }, [schoolProfile?.kodeSekolah, schoolProfile?.npsn, activeWorkspace?.workspaceCode, currentUser?.schoolCode, currentUser?.schoolId]);
+
+  const handleCopyInvitationCode = () => {
+    navigator.clipboard.writeText(cleanInvitationCode);
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2000);
+  };
+
   return (
     <div className="w-full max-w-7xl 2xl:max-w-[1500px] mx-auto px-3.5 sm:px-6 lg:px-8 py-3.5 sm:py-5 space-y-3.5 sm:space-y-4 animate-in fade-in duration-300">
       {/* Top Title Card */}
       <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="min-w-0 space-y-1 flex-1">
-          <h1 className="text-lg sm:text-xl lg:text-2xl font-black text-slate-900 tracking-tight">
-            Panel Kontrol Utama
-          </h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-lg sm:text-xl lg:text-2xl font-black text-slate-900 tracking-tight">
+              Panel Kontrol Utama
+            </h1>
+            {/* Lencana Tipe Ruang Kerja */}
+            <span
+              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                isPersonalWorkspace
+                  ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                  : 'bg-blue-50 text-blue-700 border border-blue-200'
+              }`}
+            >
+              {isPersonalWorkspace ? (
+                <>
+                  <User size={12} />
+                  <span>Ruang Kerja Individu</span>
+                </>
+              ) : (
+                <>
+                  <Building2 size={12} />
+                  <span>Ruang Kerja Sekolah</span>
+                </>
+              )}
+            </span>
+          </div>
+
           <p className="text-xs text-slate-500 leading-relaxed">
             {userScope.isWaliKelas
               ? `Pengawasan kehadiran dan administrasi kelas binaan ${userScope.assignedWaliClassName || 'Wali Kelas'}.`
@@ -330,18 +376,35 @@ export const DashboardView: React.FC = () => {
 
         {/* Lencana dan Status di Sebelah Kanan (Sejajar) */}
         <div className="flex flex-wrap items-center md:justify-end gap-2 shrink-0">
+          {/* Lencana Kode Undangan Sekolah (Bila Ruang Kerja Sekolah) */}
+          {!isPersonalWorkspace && currentUser?.role !== 'SUPER_ADMIN' && (
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-50 text-amber-900 border border-amber-300 shadow-xs shrink-0 font-mono">
+              <Key size={13} className="text-amber-700 shrink-0" />
+              <span>Kode: {cleanInvitationCode}</span>
+              <button
+                type="button"
+                onClick={handleCopyInvitationCode}
+                title="Salin Kode Undangan"
+                className="text-amber-700 hover:text-amber-950 p-0.5 cursor-pointer ml-0.5"
+              >
+                {copiedCode ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
+              </button>
+            </div>
+          )}
+
           {!isPersonalWorkspace && (
             <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
               {userScope.roleBadgeLabel}
             </span>
           )}
-          {/* Lencana Gabungan Masa Berlaku & Paket */}
+
+          {/* Lencana Gabungan Masa Berlaku & Paket Layanan dari Superadmin */}
           {currentUser?.role !== 'SUPER_ADMIN' && (
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-gradient-to-r from-amber-50 to-orange-50 text-amber-900 border border-amber-300/80 shadow-xs shrink-0">
-              <Clock size={13} className="text-amber-600 shrink-0" />
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-gradient-to-r from-indigo-50 via-blue-50 to-indigo-50 text-indigo-900 border border-indigo-200 shadow-xs shrink-0">
+              <Sparkles size={13} className="text-indigo-600 shrink-0" />
               <span>
-                Masa Berlaku {packageInfo.planName}
-                {packageInfo.expiryFormatted ? `: s.d. ${packageInfo.expiryFormatted}` : ''}
+                {packageInfo.planName}
+                {packageInfo.expiryFormatted ? ` (s.d. ${packageInfo.expiryFormatted})` : ''}
               </span>
             </div>
           )}

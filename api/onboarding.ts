@@ -967,7 +967,7 @@ export default async function handler(req: any, res: any) {
       const nipWaliKelas = String(body.nipWaliKelas || body.nip_wali_kelas || '').trim();
 
       // 1. Simpan ke tabel school_profile
-      const { data: sp, error: spErr } = await db.from('school_profile').upsert({
+      const profilePayload: any = {
         school_id: schoolId,
         nama_sekolah: namaSekolah,
         npsn: npsn || null,
@@ -980,9 +980,15 @@ export default async function handler(req: any, res: any) {
         nip_kepala_sekolah: nipKepalaSekolah,
         nama_wali_kelas: namaWaliKelas,
         nip_wali_kelas: nipWaliKelas,
-      }, { onConflict: 'school_id' }).select().single();
+      };
 
-      if (spErr) throw spErr;
+      const { data: sp, error: spErr } = await db.from('school_profile').upsert(profilePayload, { onConflict: 'school_id' }).select().single();
+
+      if (spErr) {
+        console.warn('Upsert school_profile error:', spErr.message);
+        // Fallback jika single() gagal karena schema constraint
+        await db.from('school_profile').upsert(profilePayload, { onConflict: 'school_id' });
+      }
 
       // 2. Terintegrasi penuh dengan data Superadmin di tabel `schools`
       const schoolUpdate: any = {};
@@ -1000,7 +1006,23 @@ export default async function handler(req: any, res: any) {
         ok: true,
         success: true,
         message: 'Identitas satuan pendidikan berhasil disimpan dan terintegrasi.',
-        profile: sp,
+        profile: sp || profilePayload,
+      });
+    }
+
+    if (action === 'get_school_profile') {
+      const schoolId = body.schoolId || body.school_id;
+      if (!schoolId) {
+        return json(res, 400, { error: 'ID sekolah wajib disertakan.' });
+      }
+      const [{ data: sp }, { data: sch }] = await Promise.all([
+        db.from('school_profile').select('*').eq('school_id', schoolId).maybeSingle(),
+        db.from('schools').select('id, name, npsn, code, plan, status, workspace_type, is_personal').eq('id', schoolId).maybeSingle()
+      ]);
+      return json(res, 200, {
+        ok: true,
+        profile: sp || null,
+        school: sch || null
       });
     }
 

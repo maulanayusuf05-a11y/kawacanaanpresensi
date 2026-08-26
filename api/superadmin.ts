@@ -244,7 +244,7 @@ export default async function handler(req:any,res:any){
         admin.from('students').select('school_id'),
         admin.from('profiles').select('school_id, role').neq('role','SUPER_ADMIN'),
         admin.from('classes').select('school_id'),
-        admin.from('school_profile').select('school_id, nama_sekolah, npsn, jenjang'),
+        admin.from('school_profile').select('school_id, nama_sekolah, npsn, jenjang, nama_kepala_sekolah, nip_kepala_sekolah, alamat'),
       ]);
       if(sErr) throw sErr;
 
@@ -256,10 +256,28 @@ export default async function handler(req:any,res:any){
       const studentCounts: Record<string, number> = {};
       (students||[]).forEach((st:any)=>{ if(st.school_id) studentCounts[st.school_id]=(studentCounts[st.school_id]||0)+1; });
 
+      const teacherCounts: Record<string, number> = {};
+      const headmasterCounts: Record<string, number> = {};
       const teacherAdminCounts: Record<string, number> = {};
+
       (profiles||[]).forEach((pr:any)=>{
-        if(pr.school_id && (pr.role==='ADMIN'||pr.role==='WALI KELAS'||pr.role==='GURU MAPEL'||pr.role==='GURU'||pr.role==='KEPALA SEKOLAH')) {
-          teacherAdminCounts[pr.school_id]=(teacherAdminCounts[pr.school_id]||0)+1;
+        if(pr.school_id) {
+          if (pr.role === 'KEPALA SEKOLAH') {
+            headmasterCounts[pr.school_id] = (headmasterCounts[pr.school_id] || 0) + 1;
+          } else if (pr.role === 'WALI KELAS' || pr.role === 'GURU MAPEL' || pr.role === 'GURU') {
+            teacherCounts[pr.school_id] = (teacherCounts[pr.school_id] || 0) + 1;
+          }
+
+          if (pr.role === 'ADMIN' || pr.role === 'WALI KELAS' || pr.role === 'GURU MAPEL' || pr.role === 'GURU' || pr.role === 'KEPALA SEKOLAH') {
+            teacherAdminCounts[pr.school_id] = (teacherAdminCounts[pr.school_id] || 0) + 1;
+          }
+        }
+      });
+
+      // Sinkronisasi jika ada nama_kepala_sekolah di school_profile tapi belum ada akun user KS terdaftar
+      (schoolProfiles || []).forEach((sp: any) => {
+        if (sp.school_id && sp.nama_kepala_sekolah && String(sp.nama_kepala_sekolah).trim() && !headmasterCounts[sp.school_id]) {
+          headmasterCounts[sp.school_id] = 1;
         }
       });
 
@@ -268,9 +286,9 @@ export default async function handler(req:any,res:any){
 
       const rows = (schools||[]).map((s:any)=>{
         const p = (s.plan||'mulai').toLowerCase();
-        const normPlan = (p==='school'||p==='sekolah') ? 'school' : (p==='teacher'||p==='guru') ? 'teacher' : 'mulai';
+        const normPlan = (p==='school'||p==='sekolah'||p==='sekolah_pro'||p==='sekolah_uji_coba') ? 'school' : (p==='teacher'||p==='guru'||p==='guru_pro'||p==='guru_uji_coba') ? 'teacher' : 'mulai';
         
-        const isPersonal = s.workspace_type === 'personal' || (Boolean(s.code?.startsWith('PER-')) && !s.npsn);
+        const isPersonal = s.workspace_type === 'personal' || s.workspace_type === 'individu' || s.is_personal === true || (Boolean(s.code?.startsWith('PER-')) && !s.npsn);
         const workspaceType = isPersonal ? 'personal' : 'school';
 
         const sp = profileMap.get(s.id);
@@ -290,7 +308,9 @@ export default async function handler(req:any,res:any){
           workspace_type: workspaceType,
           workspace_type_label: isPersonal ? 'Ruang Kerja Individu' : 'Ruang Kerja Sekolah',
           student_count: studentCounts[s.id] || 0,
-          teacher_admin_count: teacherAdminCounts[s.id] || 0,
+          teacher_count: teacherCounts[s.id] || (teacherAdminCounts[s.id] ? Math.max(0, teacherAdminCounts[s.id] - (headmasterCounts[s.id] || 0)) : 0),
+          teacher_admin_count: teacherCounts[s.id] || teacherAdminCounts[s.id] || 0,
+          headmaster_count: headmasterCounts[s.id] || 0,
           class_count: classCounts[s.id] || 0,
           is_personal: isPersonal,
         };
