@@ -22,16 +22,17 @@ import {
 
 export const DataSekolahView: React.FC = () => {
   const { schoolProfile, updateSchoolProfile, currentUser, showToast, activeWorkspace } = useApp();
-  const [formData, setFormData] = useState<SchoolProfile>({
+  const [formData, setFormData] = useState<SchoolProfile>(() => ({
     ...schoolProfile,
     jenjang: 'SD/MI',
     tahunPelajaran: schoolProfile.tahunPelajaran || '2025/2026',
     semester: schoolProfile.semester || '1 (Ganjil)',
-  });
+  }));
   const [saving, setSaving] = useState(false);
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [lookupSuccess, setLookupSuccess] = useState<boolean | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
+  const isDirtyRef = React.useRef(false);
 
   const rawSchoolCode =
     schoolProfile.kodeSekolah ||
@@ -60,17 +61,20 @@ export const DataSekolahView: React.FC = () => {
     window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
   };
 
-  // Sinkronisasi state form jika schoolProfile pada context berubah
+  // Sinkronisasi state form jika schoolProfile pada context berubah dan user sedang tidak mengetik form baru
   useEffect(() => {
-    setFormData({
-      ...schoolProfile,
-      jenjang: 'SD/MI', // Mutlak SD/MI
-      tahunPelajaran: schoolProfile.tahunPelajaran || '2025/2026',
-      semester: schoolProfile.semester || '1 (Ganjil)',
-    });
+    if (!isDirtyRef.current) {
+      setFormData({
+        ...schoolProfile,
+        jenjang: 'SD/MI', // Mutlak SD/MI
+        tahunPelajaran: schoolProfile.tahunPelajaran || '2025/2026',
+        semester: schoolProfile.semester || '1 (Ganjil)',
+      });
+    }
   }, [schoolProfile]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    isDirtyRef.current = true;
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
@@ -93,6 +97,7 @@ export const DataSekolahView: React.FC = () => {
         throw new Error(result.error || 'Data sekolah tidak ditemukan di Kemendikdasmen.');
       }
 
+      isDirtyRef.current = true;
       const d = result.data || result;
       setFormData((prev) => ({
         ...prev,
@@ -129,6 +134,7 @@ export const DataSekolahView: React.FC = () => {
         ...formData,
         jenjang: 'SD/MI',
       });
+      isDirtyRef.current = false;
       showToast('Identitas dan profil sekolah berhasil disimpan!', 'success');
     } catch (err: any) {
       showToast(err.message || 'Gagal menyimpan identitas sekolah.', 'error');
@@ -142,8 +148,8 @@ export const DataSekolahView: React.FC = () => {
     activeWorkspace?.workspaceType === 'individu' ||
     (currentUser?.subscriptionPlan === 'mulai' && !currentUser?.schoolId);
 
-  const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN';
-  const canEditSchool = isPersonalWorkspace ? true : isAdmin;
+  // Mengizinkan semua peran pengelola (Admin, Superadmin, Guru, Wali Kelas, Kepala Sekolah) mengedit profil sekolah
+  const canEditSchool = currentUser?.role !== 'SISWA';
   const isReadOnly = !canEditSchool;
 
   return (

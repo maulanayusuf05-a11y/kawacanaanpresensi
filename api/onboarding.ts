@@ -297,6 +297,112 @@ export default async function handler(req: any, res: any) {
     }
 
     // -------------------------------------------------------------
+    // 3.5. SCHOOL PROFILE MANAGEMENT (SAVE & GET)
+    // -------------------------------------------------------------
+    if (action === 'save_school_profile' || action === 'update_school_profile') {
+      let schoolId = body.schoolId || body.school_id || null;
+      
+      // If schoolId not in body, try to resolve from auth token if available
+      const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+      if (!schoolId && token) {
+        try {
+          const { data: authData } = await db.auth.getUser(token);
+          if (authData?.user) {
+            const { data: prof } = await db.from('profiles').select('school_id').eq('id', authData.user.id).maybeSingle();
+            schoolId = prof?.school_id || null;
+          }
+        } catch (_) {}
+      }
+
+      if (!schoolId) {
+        return json(res, 400, { error: 'ID ruang kerja/sekolah wajib disertakan.' });
+      }
+
+      const namaSekolah = String(body.namaSekolah || body.nama_sekolah || '').trim();
+      const npsn = String(body.npsn || '').trim();
+      const jenjang = String(body.jenjang || 'SD/MI').trim();
+      const alamat = body.alamat || '';
+      const tahunPelajaran = String(body.tahunPelajaran || body.tahun_pelajaran || '2025/2026').trim();
+      const semester = String(body.semester || '1 (Ganjil)').trim();
+      const kelas = String(body.kelas || '').trim();
+      const namaKepalaSekolah = String(body.namaKepalaSekolah || body.nama_kepala_sekolah || '').trim();
+      const nipKepalaSekolah = String(body.nipKepalaSekolah || body.nip_kepala_sekolah || '').trim();
+      const namaWaliKelas = String(body.namaWaliKelas || body.nama_wali_kelas || '').trim();
+      const nipWaliKelas = String(body.nipWaliKelas || body.nip_wali_kelas || '').trim();
+
+      // 1. Simpan ke tabel school_profile
+      const profilePayload: any = {
+        school_id: schoolId,
+        nama_sekolah: namaSekolah,
+        npsn: npsn || null,
+        jenjang,
+        alamat,
+        tahun_pelajaran: tahunPelajaran,
+        semester,
+        kelas,
+        nama_kepala_sekolah: namaKepalaSekolah,
+        nip_kepala_sekolah: nipKepalaSekolah,
+        nama_wali_kelas: namaWaliKelas,
+        nip_wali_kelas: nipWaliKelas,
+      };
+
+      let spData = null;
+      try {
+        const { data: sp, error: spErr } = await db.from('school_profile').upsert(profilePayload, { onConflict: 'school_id' }).select().single();
+        if (spErr) {
+          console.warn('Upsert school_profile single() fallback:', spErr.message);
+          await db.from('school_profile').upsert(profilePayload, { onConflict: 'school_id' });
+        } else {
+          spData = sp;
+        }
+      } catch (upsertErr: any) {
+        console.warn('Upsert school_profile error:', upsertErr?.message);
+        try {
+          await db.from('school_profile').upsert(profilePayload, { onConflict: 'school_id' });
+        } catch (_) {}
+      }
+
+      // 2. Terintegrasi penuh dengan data Superadmin di tabel `schools`
+      const schoolUpdate: any = {};
+      if (namaSekolah) {
+        schoolUpdate.name = namaSekolah;
+      }
+      if (npsn) {
+        schoolUpdate.npsn = npsn;
+      }
+      if (Object.keys(schoolUpdate).length > 0) {
+        try {
+          await db.from('schools').update(schoolUpdate).eq('id', schoolId);
+        } catch (schErr: any) {
+          console.warn('Update schools table warning:', schErr?.message);
+        }
+      }
+
+      return json(res, 200, {
+        ok: true,
+        success: true,
+        message: 'Identitas satuan pendidikan berhasil disimpan dan terintegrasi.',
+        profile: spData || profilePayload,
+      });
+    }
+
+    if (action === 'get_school_profile') {
+      const schoolId = body.schoolId || body.school_id;
+      if (!schoolId) {
+        return json(res, 400, { error: 'ID sekolah wajib disertakan.' });
+      }
+      const [{ data: sp }, { data: sch }] = await Promise.all([
+        db.from('school_profile').select('*').eq('school_id', schoolId).maybeSingle(),
+        db.from('schools').select('id, name, npsn, code, plan, status, workspace_type, is_personal').eq('id', schoolId).maybeSingle()
+      ]);
+      return json(res, 200, {
+        ok: true,
+        profile: sp || null,
+        school: sch || null
+      });
+    }
+
+    // -------------------------------------------------------------
     // 4. AUTHENTICATED ACTIONS: ONBOARDING DARI GOOGLE SSO & SESI AKTIF
     // -------------------------------------------------------------
     const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
@@ -938,91 +1044,6 @@ export default async function handler(req: any, res: any) {
         success: true,
         teacher: inserted,
         teacherId: inserted.id,
-      });
-    }
-
-    // -------------------------------------------------------------
-    // SAVE / UPDATE SCHOOL PROFILE & SYNC TO SCHOOLS & SUPERADMIN
-    // -------------------------------------------------------------
-    if (action === 'save_school_profile' || action === 'update_school_profile') {
-      let schoolId = body.schoolId || null;
-      if (!schoolId && callerUser?.id) {
-        const { data: prof } = await db.from('profiles').select('school_id').eq('id', callerUser.id).maybeSingle();
-        schoolId = prof?.school_id || null;
-      }
-      if (!schoolId) {
-        return json(res, 400, { error: 'ID ruang kerja/sekolah wajib disertakan.' });
-      }
-
-      const namaSekolah = String(body.namaSekolah || body.nama_sekolah || '').trim();
-      const npsn = String(body.npsn || '').trim();
-      const jenjang = String(body.jenjang || 'SD/MI').trim();
-      const alamat = body.alamat || '';
-      const tahunPelajaran = String(body.tahunPelajaran || body.tahun_pelajaran || '2026/2027').trim();
-      const semester = String(body.semester || '1').trim();
-      const kelas = String(body.kelas || '').trim();
-      const namaKepalaSekolah = String(body.namaKepalaSekolah || body.nama_kepala_sekolah || '').trim();
-      const nipKepalaSekolah = String(body.nipKepalaSekolah || body.nip_kepala_sekolah || '').trim();
-      const namaWaliKelas = String(body.namaWaliKelas || body.nama_wali_kelas || '').trim();
-      const nipWaliKelas = String(body.nipWaliKelas || body.nip_wali_kelas || '').trim();
-
-      // 1. Simpan ke tabel school_profile
-      const profilePayload: any = {
-        school_id: schoolId,
-        nama_sekolah: namaSekolah,
-        npsn: npsn || null,
-        jenjang,
-        alamat,
-        tahun_pelajaran: tahunPelajaran,
-        semester,
-        kelas,
-        nama_kepala_sekolah: namaKepalaSekolah,
-        nip_kepala_sekolah: nipKepalaSekolah,
-        nama_wali_kelas: namaWaliKelas,
-        nip_wali_kelas: nipWaliKelas,
-      };
-
-      const { data: sp, error: spErr } = await db.from('school_profile').upsert(profilePayload, { onConflict: 'school_id' }).select().single();
-
-      if (spErr) {
-        console.warn('Upsert school_profile error:', spErr.message);
-        // Fallback jika single() gagal karena schema constraint
-        await db.from('school_profile').upsert(profilePayload, { onConflict: 'school_id' });
-      }
-
-      // 2. Terintegrasi penuh dengan data Superadmin di tabel `schools`
-      const schoolUpdate: any = {};
-      if (namaSekolah) {
-        schoolUpdate.name = namaSekolah;
-      }
-      if (npsn) {
-        schoolUpdate.npsn = npsn;
-      }
-      if (Object.keys(schoolUpdate).length > 0) {
-        await db.from('schools').update(schoolUpdate).eq('id', schoolId);
-      }
-
-      return json(res, 200, {
-        ok: true,
-        success: true,
-        message: 'Identitas satuan pendidikan berhasil disimpan dan terintegrasi.',
-        profile: sp || profilePayload,
-      });
-    }
-
-    if (action === 'get_school_profile') {
-      const schoolId = body.schoolId || body.school_id;
-      if (!schoolId) {
-        return json(res, 400, { error: 'ID sekolah wajib disertakan.' });
-      }
-      const [{ data: sp }, { data: sch }] = await Promise.all([
-        db.from('school_profile').select('*').eq('school_id', schoolId).maybeSingle(),
-        db.from('schools').select('id, name, npsn, code, plan, status, workspace_type, is_personal').eq('id', schoolId).maybeSingle()
-      ]);
-      return json(res, 200, {
-        ok: true,
-        profile: sp || null,
-        school: sch || null
       });
     }
 
