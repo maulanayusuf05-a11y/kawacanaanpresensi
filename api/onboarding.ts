@@ -1040,7 +1040,8 @@ export default async function handler(req: any, res: any) {
             nama,
             nip,
             jenis_kelamin: jenisKelamin,
-            mata_pelajaran: jabatan,
+            jabatan,
+            jenis_ptk: jabatan,
             status_kepegawaian: statusKepegawaian,
             no_hp: noHp,
           })
@@ -1052,7 +1053,7 @@ export default async function handler(req: any, res: any) {
           return json(res, 200, {
             ok: true,
             success: true,
-            teacher: { ...updated, jabatan, jenis_ptk: jabatan, mata_pelajaran: jabatan },
+            teacher: { ...updated, jabatan, jenis_ptk: jabatan },
             teacherId: updated.id,
           });
         }
@@ -1064,7 +1065,8 @@ export default async function handler(req: any, res: any) {
           nama,
           nip,
           jenis_kelamin: jenisKelamin,
-          mata_pelajaran: jabatan,
+          jabatan,
+          jenis_ptk: jabatan,
           status_kepegawaian: statusKepegawaian,
           no_hp: noHp,
           school_id: schoolId,
@@ -1077,7 +1079,7 @@ export default async function handler(req: any, res: any) {
       return json(res, 200, {
         ok: true,
         success: true,
-        teacher: { ...inserted, jabatan, jenis_ptk: jabatan, mata_pelajaran: jabatan },
+        teacher: { ...inserted, jabatan, jenis_ptk: jabatan },
         teacherId: inserted.id,
       });
     }
