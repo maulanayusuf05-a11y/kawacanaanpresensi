@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { UserAccount, UserRole, GeneratedAccountResult } from '../types';
+import { exportGeneratedAccountsPdf } from '../utils/exportGeneratedAccountsPdf';
 import {
   ArrowLeft,
   UserCheck,
@@ -21,12 +22,14 @@ import {
   ShieldCheck,
   School,
   FileSpreadsheet,
+  FileText,
   Eye,
   EyeOff,
 } from 'lucide-react';
 
 export const DataPenggunaView: React.FC = () => {
   const {
+    currentUser,
     users,
     classes,
     students,
@@ -355,6 +358,17 @@ export const DataPenggunaView: React.FC = () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const handleExportPDF = () => {
+    if (!generatedResults || generatedResults.length === 0) return;
+    const targetAccounts = filteredGeneratedResults.length > 0 ? filteredGeneratedResults : generatedResults;
+    exportGeneratedAccountsPdf({
+      schoolProfile,
+      accounts: targetAccounts,
+      categoryFilter: resultFilterTab,
+      adminName: currentUser?.name || currentUser?.username || 'Administrator Sekolah',
+    });
   };
 
   const filteredGeneratedResults = useMemo(() => {
@@ -1366,9 +1380,19 @@ export const DataPenggunaView: React.FC = () => {
                   onClick={handleDownloadCSV}
                   className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
                   title="Unduh file Excel / CSV"
+                  id="btn-export-csv-generate"
                 >
                   <Download size={14} />
                   <span>Unduh CSV</span>
+                </button>
+                <button
+                  onClick={handleExportPDF}
+                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white rounded-xl text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                  title="Ekspor daftar akun resmi ke PDF"
+                  id="btn-export-pdf-generate"
+                >
+                  <FileText size={14} />
+                  <span>Export PDF</span>
                 </button>
                 <button
                   onClick={() => setGeneratedResults(null)}

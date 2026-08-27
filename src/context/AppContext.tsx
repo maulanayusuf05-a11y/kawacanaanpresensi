@@ -458,6 +458,10 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
    setActiveWorkspace(ws);
    setIsSelectingWorkspace(false);
    setIsOnboarding(false);
+   if (ws.userId) {
+     localStorage.setItem(`kawacanaan_last_workspace_id_${ws.userId}`, ws.workspaceId);
+   }
+   localStorage.setItem('kawacanaan_last_workspace_id', ws.workspaceId);
    const { data: baseProfile } = await supabase.from('profiles').select('*').eq('id', ws.userId).maybeSingle();
    if (baseProfile) {
      await loadDataForSchool(ws.workspaceId, baseProfile, ws.role);
@@ -690,20 +694,35 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
      return;
    }
 
-   const targetWorkspace: WorkspaceMembership | null = null;
+   // Tentukan ruang kerja aktif secara otomatis (berdasarkan ruang kerja terakhir yang digunakan)
+   const lastUsedWsId =
+     localStorage.getItem(`kawacanaan_last_workspace_id_${userId}`) ||
+     localStorage.getItem('kawacanaan_last_workspace_id');
 
-   if (memberships.length > 1 && !targetWorkspace) {
-     // User memiliki beberapa workspace dan belum memilih yang aktif
-     setIsSelectingWorkspace(true);
-     setIsOnboarding(false);
-     return;
+   let chosenWorkspace: WorkspaceMembership | null = null;
+
+   if (lastUsedWsId) {
+     chosenWorkspace = memberships.find((ws) => ws.workspaceId === lastUsedWsId) || null;
    }
 
-   // Default ke workspace pertama jika hanya 1 atau sudah ada yang dipilih
-   const chosenWorkspace = targetWorkspace || memberships[0];
+   if (!chosenWorkspace && baseProfile?.school_id) {
+     chosenWorkspace = memberships.find((ws) => ws.workspaceId === baseProfile.school_id) || null;
+   }
+
+   if (!chosenWorkspace) {
+     chosenWorkspace =
+       memberships.find((ws) => ws.workspaceType !== 'personal' && ws.workspaceType !== 'individu') ||
+       memberships[0];
+   }
+
    setActiveWorkspace(chosenWorkspace);
    setIsSelectingWorkspace(false);
    setIsOnboarding(false);
+
+   if (userId) {
+     localStorage.setItem(`kawacanaan_last_workspace_id_${userId}`, chosenWorkspace.workspaceId);
+   }
+   localStorage.setItem('kawacanaan_last_workspace_id', chosenWorkspace.workspaceId);
 
    await loadDataForSchool(chosenWorkspace.workspaceId, baseProfile, chosenWorkspace.role);
 
