@@ -112,9 +112,9 @@ export const DataKelasView: React.FC = () => {
   }, [isAdmin, isPersonalWorkspace, classes, myAssignedClasses]);
 
   const canAddClass = isAdmin || isPersonalWorkspace;
-  const canEditClass = isAdmin || isPersonalWorkspace || isWaliKelas;
+  const canEditClass = isAdmin || isPersonalWorkspace;
   const canDeleteClass = isAdmin || isPersonalWorkspace;
-  const canManageKelas = isAdmin || isPersonalWorkspace || isWaliKelas;
+  const canManageKelas = isAdmin || isPersonalWorkspace;
 
   // Search & Pagination
   const [searchTerm, setSearchTerm] = useState('');
@@ -557,7 +557,7 @@ export const DataKelasView: React.FC = () => {
               ) : isWaliKelas && !isAdmin && (
                 <div className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-bold">
                   <ShieldCheck size={13} className="text-emerald-600" />
-                  <span>Akses Wali Kelas: Mengelola Kelas Binaan Anda ({myAssignedClasses.map((c) => c.name).join(', ') || 'Belum ditugaskan'})</span>
+                  <span>Akses Wali Kelas (Hanya Melihat): Menampilkan Kelas Binaan Anda ({myAssignedClasses.map((c) => c.name).join(', ') || 'Belum ditugaskan'})</span>
                 </div>
               )}
             </div>
@@ -727,6 +727,17 @@ export const DataKelasView: React.FC = () => {
                               title="Edit Rombel"
                             >
                               <Edit2 size={15} />
+                            </button>
+                          )}
+                          {!canEditClass && !canDeleteClass && (
+                            <button
+                              type="button"
+                              onClick={() => setViewingClass(c)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors cursor-pointer"
+                              title="Lihat Daftar Siswa"
+                            >
+                              <Eye size={13} />
+                              <span>Lihat Siswa</span>
                             </button>
                           )}
                           {isAdmin && totalCount > 0 && (

@@ -188,41 +188,6 @@ export const DataSekolahView: React.FC = () => {
 
   return (
     <div className="w-full space-y-6 animate-in fade-in duration-200">
-      {/* Header Banner */}
-      <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white rounded-3xl p-6 sm:p-8 shadow-xl relative overflow-hidden">
-        <div className="absolute right-0 top-0 translate-x-12 -translate-y-8 w-72 h-72 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 border border-blue-400/30 text-blue-200 text-xs font-bold tracking-wide">
-              <School size={14} className="text-blue-400" />
-              {isPersonalWorkspace ? 'Ruang Kerja Individu · Identitas Satuan Pendidikan' : 'Data Referensi Pokok Satuan Pendidikan (SD/MI Sederajat)'}
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white flex items-center gap-3">
-              Identitas Sekolah
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-300 max-w-2xl leading-relaxed">
-              Formulir terpadu identitas induk sekolah tingkat SD/MI, sinkronisasi otomatis alamat resmi dari Referensi Kemendikdasmen, tahun pelajaran aktif, dan kepemimpinan sekolah.
-            </p>
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-            <div className="bg-white/10 backdrop-blur-md border border-white/15 px-4 py-3 rounded-2xl flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-blue-500/30 flex items-center justify-center font-black text-white text-base">
-                SD/MI
-              </div>
-              <div>
-                <div className="text-xs font-bold text-white uppercase tracking-wider line-clamp-1">
-                  {formData.namaSekolah || 'Belum Diatur'}
-                </div>
-                <div className="text-[11px] text-blue-200 font-mono">
-                  NPSN: {formData.npsn || '-'} · TP {formData.tahunPelajaran || '2025/2026'}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Kartu Kode Undangan Sekolah untuk Bergabung Guru & Siswa */}
       {!isPersonalWorkspace && (
         <div className="bg-gradient-to-r from-indigo-900 via-slate-900 to-blue-950 text-white rounded-3xl p-6 shadow-lg border border-indigo-500/20 flex flex-col md:flex-row md:items-center justify-between gap-5 relative overflow-hidden">

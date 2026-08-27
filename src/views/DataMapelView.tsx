@@ -142,6 +142,24 @@ export const DataMapelView: React.FC = () => {
   // Filtered Subjects:
   const filteredSubjects = useMemo(() => {
     return subjects.filter((sub) => {
+      // Untuk Wali Kelas di Ruang Kerja Sekolah: hanya menampilkan mata pelajaran kelas binaannya saja
+      if (isWaliKelas && !isAdmin) {
+        const myClassIds = userScope.accessibleClassIds;
+        const myClassNames = userScope.accessibleClasses.map((c) => c.name.trim().toLowerCase());
+        const targetIds = sub.targetClassIds || [];
+        const targetNames = (sub.targetClassNames || []).map((n) => n.trim().toLowerCase());
+
+        const hasClassIdMatch = targetIds.some((id) => myClassIds.includes(id));
+        const hasClassNameMatch = targetNames.some((name) => myClassNames.includes(name));
+        const hasAttendanceMatch = attendanceRecords.some(
+          (r) => r.type === 'SUBJECT' && r.subjectId === sub.id && r.classId && myClassIds.includes(r.classId)
+        );
+
+        if (!hasClassIdMatch && !hasClassNameMatch && !hasAttendanceMatch) {
+          return false;
+        }
+      }
+
       // Filter tab Mapel Saya
       if (viewScopeTab === 'MY') {
         if (!isMySubject(sub)) return false;
@@ -170,7 +188,7 @@ export const DataMapelView: React.FC = () => {
       const matchesDays = (sub.scheduleDays || []).some((d) => d.toLowerCase().includes(q));
       return matchesName || matchesCode || matchesTeacher || matchesClasses || matchesDays;
     });
-  }, [subjects, viewScopeTab, searchTerm, selectedClassFilter, activeFilterClass, attendanceRecords, currentUser, currentTeacher, userScope.assignedSubjectIds]);
+  }, [subjects, isWaliKelas, isAdmin, userScope.accessibleClassIds, userScope.accessibleClasses, viewScopeTab, searchTerm, selectedClassFilter, activeFilterClass, attendanceRecords, currentUser, currentTeacher, userScope.assignedSubjectIds]);
 
   const openAdd = () => {
     setEditingSubject(null);
@@ -272,16 +290,17 @@ export const DataMapelView: React.FC = () => {
   };
 
   const isPersonalWaliKelas = isPersonalWorkspace && isWaliKelas && !isAdmin;
+  const isSchoolWaliKelas = !isPersonalWorkspace && isWaliKelas && !isAdmin;
 
-  const canAdd = !isPersonalWaliKelas && (isAdmin || isGuruMapel || (isPersonalWorkspace && !isWaliKelas));
+  const canAdd = !isPersonalWaliKelas && !isSchoolWaliKelas && (isAdmin || isGuruMapel || (isPersonalWorkspace && !isWaliKelas));
   const canEditSubject = (sub: Subject) => {
-    if (isPersonalWaliKelas) return false;
+    if (isPersonalWaliKelas || isSchoolWaliKelas) return false;
     if (isAdmin || isPersonalWorkspace) return true;
     if (isGuruMapel) return true; // Allow Guru Mapel to configure subjects/schedules
     return false;
   };
   const canDeleteSubject = (sub: Subject) => {
-    if (isPersonalWaliKelas) return false;
+    if (isPersonalWaliKelas || isSchoolWaliKelas) return false;
     if (isAdmin || isPersonalWorkspace) return true;
     if (isGuruMapel && isMySubject(sub)) return true;
     return false;
@@ -429,17 +448,27 @@ export const DataMapelView: React.FC = () => {
                 onChange={(e) => setSelectedClassFilter(e.target.value)}
                 className="bg-transparent font-extrabold text-blue-900 outline-none cursor-pointer text-xs"
               >
-                {isWaliKelas && assignedWaliClass && (
-                  <option value={assignedWaliClass.id}>
-                    Kelas Binaan ({assignedWaliClass.name})
-                  </option>
+                {isSchoolWaliKelas ? (
+                  userScope.accessibleClasses.map((cls) => (
+                    <option key={cls.id} value={cls.id}>
+                      Kelas Binaan ({cls.name})
+                    </option>
+                  ))
+                ) : (
+                  <>
+                    {isWaliKelas && assignedWaliClass && (
+                      <option value={assignedWaliClass.id}>
+                        Kelas Binaan ({assignedWaliClass.name})
+                      </option>
+                    )}
+                    <option value="ALL">Semua Rombel</option>
+                    {classes.map((cls) => (
+                      <option key={cls.id} value={cls.id}>
+                        {cls.name} ({getFaseByClassName(cls.name, cls.grade)})
+                      </option>
+                    ))}
+                  </>
                 )}
-                <option value="ALL">Semua Rombel</option>
-                {classes.map((cls) => (
-                  <option key={cls.id} value={cls.id}>
-                    {cls.name} ({getFaseByClassName(cls.name, cls.grade)})
-                  </option>
-                ))}
               </select>
             </div>
           </div>

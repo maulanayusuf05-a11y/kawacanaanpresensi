@@ -102,8 +102,8 @@ export const DataSiswaView: React.FC = () => {
     return students;
   }, [isAdmin, isPersonalWorkspace, isWaliKelas, isGuru, students, myAssignedClasses, accessibleClassIds, classes.length]);
 
-  // Akses penuh input data siswa untuk Admin, Ruang Kerja Individu, Paket Mulai/Gratis, Wali Kelas, dan Guru
-  const canInputStudents = isAdmin || isPersonalWorkspace || isWaliKelas || isGuru;
+  // Akses input data siswa hanya untuk Admin & Ruang Kerja Individu (Wali Kelas dalam Ruang Kerja Sekolah hanya melihat)
+  const canInputStudents = isAdmin || isPersonalWorkspace;
 
   // Kuota siswa pada paket mulai / gratis
   const maxStudentsLimit = currentUser?.maxStudents || (isPersonalWorkspace ? 32 : undefined);
@@ -559,7 +559,7 @@ export const DataSiswaView: React.FC = () => {
           {isWaliKelas && myAssignedClasses.length > 0 && (
             <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold shadow-xs">
               <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-              <span>Wali Kelas: {myAssignedClasses.map((c) => c.name).join(', ')}</span>
+              <span>Akses Wali Kelas (Hanya Melihat): Kelas {myAssignedClasses.map((c) => c.name).join(', ')}</span>
             </div>
           )}
           {isPersonalWorkspace && (
@@ -757,21 +757,25 @@ export const DataSiswaView: React.FC = () => {
                     </td>
                     <td className="py-3.5 px-4 text-center">
                       <div className="flex items-center justify-center gap-2">
-                        <button
-                          onClick={() => openEditModal(s)}
-                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                          title="Edit Siswa"
-                        >
-                          <Edit2 size={15} />
-                        </button>
-                        {canInputStudents && (
-                          <button
-                            onClick={() => setDeletingId(s.id)}
-                            className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                            title="Hapus Siswa"
-                          >
-                            <Trash2 size={15} />
-                          </button>
+                        {canInputStudents ? (
+                          <>
+                            <button
+                              onClick={() => openEditModal(s)}
+                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                              title="Edit Siswa"
+                            >
+                              <Edit2 size={15} />
+                            </button>
+                            <button
+                              onClick={() => setDeletingId(s.id)}
+                              className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              title="Hapus Siswa"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </>
+                        ) : (
+                          <span className="text-[11px] font-bold text-slate-400 italic">Lihat Saja</span>
                         )}
                       </div>
                     </td>

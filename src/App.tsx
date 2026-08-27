@@ -36,7 +36,7 @@ const VIEW_ACCESS: Record<ActiveView, UserRole[] | 'all'> = {
   absensi: ['ADMIN', 'GURU', 'WALI KELAS', 'GURU MAPEL'],
   rekapitulasi: ['ADMIN', 'KEPALA SEKOLAH', 'GURU', 'WALI KELAS', 'GURU MAPEL'],
   laporan: ['ADMIN', 'KEPALA SEKOLAH', 'GURU', 'WALI KELAS', 'GURU MAPEL'],
-  pengaturan: ['ADMIN', 'KEPALA SEKOLAH', 'GURU', 'WALI KELAS', 'GURU MAPEL'],
+  pengaturan: ['ADMIN', 'KEPALA SEKOLAH', 'GURU', 'GURU MAPEL'],
   'portal-siswa': ['SISWA'],
 };
 

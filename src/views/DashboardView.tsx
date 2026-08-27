@@ -26,6 +26,9 @@ import {
   Check,
   Key,
   User,
+  Crown,
+  Award,
+  CheckCircle2,
 } from 'lucide-react';
 
 interface SummaryCache {
@@ -332,9 +335,17 @@ export const DashboardView: React.FC = () => {
     return menuItems.filter((item) => {
       if (!currentUser) return false;
       if (currentUser.role === 'ADMIN' || currentUser.role === 'SUPER_ADMIN') return true;
+      if (currentUser.role === 'WALI KELAS') {
+        return [
+          'data-referensi',
+          'kalender-akademik',
+          'absensi',
+          'rekapitulasi',
+          'laporan',
+        ].includes(item.id);
+      }
       if (
         currentUser.role === 'GURU' ||
-        currentUser.role === 'WALI KELAS' ||
         currentUser.role === 'GURU MAPEL'
       ) {
         return [
@@ -397,50 +408,116 @@ export const DashboardView: React.FC = () => {
 
   return (
     <div className="w-full max-w-7xl 2xl:max-w-[1500px] mx-auto px-3.5 sm:px-6 lg:px-8 py-3.5 sm:py-5 space-y-3.5 sm:space-y-4 animate-in fade-in duration-300">
-      {/* Top Title Card */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="min-w-0 space-y-1 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-lg sm:text-xl lg:text-2xl font-black text-slate-900 tracking-tight">
-              Panel Kontrol Utama
+      {/* Top Title Card: Panel Kontrol Utama with Premium Badges */}
+      <div className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xs relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-4">
+        {/* Subtle decorative background accent */}
+        <div className="absolute top-0 right-0 w-80 h-32 bg-gradient-to-l from-blue-50/60 via-indigo-50/30 to-transparent pointer-events-none -z-0" />
+        <div className="min-w-0 space-y-1.5 flex-1 relative z-10">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+              <span>Panel Kontrol Utama</span>
             </h1>
-            {/* Lencana Tipe Ruang Kerja */}
-            <span
-              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                isPersonalWorkspace
-                  ? 'bg-purple-50 text-purple-700 border border-purple-200'
-                  : 'bg-blue-50 text-blue-700 border border-blue-200'
-              }`}
-            >
-              {isPersonalWorkspace ? (
-                <>
-                  <User size={12} />
-                  <span>Ruang Kerja Individu</span>
-                </>
-              ) : (
-                <>
-                  <Building2 size={12} />
-                  <span>Ruang Kerja Sekolah</span>
-                </>
-              )}
+
+            {/* Lencana Workspace */}
+            {isPersonalWorkspace ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-purple-50 text-purple-700 border border-purple-200/80 shadow-2xs">
+                <User size={13} className="text-purple-600" />
+                <span>Ruang Kerja Individu</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-gradient-to-r from-blue-900 to-indigo-900 text-white shadow-xs tracking-tight">
+                <Building2 size={13} className="text-blue-300" />
+                <span>Ruang Kerja Sekolah</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse ml-0.5" />
+              </span>
+            )}
+
+            {/* Tahun Pelajaran & Semester Badge */}
+            <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100/90 text-slate-600 border border-slate-200/70">
+              <Calendar size={11} className="text-slate-400" />
+              <span>TP {schoolProfile.tahunPelajaran || '2025/2026'} · Sem {schoolProfile.semester ? (schoolProfile.semester.includes('1') ? '1 Ganjil' : '2 Genap') : '1 Ganjil'}</span>
             </span>
           </div>
 
-          <p className="text-xs text-slate-500 leading-relaxed">
+          <p className="text-xs sm:text-sm text-slate-500 leading-relaxed max-w-3xl">
             {userScope.isWaliKelas
-              ? `Pengawasan kehadiran dan administrasi kelas binaan ${userScope.assignedWaliClassName || 'Wali Kelas'}.`
+              ? `Pengawasan kehadiran dan administrasi peserta didik kelas binaan ${userScope.assignedWaliClassName || 'Wali Kelas'}.`
               : userScope.isGuruMapel
               ? `Pengawasan kehadiran mata pelajaran ${userScope.primarySubject?.name || 'Mata Pelajaran'} (${userScope.accessibleClasses.length} Rombel).`
+              : currentUser?.role === 'KEPALA SEKOLAH'
+              ? `Pengawasan dan evaluasi rekapitulasi presensi seluruh rombongan belajar ${schoolProfile.namaSekolah || 'Sekolah'} secara komprehensif.`
               : `Pantau aktivitas harian dan analisis kehadiran siswa ${schoolProfile.namaSekolah ? `${schoolProfile.namaSekolah} ` : ''}secara real-time.`}
           </p>
         </div>
 
-        {/* Lencana dan Status di Sebelah Kanan (Sejajar) */}
-        <div className="flex flex-wrap items-center md:justify-end gap-2 shrink-0">
+        {/* Lencana Premium Spesifik Role */}
+        <div className="flex flex-wrap items-center md:justify-end gap-2.5 shrink-0 relative z-10">
           {!isPersonalWorkspace && (
-            <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
-              {userScope.roleBadgeLabel}
-            </span>
+            <>
+              {/* Lencana Role: ADMIN SEKOLAH */}
+              {(currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN') && (
+                <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-amber-500/15 border border-amber-300/80 text-amber-900 shadow-xs font-black text-xs">
+                  <div className="w-5 h-5 rounded-lg bg-amber-500 text-white flex items-center justify-center shadow-xs">
+                    <ShieldCheck size={13} className="text-white stroke-[2.5]" />
+                  </div>
+                  <div className="flex flex-col text-left leading-tight">
+                    <span className="text-[9px] font-bold text-amber-600 uppercase tracking-wider">Lencana Hak Akses</span>
+                    <span className="text-xs font-black text-amber-950">ADMIN SEKOLAH</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Lencana Role: KEPALA SEKOLAH */}
+              {currentUser?.role === 'KEPALA SEKOLAH' && (
+                <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-gradient-to-r from-indigo-500/10 via-blue-500/5 to-indigo-500/15 border border-indigo-300/80 text-indigo-900 shadow-xs font-black text-xs">
+                  <div className="w-5 h-5 rounded-lg bg-indigo-600 text-white flex items-center justify-center shadow-xs">
+                    <Award size={13} className="text-white stroke-[2.5]" />
+                  </div>
+                  <div className="flex flex-col text-left leading-tight">
+                    <span className="text-[9px] font-bold text-indigo-600 uppercase tracking-wider">Lencana Pimpinan</span>
+                    <span className="text-xs font-black text-indigo-950">KEPALA SEKOLAH</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Lencana Role: WALI KELAS */}
+              {currentUser?.role === 'WALI KELAS' && (
+                <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-teal-500/5 to-emerald-500/15 border border-emerald-300/80 text-emerald-900 shadow-xs font-black text-xs">
+                  <div className="w-5 h-5 rounded-lg bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                    <GraduationCap size={13} className="text-white stroke-[2.5]" />
+                  </div>
+                  <div className="flex flex-col text-left leading-tight">
+                    <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider">Lencana Penugasan</span>
+                    <span className="text-xs font-black text-emerald-950">
+                      WALI KELAS {userScope.assignedWaliClassName ? `· ${userScope.assignedWaliClassName}` : ''}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Lencana Role: GURU MAPEL */}
+              {(currentUser?.role === 'GURU MAPEL' || userScope.isGuruMapel) && currentUser?.role !== 'WALI KELAS' && currentUser?.role !== 'ADMIN' && currentUser?.role !== 'KEPALA SEKOLAH' && (
+                <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-gradient-to-r from-purple-500/10 via-violet-500/5 to-purple-500/15 border border-purple-300/80 text-purple-900 shadow-xs font-black text-xs">
+                  <div className="w-5 h-5 rounded-lg bg-purple-600 text-white flex items-center justify-center shadow-xs">
+                    <Sparkles size={13} className="text-white stroke-[2.5]" />
+                  </div>
+                  <div className="flex flex-col text-left leading-tight">
+                    <span className="text-[9px] font-bold text-purple-600 uppercase tracking-wider">Lencana Pengajar</span>
+                    <span className="text-xs font-black text-purple-950 truncate max-w-[160px]">
+                      GURU MAPEL {userScope.primarySubject?.name ? `· ${userScope.primarySubject.name}` : ''}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Generic Fallback */}
+              {currentUser?.role === 'GURU' && !userScope.isGuruMapel && !userScope.isWaliKelas && (
+                <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-blue-50 border border-blue-200 text-blue-900 shadow-xs font-black text-xs">
+                  <UserCheck size={14} className="text-blue-600" />
+                  <span>DEWAN GURU</span>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
