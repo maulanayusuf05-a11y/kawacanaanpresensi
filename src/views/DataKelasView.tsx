@@ -1073,21 +1073,6 @@ export const DataKelasView: React.FC = () => {
                 />
               </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Tingkat Kelas (Grade)</label>
-                <select
-                  value={grade}
-                  onChange={(e) => setGrade(Number(e.target.value))}
-                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:border-blue-600 outline-none cursor-pointer"
-                >
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((g) => (
-                    <option key={g} value={g}>
-                      Tingkat {g} ({getFaseByGrade(g)})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
               {!isPersonalWorkspace && (
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Wali Kelas Penanggung Jawab</label>
