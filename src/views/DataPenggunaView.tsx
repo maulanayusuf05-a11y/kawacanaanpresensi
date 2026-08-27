@@ -58,6 +58,7 @@ export const DataPenggunaView: React.FC = () => {
   const [resultSearchTerm, setResultSearchTerm] = useState('');
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
 
   // Edit User Modal State
   const [editUser, setEditUser] = useState<UserAccount | null>(null);
@@ -311,33 +312,47 @@ export const DataPenggunaView: React.FC = () => {
     });
   };
 
-  // Export PDF handler from Generated Results Modal
-  const handleExportGeneratedPDF = async (scope: 'CURRENT_TAB' | 'ALL' = 'CURRENT_TAB') => {
+  // Export PDF handler from Generated Results Modal (Guru / Siswa)
+  const handleExportGeneratedPDF = async (scope: 'GURU' | 'SISWA') => {
     if (!generatedResults || generatedResults.length === 0) {
       showToast('Tidak ada data akun hasil generate untuk diekspor.', 'error');
       return;
     }
 
     setIsExportingPdf(true);
+    setShowExportMenu(false);
     try {
-      let targetAccounts = generatedResults;
+      let targetAccounts: GeneratedAccountResult[] = [];
       let filterCategory = 'ALL';
       let docTitle = 'DAFTAR HASIL GENERATE AKUN PENGGUNA & PASSWORD RESMI';
 
-      if (scope === 'CURRENT_TAB' && resultFilterTab !== 'ALL') {
-        targetAccounts = filteredGeneratedResults;
-        filterCategory = resultFilterTab;
-        if (resultFilterTab === 'GURU') {
-          docTitle = 'DAFTAR HASIL GENERATE AKUN GURU & PENDIDIK';
-        } else if (resultFilterTab === 'SISWA') {
-          docTitle = 'DAFTAR HASIL GENERATE AKUN PESERTA DIDIK (SISWA)';
-        } else if (resultFilterTab === 'KEPALA SEKOLAH') {
-          docTitle = 'DAFTAR HASIL GENERATE AKUN KEPALA SEKOLAH';
-        }
+      if (scope === 'GURU') {
+        targetAccounts = generatedResults.filter(
+          (r) =>
+            r.category === 'GURU' ||
+            r.category === 'KEPALA SEKOLAH' ||
+            r.role === 'GURU' ||
+            r.role === 'WALI KELAS' ||
+            r.role === 'GURU MAPEL' ||
+            r.role === 'KEPALA SEKOLAH'
+        );
+        filterCategory = 'GURU';
+        docTitle = 'DAFTAR HASIL GENERATE AKUN GURU, PENDIDIK & KEPALA SEKOLAH';
+      } else if (scope === 'SISWA') {
+        targetAccounts = generatedResults.filter(
+          (r) => r.category === 'SISWA' || r.role === 'SISWA'
+        );
+        filterCategory = 'SISWA';
+        docTitle = 'DAFTAR HASIL GENERATE AKUN PESERTA DIDIK (SISWA)';
       }
 
       if (targetAccounts.length === 0) {
-        showToast('Tidak ada data akun pada kategori ini untuk diekspor.', 'error');
+        showToast(
+          scope === 'GURU'
+            ? 'Tidak ada data akun Guru / Pendidik untuk diekspor.'
+            : 'Tidak ada data akun Siswa untuk diekspor.',
+          'warning'
+        );
         return;
       }
 
@@ -350,7 +365,7 @@ export const DataPenggunaView: React.FC = () => {
         documentTitle: docTitle,
       });
 
-      showToast('Dokumen PDF berhasil dibuat dengan kop surat resmi.', 'success');
+      showToast(`Dokumen PDF ${scope === 'GURU' ? 'Akun Guru' : 'Akun Siswa'} berhasil diekspor dengan kop surat resmi.`, 'success');
     } catch (err) {
       console.error('Error generating PDF:', err);
       showToast('Gagal membuat dokumen PDF.', 'error');
@@ -543,7 +558,7 @@ export const DataPenggunaView: React.FC = () => {
                             <path d="M63.7076 110.284C60.848 113.885 55.0502 111.902 54.9854 107.307L53.9726 35.6662H97.7446C104.912 35.6662 108.823 44.0532 104.148 49.9406L63.7076 110.284Z" fill="#3ECF8E"/>
                             <path d="M45.297 2.71599C48.1566 -0.885444 53.9544 1.09789 54.0192 5.69264L54.5884 77.3338H11.2554C4.08838 77.3338 0.177372 68.9468 4.85237 63.0594L45.297 2.71599Z" fill="#249361"/>
                           </svg>
-                          <span className="font-extrabold text-[11px] text-emerald-950 tracking-tight">Terdaftar</span>
+                          <span className="font-extrabold text-[11px] text-emerald-950 tracking-tight">Terenkripsi</span>
                         </span>
                       )}
                     </td>
@@ -1068,20 +1083,78 @@ export const DataPenggunaView: React.FC = () => {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleExportGeneratedPDF('CURRENT_TAB')}
-                  disabled={isExportingPdf || filteredGeneratedResults.length === 0}
-                  className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                  title="Ekspor daftar hasil generate ke format dokumen PDF resmi ber-kop surat"
-                >
-                  {isExportingPdf ? (
-                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <Printer size={13} />
+                {/* Export PDF Button with 2 Choices: Guru / Siswa */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowExportMenu((prev) => !prev)}
+                    disabled={isExportingPdf || !generatedResults || generatedResults.length === 0}
+                    className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    title="Pilih untuk mengekspor PDF Akun Guru atau Akun Siswa"
+                    id="btn-export-pdf-generated"
+                  >
+                    {isExportingPdf ? (
+                      <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <Printer size={13} />
+                    )}
+                    <span>Export PDF</span>
+                    <ChevronDown size={13} className={`transition-transform duration-200 ${showExportMenu ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {showExportMenu && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={() => setShowExportMenu(false)}
+                      />
+                      <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-slate-200 py-2 z-50 animate-in fade-in zoom-in-95 text-slate-800">
+                        <div className="px-3.5 py-1.5 border-b border-slate-100 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
+                          Pilihan Cetak Dokumen PDF
+                        </div>
+                        
+                        <button
+                          type="button"
+                          onClick={() => handleExportGeneratedPDF('GURU')}
+                          className="w-full px-3.5 py-2.5 text-left hover:bg-rose-50/80 flex items-center gap-3 transition-colors cursor-pointer group"
+                          id="btn-export-pdf-guru"
+                        >
+                          <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors shadow-xs">
+                            <GraduationCap size={16} />
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold text-slate-900 group-hover:text-rose-700">
+                              Export PDF Guru
+                            </div>
+                            <div className="text-[10px] text-slate-500 font-medium">
+                              Cetak Akun Guru & Tendik ({generatedResults?.filter(r => r.category === 'GURU' || r.category === 'KEPALA SEKOLAH' || r.role === 'GURU' || r.role === 'WALI KELAS' || r.role === 'GURU MAPEL' || r.role === 'KEPALA SEKOLAH').length || 0} akun)
+                            </div>
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleExportGeneratedPDF('SISWA')}
+                          className="w-full px-3.5 py-2.5 text-left hover:bg-rose-50/80 flex items-center gap-3 transition-colors cursor-pointer group"
+                          id="btn-export-pdf-siswa"
+                        >
+                          <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 group-hover:bg-emerald-600 group-hover:text-white transition-colors shadow-xs">
+                            <Users size={16} />
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold text-slate-900 group-hover:text-rose-700">
+                              Export PDF Siswa
+                            </div>
+                            <div className="text-[10px] text-slate-500 font-medium">
+                              Cetak Akun Peserta Didik ({generatedResults?.filter(r => r.category === 'SISWA' || r.role === 'SISWA').length || 0} akun)
+                            </div>
+                          </div>
+                        </button>
+                      </div>
+                    </>
                   )}
-                  <span>Export PDF</span>
-                </button>
+                </div>
+
                 <button
                   onClick={() => setGeneratedResults(null)}
                   className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-200/50 transition-colors cursor-pointer"
@@ -1238,26 +1311,12 @@ export const DataPenggunaView: React.FC = () => {
             {/* Footer */}
             <div className="p-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50/50 rounded-b-2xl">
               <p className="text-[11px] text-slate-500">
-                💡 <b>Catatan:</b> Anda dapat mengekspor seluruh atau sebagian daftar akun hasil generate ini ke dokumen PDF ber-kop surat resmi.
+                💡 <b>Catatan:</b> Anda dapat mengekspor daftar akun hasil generate ini ke dokumen PDF resmi ber-kop surat melalui tombol <b>Export PDF</b> (Guru / Siswa) di pojok kanan atas.
               </p>
               <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
                 <button
-                  type="button"
-                  onClick={() => handleExportGeneratedPDF('ALL')}
-                  disabled={isExportingPdf || !generatedResults || generatedResults.length === 0}
-                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
-                  title="Ekspor seluruh akun yang digenerate ke format PDF dengan kop surat resmi"
-                >
-                  {isExportingPdf ? (
-                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <Printer size={14} />
-                  )}
-                  <span>Export PDF ({generatedResults.length} Akun)</span>
-                </button>
-                <button
                   onClick={() => setGeneratedResults(null)}
-                  className="px-5 py-2 text-xs font-bold text-white bg-slate-800 hover:bg-slate-900 rounded-xl shadow-md transition-all cursor-pointer"
+                  className="px-6 py-2.5 text-xs font-bold text-white bg-slate-800 hover:bg-slate-900 rounded-xl shadow-md transition-all cursor-pointer"
                 >
                   Tutup
                 </button>

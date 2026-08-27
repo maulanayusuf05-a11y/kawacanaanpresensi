@@ -652,8 +652,13 @@ export const DataKelasView: React.FC = () => {
                   const matchedTeacher = teachers.find(
                     (t) => t.id === c.waliKelasId || (c.waliKelasName && t.nama.trim().toLowerCase() === c.waliKelasName.trim().toLowerCase())
                   );
+                  const matchedUser = users.find(
+                    (u) => u.id === c.waliKelasId || (c.waliKelasName && u.name.trim().toLowerCase() === c.waliKelasName.trim().toLowerCase())
+                  );
                   const effectiveWaliName = matchedTeacher
                     ? matchedTeacher.nama
+                    : matchedUser
+                    ? matchedUser.name
                     : isPersonalWorkspace
                     ? currentUser?.name || 'Pendidik Mandiri'
                     : c.waliKelasName || 'Belum Ditugaskan';

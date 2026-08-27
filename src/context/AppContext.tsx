@@ -337,15 +337,38 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
    const classList = (classRows.data || []).map((c: any) => {
       let waliName = c.wali?.name || null;
       let waliId = c.wali_kelas_id || null;
-      // Verify against teacher master records
-      const matchedTeacher = baseTeachers.find((t) => t.id === waliId || (waliName && t.nama?.trim().toLowerCase() === waliName.trim().toLowerCase()));
+
+      // 1. Periksa penugasan dari teacher_class_assignments
+      const assignment = (teacherAssignments.data || []).find((a: any) => a.class_id === c.id);
+      const assignedTeacherId = assignment?.teacher_id || waliId;
+
+      // 2. Cocokkan ke master teachers (Data Guru)
+      const matchedTeacher = baseTeachers.find(
+        (t) =>
+          t.id === assignedTeacherId ||
+          t.id === waliId ||
+          (waliName && t.nama?.trim().toLowerCase() === waliName.trim().toLowerCase())
+      );
+
+      // 3. Cocokkan ke master profiles (Data Pengguna)
+      const matchedProfile = (allProfiles.data || []).find(
+        (p: any) =>
+          p.id === assignedTeacherId ||
+          p.id === waliId ||
+          (waliName && p.name?.trim().toLowerCase() === waliName.trim().toLowerCase())
+      );
+
       if (matchedTeacher) {
         waliName = matchedTeacher.nama;
         waliId = matchedTeacher.id;
-      } else {
-        waliName = null;
-        waliId = null;
+      } else if (matchedProfile) {
+        waliName = matchedProfile.name;
+        waliId = matchedProfile.id;
+      } else if (c.wali?.name) {
+        waliName = c.wali.name;
+        waliId = c.wali_kelas_id;
       }
+
       return {
         id: c.id,
         name: c.name,
@@ -969,30 +992,62 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
  const addClass = async (c: Omit<SchoolClass, 'id'>) => {
     try {
       const { dbWaliId, waliName, internalId } = await resolveWaliKelas(c.waliKelasId || null);
-      const { data, error } = await supabase
-        .from('classes')
-        .insert({
-          name: c.name.trim(),
-          grade: c.grade,
-          academic_year: c.academicYear || schoolProfile.tahunPelajaran || '2026/2027',
-          wali_kelas_id: dbWaliId,
-          school_id: currentUser?.schoolId || null,
-        })
-        .select('*, wali:wali_kelas_id(id,name)')
-        .single();
-      if (error) throw error;
+      const schoolId = currentUser?.schoolId || null;
+      let insertedData: any = null;
+
+      try {
+        const { data, error } = await supabase
+          .from('classes')
+          .insert({
+            name: c.name.trim(),
+            grade: c.grade,
+            academic_year: c.academicYear || schoolProfile.tahunPelajaran || '2026/2027',
+            wali_kelas_id: dbWaliId || null,
+            school_id: schoolId,
+          })
+          .select('*, wali:wali_kelas_id(id,name)')
+          .single();
+        if (error) throw error;
+        insertedData = data;
+      } catch (insertErr) {
+        const { data, error } = await supabase
+          .from('classes')
+          .insert({
+            name: c.name.trim(),
+            grade: c.grade,
+            academic_year: c.academicYear || schoolProfile.tahunPelajaran || '2026/2027',
+            wali_kelas_id: null,
+            school_id: schoolId,
+          })
+          .select('*, wali:wali_kelas_id(id,name)')
+          .single();
+        if (error) throw error;
+        insertedData = data;
+      }
+
+      const assignedId = c.waliKelasId || internalId || dbWaliId;
+      if (assignedId && insertedData?.id) {
+        try {
+          await supabase.from('teacher_class_assignments').insert({
+            school_id: schoolId,
+            teacher_id: assignedId,
+            class_id: insertedData.id,
+          });
+        } catch (_) {}
+      }
+
       setClasses((p) => [
         ...p,
         {
-          id: data.id,
-          name: data.name,
-          grade: data.grade,
-          academicYear: data.academic_year,
-          waliKelasId: dbWaliId || internalId || null,
-          waliKelasName: waliName || data.wali?.name || null,
+          id: insertedData.id,
+          name: insertedData.name,
+          grade: insertedData.grade,
+          academicYear: insertedData.academic_year,
+          waliKelasId: assignedId || null,
+          waliKelasName: waliName || c.waliKelasName || insertedData.wali?.name || null,
         },
       ]);
-      showToast(`Kelas ${data.name} berhasil ditambahkan`);
+      showToast(`Kelas ${insertedData.name} berhasil ditambahkan`);
     } catch (e: any) {
       showToast(e.message, 'error');
     }
@@ -1000,38 +1055,71 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
  const updateClass = async (id: string, c: Omit<SchoolClass, 'id'>) => {
     try {
       const { dbWaliId, waliName, internalId } = await resolveWaliKelas(c.waliKelasId || null);
-      const { data, error } = await supabase
-        .from('classes')
-        .update({
-          name: c.name.trim(),
-          grade: c.grade,
-          academic_year: c.academicYear || schoolProfile.tahunPelajaran || '2026/2027',
-          wali_kelas_id: dbWaliId,
-        })
-        .eq('id', id)
-        .select('*, wali:wali_kelas_id(id,name)')
-        .single();
-      if (error) throw error;
+      const schoolId = currentUser?.schoolId || null;
+      let updatedData: any = null;
+
+      try {
+        const { data, error } = await supabase
+          .from('classes')
+          .update({
+            name: c.name.trim(),
+            grade: c.grade,
+            academic_year: c.academicYear || schoolProfile.tahunPelajaran || '2026/2027',
+            wali_kelas_id: dbWaliId || null,
+          })
+          .eq('id', id)
+          .select('*, wali:wali_kelas_id(id,name)')
+          .single();
+        if (error) throw error;
+        updatedData = data;
+      } catch (updateErr) {
+        const { data, error } = await supabase
+          .from('classes')
+          .update({
+            name: c.name.trim(),
+            grade: c.grade,
+            academic_year: c.academicYear || schoolProfile.tahunPelajaran || '2026/2027',
+            wali_kelas_id: null,
+          })
+          .eq('id', id)
+          .select('*, wali:wali_kelas_id(id,name)')
+          .single();
+        if (error) throw error;
+        updatedData = data;
+      }
+
+      const assignedId = c.waliKelasId || internalId || dbWaliId;
+      try {
+        await supabase.from('teacher_class_assignments').delete().eq('class_id', id);
+        if (assignedId) {
+          await supabase.from('teacher_class_assignments').insert({
+            school_id: schoolId,
+            teacher_id: assignedId,
+            class_id: id,
+          });
+        }
+      } catch (_) {}
+
       setClasses((p) =>
         p.map((x) =>
           x.id === id
             ? {
-                id: data.id,
-                name: data.name,
-                grade: data.grade,
-                academicYear: data.academic_year,
-                waliKelasId: dbWaliId || internalId || null,
-                waliKelasName: waliName || data.wali?.name || null,
+                id: updatedData.id,
+                name: updatedData.name,
+                grade: updatedData.grade,
+                academicYear: updatedData.academic_year,
+                waliKelasId: assignedId || null,
+                waliKelasName: waliName || c.waliKelasName || updatedData.wali?.name || null,
               }
             : x
         )
       );
-      showToast(`Kelas ${data.name} berhasil diperbarui`);
+      showToast(`Kelas ${updatedData.name} berhasil diperbarui`);
     } catch (e: any) {
       showToast(e.message, 'error');
     }
   };
- const deleteClass=async(id:string)=>{try{const {error}=await supabase.from('classes').delete().eq('id',id);if(error)throw error;setClasses(p=>p.filter(x=>x.id!==id));setStudents(p=>p.map(s=>s.classId===id?{...s,classId:null,className:''}:s));showToast('Kelas berhasil dihapus','info')}catch(e:any){showToast(e.message,'error')}};
+ const deleteClass=async(id:string)=>{try{await supabase.from('teacher_class_assignments').delete().eq('class_id',id);const {error}=await supabase.from('classes').delete().eq('id',id);if(error)throw error;setClasses(p=>p.filter(x=>x.id!==id));setStudents(p=>p.map(s=>s.classId===id?{...s,classId:null,className:''}:s));showToast('Kelas berhasil dihapus','info')}catch(e:any){showToast(e.message,'error')}};
   const addTeacher=async(t:Omit<Teacher,'id'>)=>{try{const jab=(t.jabatan||t.jenisPTK||'Wali Kelas').trim();const schoolId=currentUser?.schoolId||null;let savedTeacher:any=null;try{const {data:sessionData}=await supabase.auth.getSession();const token=sessionData.session?.access_token||'';const res=await fetch('/api/onboarding',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({action:'save_teacher',schoolId,nama:t.nama.trim(),nip:t.nip.trim(),jenisKelamin:t.jenisKelamin,jabatan:jab,statusKepegawaian:(t.statusKepegawaian||'').trim(),noHp:(t.noHp||'').trim()})});const json=await res.json();if(json.teacher)savedTeacher=json.teacher}catch(_){};if(!savedTeacher){const {data,error}=await supabase.from('teachers').insert({nama:t.nama.trim(),nip:t.nip.trim(),jenis_kelamin:t.jenisKelamin,jabatan:jab,jenis_ptk:jab,status_kepegawaian:(t.statusKepegawaian||'').trim(),no_hp:(t.noHp||'').trim(),school_id:schoolId}).select().single();if(error)throw error;savedTeacher=data}const finalTeacher=dbTeacher({...savedTeacher,jabatan:jab,jenis_ptk:jab});setTeachers(p=>[...p.filter(x=>x.id!==finalTeacher.id),finalTeacher]);showToast(`Data guru ${finalTeacher.nama} berhasil ditambahkan`)}catch(e:any){showToast(e.message,'error')}};
   const updateTeacher=async(id:string,t:Omit<Teacher,'id'>)=>{try{const jab=(t.jabatan||t.jenisPTK||'Wali Kelas').trim();const schoolId=currentUser?.schoolId||null;let updatedTeacher:any=null;try{const {data:sessionData}=await supabase.auth.getSession();const token=sessionData.session?.access_token||'';const res=await fetch('/api/onboarding',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({action:'save_teacher',teacherId:id,schoolId,nama:t.nama.trim(),nip:t.nip.trim(),jenisKelamin:t.jenisKelamin,jabatan:jab,statusKepegawaian:(t.statusKepegawaian||'').trim(),noHp:(t.noHp||'').trim()})});const json=await res.json();if(json.teacher)updatedTeacher=json.teacher}catch(_){};if(!updatedTeacher){const {data,error}=await supabase.from('teachers').update({nama:t.nama.trim(),nip:t.nip.trim(),jenis_kelamin:t.jenisKelamin,jabatan:jab,jenis_ptk:jab,status_kepegawaian:(t.statusKepegawaian||'').trim(),no_hp:(t.noHp||'').trim()}).eq('id',id).select().single();if(error)throw error;updatedTeacher=data}const finalTeacher=dbTeacher({...updatedTeacher,jabatan:jab,jenis_ptk:jab});setTeachers(p=>p.map(x=>x.id===id?finalTeacher:x));showToast('Data guru berhasil diperbarui')}catch(e:any){showToast(e.message,'error')}};
   const importTeachers = async (items: Omit<Teacher, 'id'>[], replaceExisting = false) => {
