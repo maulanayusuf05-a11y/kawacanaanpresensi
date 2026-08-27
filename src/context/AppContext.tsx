@@ -80,37 +80,47 @@ const dbTeacher=(t:any):Teacher=>{
       resolvedJabatan = 'Kepala Sekolah';
     } else if (jabRaw.toLowerCase().includes('mapel') || jabRaw.toLowerCase().includes('mata pelajaran') || jabRaw.toLowerCase().includes('bidang studi')) {
       resolvedJabatan = 'Guru Mapel';
-    } else {
+    } else if (jabRaw.toLowerCase().includes('wali') || jabRaw.toLowerCase().includes('kelas')) {
       resolvedJabatan = 'Wali Kelas';
+    } else {
+      resolvedJabatan = jabRaw === 'Guru Mapel' ? 'Guru Mapel' : 'Wali Kelas';
     }
   } else if (jenisRaw) {
     if (jenisRaw.toLowerCase().includes('kepala')) {
       resolvedJabatan = 'Kepala Sekolah';
     } else if (jenisRaw.toLowerCase().includes('mapel') || jenisRaw.toLowerCase().includes('mata pelajaran')) {
       resolvedJabatan = 'Guru Mapel';
-    } else {
+    } else if (jenisRaw.toLowerCase().includes('wali') || jenisRaw.toLowerCase().includes('kelas')) {
       resolvedJabatan = 'Wali Kelas';
+    } else {
+      resolvedJabatan = jenisRaw === 'Guru Mapel' ? 'Guru Mapel' : 'Wali Kelas';
     }
   } else if (mapelRaw) {
     if (mapelRaw.toLowerCase().includes('kepala')) {
       resolvedJabatan = 'Kepala Sekolah';
-    } else if (mapelRaw === 'Guru Mapel' || mapelRaw.toLowerCase() === 'guru mapel' || mapelRaw.toLowerCase() === 'mapel') {
+    } else if (mapelRaw === 'Guru Mapel' || mapelRaw.toLowerCase() === 'guru mapel' || mapelRaw.toLowerCase().includes('mapel') || mapelRaw.toLowerCase().includes('mata pelajaran')) {
+      resolvedJabatan = 'Guru Mapel';
+    } else if (mapelRaw.toLowerCase().includes('wali') || mapelRaw.toLowerCase().includes('kelas')) {
+      resolvedJabatan = 'Wali Kelas';
+    } else if (mapelRaw && mapelRaw !== '-' && mapelRaw !== 'PNS' && mapelRaw !== 'PPPK' && mapelRaw !== 'Honorer') {
       resolvedJabatan = 'Guru Mapel';
     } else {
       resolvedJabatan = 'Wali Kelas';
     }
   }
 
+  const finalJabatan = t.jabatan || resolvedJabatan;
+
   return {
     id: t.id,
     nama: t.nama || '',
     nip: t.nip || '',
-    jenisKelamin: t.jenis_kelamin || 'L',
-    jabatan: t.jabatan || resolvedJabatan,
-    jenisPTK: t.jenis_ptk || resolvedJabatan,
-    mataPelajaran: t.mata_pelajaran || resolvedJabatan,
-    statusKepegawaian: t.status_kepegawaian || 'PNS',
-    noHp: t.no_hp || '',
+    jenisKelamin: t.jenis_kelamin || t.jenisKelamin || 'L',
+    jabatan: finalJabatan,
+    jenisPTK: t.jenis_ptk || t.jenisPTK || finalJabatan,
+    mataPelajaran: t.mata_pelajaran || t.mataPelajaran || finalJabatan,
+    statusKepegawaian: t.status_kepegawaian || t.statusKepegawaian || 'PNS',
+    noHp: t.no_hp || t.noHp || '',
   };
 };
 

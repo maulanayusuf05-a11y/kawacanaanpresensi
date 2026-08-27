@@ -140,27 +140,20 @@ export const DataGuruView: React.FC = () => {
     setNip(t.nip);
     setJenisKelamin(t.jenisKelamin);
     
-    // Periksa penugasan aktif dari database
-    const isWaliInClasses = classes.some(
-      (c) => c.waliKelasId === t.id || (c.waliKelasName && c.waliKelasName.trim().toLowerCase() === t.nama.trim().toLowerCase())
-    );
-    const teachesSubjects = subjects.some(
-      (s) => s.teacherId === t.id || (s.teacherName && s.teacherName.trim().toLowerCase() === t.nama.trim().toLowerCase())
-    );
-
-    const explicitJabatan = String(t.jabatan || t.jenisPTK || '').trim().toLowerCase();
+    // Ambil penugasan jabatan sesuai data yang disimpan
+    const explicitJabatan = String(t.jabatan || t.jenisPTK || t.mataPelajaran || '').trim().toLowerCase();
     let resolvedType: 'Wali Kelas' | 'Guru Mapel' = 'Wali Kelas';
 
     if (explicitJabatan.includes('mapel') || explicitJabatan.includes('mata pelajaran')) {
       resolvedType = 'Guru Mapel';
     } else if (explicitJabatan.includes('wali') || explicitJabatan.includes('kelas')) {
       resolvedType = 'Wali Kelas';
-    } else if (teachesSubjects && !isWaliInClasses) {
+    } else if (t.jabatan === 'Guru Mapel' || t.jabatan === 'Wali Kelas') {
+      resolvedType = t.jabatan;
+    } else if (t.mataPelajaran && t.mataPelajaran !== '-' && !t.mataPelajaran.toLowerCase().includes('wali')) {
       resolvedType = 'Guru Mapel';
-    } else if (isWaliInClasses) {
-      resolvedType = 'Wali Kelas';
     } else {
-      resolvedType = t.jabatan === 'Guru Mapel' ? 'Guru Mapel' : 'Wali Kelas';
+      resolvedType = 'Wali Kelas';
     }
 
     setGuruType(resolvedType);
@@ -510,26 +503,19 @@ export const DataGuruView: React.FC = () => {
           <tbody className="divide-y divide-slate-100 text-xs">
             {filteredTeachers.length > 0 ? (
               filteredTeachers.map((t, idx) => {
-                const isWaliInClasses = classes.some(
-                  (c) => c.waliKelasId === t.id || (c.waliKelasName && c.waliKelasName.trim().toLowerCase() === t.nama.trim().toLowerCase())
-                );
-                const teachesSubjects = subjects.some(
-                  (s) => s.teacherId === t.id || (s.teacherName && s.teacherName.trim().toLowerCase() === t.nama.trim().toLowerCase())
-                );
-
-                const explicitJabatan = String(t.jabatan || t.jenisPTK || '').trim().toLowerCase();
+                const explicitJabatan = String(t.jabatan || t.jenisPTK || t.mataPelajaran || '').trim().toLowerCase();
                 let displayType: 'Wali Kelas' | 'Guru Mapel' = 'Wali Kelas';
 
                 if (explicitJabatan.includes('mapel') || explicitJabatan.includes('mata pelajaran')) {
                   displayType = 'Guru Mapel';
                 } else if (explicitJabatan.includes('wali') || explicitJabatan.includes('kelas')) {
                   displayType = 'Wali Kelas';
-                } else if (teachesSubjects && !isWaliInClasses) {
+                } else if (t.jabatan === 'Guru Mapel' || t.jabatan === 'Wali Kelas') {
+                  displayType = t.jabatan;
+                } else if (t.mataPelajaran && t.mataPelajaran !== '-' && !t.mataPelajaran.toLowerCase().includes('wali')) {
                   displayType = 'Guru Mapel';
-                } else if (isWaliInClasses) {
-                  displayType = 'Wali Kelas';
                 } else {
-                  displayType = t.jabatan === 'Guru Mapel' ? 'Guru Mapel' : 'Wali Kelas';
+                  displayType = 'Wali Kelas';
                 }
 
                 const isGuruMapel = displayType === 'Guru Mapel';
