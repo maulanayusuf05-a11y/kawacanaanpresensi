@@ -77,7 +77,31 @@ export const Header: React.FC = () => {
     (ws) => ws.workspaceType === 'personal' || ws.workspaceType === 'individu'
   );
 
-  const [readNotifIds, setReadNotifIds] = useState<string[]>([]);
+  const notifStorageKey = useMemo(() => {
+    const userId = currentUser?.id || currentUser?.username || 'guest';
+    return `kawacanaan_read_notifs_${userId}`;
+  }, [currentUser?.id, currentUser?.username]);
+
+  const [readNotifIds, setReadNotifIds] = useState<string[]>(() => {
+    try {
+      const key = `kawacanaan_read_notifs_${currentUser?.id || currentUser?.username || 'guest'}`;
+      const saved = localStorage.getItem(key);
+      if (saved) return JSON.parse(saved);
+    } catch (_) {}
+    return [];
+  });
+
+  // Sync with localStorage on user change
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(notifStorageKey);
+      if (saved) {
+        setReadNotifIds(JSON.parse(saved));
+      } else {
+        setReadNotifIds([]);
+      }
+    } catch (_) {}
+  }, [notifStorageKey]);
 
   const tenantLifecycle = currentUser?.role !== 'SUPER_ADMIN' ? getTenantLifecycleInfo({
     status: currentUser?.subscriptionStatus,
@@ -96,8 +120,11 @@ export const Header: React.FC = () => {
     const list: HeaderNotificationItem[] = [];
 
     if (globalAnnouncement?.active && globalAnnouncement.message) {
+      // Dynamic ID based on content & update time to trigger red dot upon new announcements
+      const msgHash = encodeURIComponent(globalAnnouncement.message.trim().slice(0, 40));
+      const updateStamp = globalAnnouncement.updatedAt || '';
       list.push({
-        id: `notif_global_${globalAnnouncement.type}_${encodeURIComponent(globalAnnouncement.message.slice(0, 35))}`,
+        id: `notif_global_${globalAnnouncement.id || 'broadcast'}_${globalAnnouncement.type}_${msgHash}_${updateStamp}`,
         title: 'Pengumuman Global Super Admin',
         message: globalAnnouncement.message,
         type: globalAnnouncement.type === 'alert' ? 'alert' : globalAnnouncement.type === 'warning' ? 'warning' : 'info',
@@ -151,15 +178,22 @@ export const Header: React.FC = () => {
     return notificationItems.filter((item) => !readNotifIds.includes(item.id)).length;
   }, [notificationItems, readNotifIds]);
 
+  const saveReadNotifs = (ids: string[]) => {
+    setReadNotifIds(ids);
+    try {
+      localStorage.setItem(notifStorageKey, JSON.stringify(ids));
+    } catch (_) {}
+  };
+
   const markAllAsRead = () => {
-    const allIds = notificationItems.map((n) => n.id);
-    setReadNotifIds(allIds);
+    const allIds = Array.from(new Set([...readNotifIds, ...notificationItems.map((n) => n.id)]));
+    saveReadNotifs(allIds);
   };
 
   const markSingleAsRead = (id: string) => {
     if (readNotifIds.includes(id)) return;
     const updated = [...readNotifIds, id];
-    setReadNotifIds(updated);
+    saveReadNotifs(updated);
   };
 
   // Close dropdowns when clicking outside

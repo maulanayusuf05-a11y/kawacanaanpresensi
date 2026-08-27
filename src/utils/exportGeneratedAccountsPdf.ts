@@ -1,19 +1,34 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { GeneratedAccountResult, SchoolProfile } from '../types';
+import { GeneratedAccountResult, SchoolProfile, SystemConfig } from '../types';
 
 export interface ExportPdfOptions {
   schoolProfile: SchoolProfile;
+  systemConfig?: SystemConfig;
   accounts: GeneratedAccountResult[];
-  categoryFilter?: string; // 'ALL' | 'GURU' | 'SISWA' | 'KEPALA SEKOLAH'
+  categoryFilter?: string; // 'ALL' | 'ADMIN' | 'GURU' | 'SISWA' | 'KEPALA SEKOLAH'
   adminName?: string;
+  documentTitle?: string;
 }
 
-export const exportGeneratedAccountsPdf = ({
+// Helper to load image as HTMLImageElement for jsPDF
+const loadImageElement = (url: string): Promise<HTMLImageElement> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'Anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('Failed to load image'));
+    img.src = url;
+  });
+};
+
+export const exportGeneratedAccountsPdf = async ({
   schoolProfile,
+  systemConfig,
   accounts,
   categoryFilter = 'ALL',
   adminName = 'Administrator Sekolah',
+  documentTitle,
 }: ExportPdfOptions) => {
   if (!accounts || accounts.length === 0) return;
 
@@ -26,70 +41,78 @@ export const exportGeneratedAccountsPdf = ({
   const pageWidth = doc.internal.pageSize.getWidth(); // 210mm
   const pageHeight = doc.internal.pageSize.getHeight(); // 297mm
   const marginX = 14;
-  let currentY = 15;
+  let currentY = 12;
 
-  // 1. KOP SURAT / HEADER RESMI
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(15, 23, 42); // slate-900
-  const schoolName = (schoolProfile.namaSekolah || 'SD NEGERI NUSANTARA').toUpperCase();
-  doc.text(schoolName, pageWidth / 2, currentY, { align: 'center' });
-  currentY += 5;
+  const showLetterhead = systemConfig?.showLetterhead ?? true;
+  const isCustomImageLetterhead =
+    showLetterhead &&
+    systemConfig?.letterheadType === 'custom_image' &&
+    !!systemConfig.letterheadImageUrl;
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
-  doc.setTextColor(71, 85, 105); // slate-600
+  // 1. KOP SURAT RESMI (Sama dengan Pengaturan Sistem & Cetak Absensi)
+  if (showLetterhead) {
+    if (isCustomImageLetterhead && systemConfig?.letterheadImageUrl) {
+      try {
+        const kopImg = await loadImageElement(systemConfig.letterheadImageUrl);
+        const kopWidth = pageWidth - marginX * 2;
+        // Keep aspect ratio capped at 36mm height
+        const aspectRatio = kopImg.naturalWidth / (kopImg.naturalHeight || 1);
+        const calculatedHeight = Math.min(36, kopWidth / aspectRatio);
 
-  const addressLine = [
-    schoolProfile.jalan,
-    schoolProfile.desaKelurahan,
-    schoolProfile.kecamatan,
-    schoolProfile.kabupatenKota,
-    schoolProfile.provinsi,
-  ]
-    .filter(Boolean)
-    .join(', ') || schoolProfile.alamat || 'Indonesia';
+        doc.addImage(
+          kopImg,
+          'PNG',
+          marginX,
+          currentY,
+          kopWidth,
+          calculatedHeight
+        );
+        currentY += calculatedHeight + 2;
 
-  doc.text(addressLine, pageWidth / 2, currentY, { align: 'center' });
-  currentY += 4;
-
-  const metaLine = [
-    schoolProfile.npsn ? `NPSN: ${schoolProfile.npsn}` : null,
-    schoolProfile.kodeSekolah ? `Kode Sekolah: ${schoolProfile.kodeSekolah}` : null,
-    schoolProfile.teleponFax ? `Telp: ${schoolProfile.teleponFax}` : null,
-    schoolProfile.email ? `Email: ${schoolProfile.email}` : null,
-  ]
-    .filter(Boolean)
-    .join('  |  ');
-
-  if (metaLine) {
-    doc.text(metaLine, pageWidth / 2, currentY, { align: 'center' });
+        // Bottom separator line under custom kop
+        doc.setDrawColor(15, 23, 42); // slate-900
+        doc.setLineWidth(0.6);
+        doc.line(marginX, currentY, pageWidth - marginX, currentY);
+        currentY += 5;
+      } catch (_) {
+        // Fallback to text letterhead if image load fails
+        currentY = renderStandardTextLetterhead(doc, schoolProfile, systemConfig, pageWidth, marginX, currentY);
+      }
+    } else {
+      // Standard Text Letterhead with School Logo & Double Lines
+      try {
+        if (systemConfig?.schoolLogoUrl) {
+          const logoImg = await loadImageElement(systemConfig.schoolLogoUrl);
+          doc.addImage(logoImg, 'PNG', marginX, currentY, 18, 18);
+        }
+      } catch (_) {
+        // Continue if logo fails
+      }
+      currentY = renderStandardTextLetterhead(doc, schoolProfile, systemConfig, pageWidth, marginX, currentY);
+    }
+  } else {
     currentY += 4;
   }
 
-  // Divider Line
-  doc.setDrawColor(30, 41, 59); // slate-800
-  doc.setLineWidth(0.7);
-  doc.line(marginX, currentY, pageWidth - marginX, currentY);
-  doc.setLineWidth(0.2);
-  doc.line(marginX, currentY + 0.8, pageWidth - marginX, currentY + 0.8);
-  currentY += 7;
-
   // 2. JUDUL DOKUMEN
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
+  doc.setFontSize(11.5);
   doc.setTextColor(30, 58, 138); // blue-900
-  const titleText =
-    categoryFilter === 'GURU'
+
+  const defaultTitle =
+    categoryFilter === 'ADMIN'
+      ? 'DAFTAR AKUN PENGGUNA ADMINISTRATOR SISTEM'
+      : categoryFilter === 'GURU'
       ? 'DAFTAR AKUN LOGIN PENDIDIK & TENAGA KEPENDIDIKAN (GURU)'
       : categoryFilter === 'SISWA'
       ? 'DAFTAR AKUN LOGIN PESERTA DIDIK (SISWA)'
       : categoryFilter === 'KEPALA SEKOLAH'
       ? 'DAFTAR AKUN LOGIN KEPALA SEKOLAH'
-      : 'DAFTAR AKUN PENGGUNA TERGENERATE & PASSWORD ACAK';
+      : 'DAFTAR AKUN PENGGUNA SISTEM ABSENSI DIGITAL';
 
+  const titleText = documentTitle || defaultTitle;
   doc.text(titleText, pageWidth / 2, currentY, { align: 'center' });
-  currentY += 5;
+  currentY += 4.5;
 
   // Sub-header Metadata
   const now = new Date();
@@ -107,90 +130,118 @@ export const exportGeneratedAccountsPdf = ({
   doc.setFontSize(8);
   doc.setTextColor(100, 116, 139);
   doc.text(
-    `Waktu Generate: ${dateFormatted} pukul ${timeFormatted} WIB  •  Tahun Pelajaran: ${schoolProfile.tahunPelajaran || '2025/2026'}`,
+    `Dicetak: ${dateFormatted} pukul ${timeFormatted} WIB  •  Semester: ${schoolProfile.semester || 'GANJIL'}  •  Tahun Pelajaran: ${schoolProfile.tahunPelajaran || '2025/2026'}`,
     pageWidth / 2,
     currentY,
     { align: 'center' }
   );
-  currentY += 6;
+  currentY += 5.5;
 
   // 3. STATISTIK RINGKASAN
-  const totalGuru = accounts.filter((a) => a.category === 'GURU').length;
-  const totalSiswa = accounts.filter((a) => a.category === 'SISWA').length;
-  const totalKepsek = accounts.filter((a) => a.category === 'KEPALA SEKOLAH').length;
-  const totalBaru = accounts.filter((a) => a.status === 'CREATED').length;
-  const totalReset = accounts.filter((a) => a.status === 'UPDATED').length;
+  const totalAdmin = accounts.filter((a) => a.category === 'ADMIN' || a.role === 'ADMIN').length;
+  const totalGuru = accounts.filter((a) => a.category === 'GURU' || a.role === 'GURU' || a.role === 'WALI KELAS' || a.role === 'GURU MAPEL').length;
+  const totalSiswa = accounts.filter((a) => a.category === 'SISWA' || a.role === 'SISWA').length;
+  const totalKepsek = accounts.filter((a) => a.category === 'KEPALA SEKOLAH' || a.role === 'KEPALA SEKOLAH').length;
 
   doc.setFillColor(248, 250, 252); // slate-50
   doc.setDrawColor(226, 232, 240); // slate-200
-  doc.roundedRect(marginX, currentY, pageWidth - marginX * 2, 8, 1.5, 1.5, 'FD');
+  doc.roundedRect(marginX, currentY, pageWidth - marginX * 2, 7.5, 1.2, 1.2, 'FD');
 
   doc.setFontSize(7.5);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
 
-  const summaryText = `Total: ${accounts.length} Akun  |  Guru: ${totalGuru}  |  Siswa: ${totalSiswa}  |  Kepala Sekolah: ${totalKepsek}  |  Baru: ${totalBaru}  |  Reset: ${totalReset}`;
-  doc.text(summaryText, pageWidth / 2, currentY + 5.2, { align: 'center' });
-  currentY += 12;
+  const summaryText = `Total: ${accounts.length} Akun  |  Admin: ${totalAdmin}  |  Guru: ${totalGuru}  |  Siswa: ${totalSiswa}  |  Kepala Sekolah: ${totalKepsek}`;
+  doc.text(summaryText, pageWidth / 2, currentY + 4.8, { align: 'center' });
+  currentY += 10.5;
 
   // 4. TABEL AKUN (AUTOTABLE)
-  const tableData = accounts.map((acc, index) => [
-    index + 1,
-    acc.name || '-',
-    acc.username || '-',
-    acc.password || '-',
-    acc.role === 'WALI KELAS'
-      ? 'Guru (Wali Kelas)'
-      : acc.role === 'GURU MAPEL'
-      ? 'Guru (Mapel)'
-      : acc.role === 'KEPALA SEKOLAH'
-      ? 'Kepala Sekolah'
-      : acc.role,
-    acc.className || '-',
-    acc.status === 'CREATED' ? 'Baru' : acc.status === 'UPDATED' ? 'Direset' : 'Aktif',
-  ]);
+  const tableData = accounts.map((acc, index) => {
+    let roleLabel = acc.role || acc.category || '-';
+    if (roleLabel === 'WALI KELAS') roleLabel = 'Wali Kelas';
+    else if (roleLabel === 'GURU MAPEL') roleLabel = 'Guru Mapel';
+    else if (roleLabel === 'GURU') roleLabel = 'Guru';
+    else if (roleLabel === 'ADMIN') roleLabel = 'Administrator';
+    else if (roleLabel === 'SISWA') roleLabel = 'Siswa';
+    else if (roleLabel === 'KEPALA SEKOLAH') roleLabel = 'Kepala Sekolah';
+
+    let penugasan = acc.className || '-';
+    if (acc.category === 'KEPALA SEKOLAH' || acc.role === 'KEPALA SEKOLAH') {
+      penugasan = 'Pimpinan Sekolah';
+    } else if (acc.category === 'ADMIN' || acc.role === 'ADMIN') {
+      penugasan = 'Pengelola Sistem';
+    }
+
+    const statusLabel =
+      acc.status === 'CREATED'
+        ? 'Baru Dibuat'
+        : acc.status === 'UPDATED'
+        ? 'Password Direset'
+        : 'Aktif';
+
+    return [
+      index + 1,
+      acc.name || '-',
+      acc.username || '-',
+      acc.password || 'Tersimpan (Aman)',
+      roleLabel,
+      penugasan,
+      statusLabel,
+    ];
+  });
 
   autoTable(doc, {
     startY: currentY,
-    margin: { left: marginX, right: marginX, top: 18, bottom: 22 },
-    head: [['No', 'Nama Pengguna', 'Username (ID)', 'Password', 'Peran / Hak Akses', 'Kelas', 'Status']],
+    margin: { left: marginX, right: marginX, bottom: 20 },
+    head: [
+      [
+        'NO',
+        'NAMA PENGGUNA',
+        'USERNAME / NISN',
+        'PASSWORD',
+        'HAK AKSES',
+        'KELAS / PENUGASAN',
+        'STATUS',
+      ],
+    ],
     body: tableData,
     theme: 'grid',
+    styles: {
+      font: 'helvetica',
+      fontSize: 7.5,
+      cellPadding: 2,
+      textColor: [30, 41, 59], // slate-800
+      lineColor: [226, 232, 240], // slate-200
+      lineWidth: 0.2,
+      valign: 'middle',
+    },
     headStyles: {
-      fillColor: [30, 58, 138], // #1e3a8a deep navy blue
+      fillColor: [30, 58, 138], // blue-900
       textColor: [255, 255, 255],
       fontStyle: 'bold',
-      fontSize: 8,
       halign: 'center',
-      valign: 'middle',
-      cellPadding: 2,
-    },
-    bodyStyles: {
       fontSize: 7.5,
-      textColor: [30, 41, 59],
-      cellPadding: 1.8,
-      valign: 'middle',
     },
     alternateRowStyles: {
       fillColor: [248, 250, 252], // slate-50
     },
     columnStyles: {
-      0: { halign: 'center', cellWidth: 9 }, // No
-      1: { halign: 'left', cellWidth: 46 }, // Nama
-      2: { halign: 'left', font: 'courier', fontStyle: 'bold', cellWidth: 32 }, // Username
-      3: { halign: 'center', font: 'courier', fontStyle: 'bold', textColor: [37, 99, 235], cellWidth: 26 }, // Password (blue)
-      4: { halign: 'left', cellWidth: 32 }, // Peran
-      5: { halign: 'center', cellWidth: 19 }, // Kelas
-      6: { halign: 'center', cellWidth: 18 }, // Status
+      0: { halign: 'center', cellWidth: 10 },
+      1: { halign: 'left', fontStyle: 'bold', cellWidth: 42 },
+      2: { halign: 'left', font: 'courier', fontStyle: 'bold', cellWidth: 32 },
+      3: { halign: 'left', font: 'courier', cellWidth: 28 },
+      4: { halign: 'center', cellWidth: 26 },
+      5: { halign: 'left', cellWidth: 26 },
+      6: { halign: 'center', cellWidth: 18 },
     },
     didDrawPage: (data) => {
-      // Header on subsequent pages
+      // Header for page 2+
       if (data.pageNumber > 1) {
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(7);
-        doc.setTextColor(148, 163, 184);
+        doc.setFontSize(7.5);
+        doc.setTextColor(100, 116, 139);
         doc.text(
-          `${schoolName} — Daftar Akun Pengguna Tergenerate`,
+          `${titleText} — ${schoolProfile.namaSekolah || 'Sekolah'}`,
           marginX,
           10
         );
@@ -211,7 +262,7 @@ export const exportGeneratedAccountsPdf = ({
       doc.setTextColor(148, 163, 184); // slate-400
 
       doc.text(
-        'Sistem Absensi Digital Kawacanaan — Dokumen Rahasia',
+        'Sistem Absensi Digital Kawacanaan — Dokumen Rahasia Akun Pengguna',
         marginX,
         pageHeight - 10
       );
@@ -235,15 +286,15 @@ export const exportGeneratedAccountsPdf = ({
   doc.setFontSize(7);
   doc.setTextColor(100, 116, 139);
   doc.text(
-    '* Catatan: Simpan dan bagikan informasi akun ini secara rahasia kepada masing-masing pemilik akun. Jangan mempublikasikan kata sandi secara terbuka.',
+    '* Catatan: Informasi akun ini bersifat rahasia dan wajib didistribusikan kepada masing-masing pemilik akun secara tertutup.',
     marginX,
     finalY
   );
   finalY += 8;
 
   // Signature Block
-  const sigLeftX = marginX + 15;
-  const sigRightX = pageWidth - marginX - 50;
+  const sigLeftX = marginX + 20;
+  const sigRightX = pageWidth - marginX - 45;
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
@@ -278,7 +329,7 @@ export const exportGeneratedAccountsPdf = ({
   doc.text(adminName || 'Administrator', sigRightX, sigNameY, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
-  doc.text('Unit Pengelola IT Sekolah', sigRightX, sigNameY + 4, { align: 'center' });
+  doc.text('Pengelola Data & IT Sekolah', sigRightX, sigNameY + 4, { align: 'center' });
 
   // Replace total pages placeholder in all pages
   if (typeof doc.putTotalPages === 'function') {
@@ -286,7 +337,78 @@ export const exportGeneratedAccountsPdf = ({
   }
 
   // Save the PDF file
-  const fileName = `Daftar_Akun_Generate_${(schoolProfile.namaSekolah || 'Sekolah')
+  const fileName = `Daftar_Akun_Pengguna_${(schoolProfile.namaSekolah || 'Sekolah')
     .replace(/[^a-zA-Z0-9]/g, '_')}_${now.toISOString().slice(0, 10)}.pdf`;
   doc.save(fileName);
 };
+
+// Helper for rendering standard text letterhead
+function renderStandardTextLetterhead(
+  doc: jsPDF,
+  schoolProfile: SchoolProfile,
+  systemConfig: SystemConfig | undefined,
+  pageWidth: number,
+  marginX: number,
+  startY: number
+): number {
+  let currentY = startY;
+
+  const prov = schoolProfile.provinsi ? schoolProfile.provinsi.toUpperCase() : 'DAERAH KHUSUS IBUKOTA JAKARTA';
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(71, 85, 105); // slate-600
+  doc.text(`PEMERINTAH PROVINSI ${prov}`, pageWidth / 2, currentY, { align: 'center' });
+  currentY += 4;
+
+  doc.text('DINAS PENDIDIKAN', pageWidth / 2, currentY, { align: 'center' });
+  currentY += 4.5;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.setTextColor(15, 23, 42); // slate-900
+  const schoolName = (schoolProfile.namaSekolah || 'SD NEGERI NUSANTARA').toUpperCase();
+  doc.text(schoolName, pageWidth / 2, currentY, { align: 'center' });
+  currentY += 4.5;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(71, 85, 105); // slate-600
+
+  const addressLine = [
+    schoolProfile.jalan,
+    schoolProfile.desaKelurahan,
+    schoolProfile.kecamatan,
+    schoolProfile.kabupatenKota,
+    schoolProfile.provinsi,
+  ]
+    .filter(Boolean)
+    .join(', ') || schoolProfile.alamat || 'Indonesia';
+
+  doc.text(addressLine, pageWidth / 2, currentY, { align: 'center' });
+  currentY += 3.8;
+
+  const metaLine = [
+    schoolProfile.npsn ? `NPSN: ${schoolProfile.npsn}` : null,
+    schoolProfile.kodeSekolah ? `Kode Sekolah: ${schoolProfile.kodeSekolah}` : null,
+    schoolProfile.teleponFax ? `Telp: ${schoolProfile.teleponFax}` : null,
+    schoolProfile.email ? `Email: ${schoolProfile.email}` : null,
+    schoolProfile.website ? `Website: ${schoolProfile.website}` : null,
+  ]
+    .filter(Boolean)
+    .join('  |  ');
+
+  if (metaLine) {
+    doc.text(metaLine, pageWidth / 2, currentY, { align: 'center' });
+    currentY += 3.8;
+  }
+
+  // Double Line Divider (Kop Surat Garis Ganda)
+  doc.setDrawColor(15, 23, 42); // slate-900
+  doc.setLineWidth(0.8);
+  doc.line(marginX, currentY, pageWidth - marginX, currentY);
+  doc.setLineWidth(0.25);
+  doc.line(marginX, currentY + 0.9, pageWidth - marginX, currentY + 0.9);
+  currentY += 6;
+
+  return currentY;
+}
