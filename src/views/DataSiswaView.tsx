@@ -191,7 +191,7 @@ export const DataSiswaView: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleSaveStudent = (e: React.FormEvent) => {
+  const handleSaveStudent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.nisn.trim() || !formData.nama.trim()) return;
 
@@ -199,7 +199,7 @@ export const DataSiswaView: React.FC = () => {
     const targetClassId = selectedCls && selectedCls.id !== 'onboarding-class-default' ? selectedCls.id : null;
 
     if (editingStudent) {
-      updateStudent(editingStudent.id, {
+      await updateStudent(editingStudent.id, {
         nisn: formData.nisn.trim(),
         nama: formData.nama.trim().toUpperCase(),
         gender: formData.gender,
@@ -210,7 +210,7 @@ export const DataSiswaView: React.FC = () => {
         showToast(`Batas kuota siswa untuk paket Anda (${maxStudentsLimit} siswa) telah tercapai.`, 'error');
         return;
       }
-      addStudent({
+      await addStudent({
         nisn: formData.nisn.trim(),
         nama: formData.nama.trim().toUpperCase(),
         gender: formData.gender,
