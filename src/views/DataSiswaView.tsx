@@ -554,14 +554,8 @@ export const DataSiswaView: React.FC = () => {
           <span>Data Siswa</span>
         </div>
 
-        {/* Wali Kelas / Workspace / Quota Plan Badge */}
+        {/* Workspace / Quota Plan Badge */}
         <div className="flex items-center gap-2 flex-wrap">
-          {isWaliKelas && myAssignedClasses.length > 0 && (
-            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold shadow-xs">
-              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-              <span>Akses Wali Kelas (Hanya Melihat): Kelas {myAssignedClasses.map((c) => c.name).join(', ')}</span>
-            </div>
-          )}
           {isPersonalWorkspace && (
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-blue-50 border border-blue-200/80 text-blue-800 text-xs font-bold w-fit">
               <span>Ruang Kerja Individu</span>
