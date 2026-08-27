@@ -1369,34 +1369,17 @@ export const DataPenggunaView: React.FC = () => {
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={handleCopyAll}
-                  className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 active:scale-95 text-slate-700 rounded-xl text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
-                  title="Salin semua akun ke clipboard"
-                >
-                  {copiedAll ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
-                  <span>{copiedAll ? 'Tersalin!' : 'Salin Semua'}</span>
-                </button>
-                <button
-                  onClick={handleDownloadCSV}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
-                  title="Unduh file Excel / CSV"
-                  id="btn-export-csv-generate"
-                >
-                  <Download size={14} />
-                  <span>Unduh CSV</span>
-                </button>
-                <button
                   onClick={handleExportPDF}
-                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white rounded-xl text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                  className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white rounded-xl text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
                   title="Ekspor daftar akun resmi ke PDF"
                   id="btn-export-pdf-generate"
                 >
-                  <FileText size={14} />
+                  <FileText size={15} />
                   <span>Export PDF</span>
                 </button>
                 <button
                   onClick={() => setGeneratedResults(null)}
-                  className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-200/50 transition-colors cursor-pointer"
+                  className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-200/50 transition-colors cursor-pointer"
                 >
                   <X size={18} />
                 </button>

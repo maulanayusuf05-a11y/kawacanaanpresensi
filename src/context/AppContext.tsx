@@ -6,6 +6,7 @@ import { INITIAL_SCHOOL_PROFILE, INITIAL_SYSTEM_CONFIG, DEFAULT_SD_SUBJECTS } fr
 interface Toast { id:string; type:'success'|'info'|'error'; message:string; }
 interface AppContextType {
  currentUser: UserAccount|null; setCurrentUser:(u:UserAccount|null)=>void; logout:()=>Promise<void>; registrationRequired:boolean; setRegistrationRequired:(v:boolean)=>void; activeView:ActiveView; setActiveView:(v:ActiveView)=>void;
+ isDataLoading: boolean;
  // Workspace & Onboarding
  userWorkspaces: WorkspaceMembership[];
  activeWorkspace: WorkspaceMembership | null;
@@ -245,6 +246,7 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
  const loadRequestRef=React.useRef(0);
  const navigationIntentRef=React.useRef(0);
  const setActiveView=(view:ActiveView)=>{ navigationIntentRef.current+=1; activeViewRef.current=view; setActiveViewState(view); };
+ const [isDataLoading, setIsDataLoading] = useState<boolean>(false);
  const [schoolProfile,setSchoolProfile]=useState<SchoolProfile>(INITIAL_SCHOOL_PROFILE);
  const [systemConfig,setSystemConfig]=useState<SystemConfig>(INITIAL_SYSTEM_CONFIG);
  const [classes,setClasses]=useState<SchoolClass[]>([]);
@@ -306,6 +308,7 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
  const removeToast=(id:string)=>setToasts(p=>p.filter(t=>t.id!==id));
 
  const loadDataForSchool = async (schoolId: string, baseProfile: any, targetRole: UserRole) => {
+   setIsDataLoading(true);
    let tenantSchool: any = null;
    try {
      const res = await supabase.from('schools').select('name,npsn,code,plan,status,subscription_expires_at,max_teachers,max_students,max_classes,workspace_type,is_personal').eq('id',schoolId).maybeSingle();
@@ -598,21 +601,23 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
 
    const requestId=++loadRequestRef.current;
 
-   // Ambil daftar ruang kerja / membership user terlebih dahulu via backend API (bypass RLS)
+   // Ambil daftar ruang kerja / membership user dan profil secara paralel dengan Promise.all
    let memberships: WorkspaceMembership[] = [];
+   let baseProfile: any = null;
    try {
-     const res = await fetch('/api/onboarding', {
-       method: 'POST',
-       headers: { 'Content-Type': 'application/json' },
-       body: JSON.stringify({ action: 'get_user_workspaces', user_id: userId })
-     });
-     const json = await res.json();
-     if (json.success && Array.isArray(json.workspaces)) {
-       memberships = json.workspaces;
+     const [onboardingRes, profileRes] = await Promise.all([
+       fetch('/api/onboarding', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({ action: 'get_user_workspaces', user_id: userId })
+       }).then(r => r.json()).catch(() => null),
+       supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
+     ]);
+     if (onboardingRes?.success && Array.isArray(onboardingRes.workspaces)) {
+       memberships = onboardingRes.workspaces;
      }
+     baseProfile = profileRes?.data || null;
    } catch (_) {}
-
-   let {data:baseProfile,error:baseError}=await supabase.from('profiles').select('*').eq('id',userId).maybeSingle();
    
    // Jika profil belum ada di Supabase client tapi memberships ditemukan (mis. baru selesai onboarding), buat objek baseProfile
    if (!baseProfile && memberships.length > 0) {
@@ -724,7 +729,13 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
    }
    localStorage.setItem('kawacanaan_last_workspace_id', chosenWorkspace.workspaceId);
 
-   await loadDataForSchool(chosenWorkspace.workspaceId, baseProfile, chosenWorkspace.role);
+   // Set basic currentUser and transition view immediately so dashboard mounts with zero delay
+   const initialMe = emptyUser({
+     ...baseProfile,
+     school_id: chosenWorkspace.workspaceId,
+     role: chosenWorkspace.role
+   });
+   setCurrentUser(initialMe);
 
    if (activeViewRef.current === 'login') {
      if (chosenWorkspace.role === 'SISWA') {
@@ -733,6 +744,8 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
        setActiveView('dashboard');
      }
    }
+
+   await loadDataForSchool(chosenWorkspace.workspaceId, baseProfile, chosenWorkspace.role);
  };
  useEffect(()=>{
    let mounted=true;

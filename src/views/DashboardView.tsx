@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { getUserRoleScope } from '../utils/userScope';
+import { DashboardSkeleton } from '../components/DashboardSkeleton';
 import {
   Users,
   Calendar,
@@ -27,6 +28,24 @@ import {
   User,
 } from 'lucide-react';
 
+interface SummaryCache {
+  scopedTotal: number;
+  scopedMale: number;
+  scopedFemale: number;
+  usersCount: number;
+  studentsCount: number;
+  classesCount: number;
+  guruKsCount: number;
+  hadirCount: number;
+  sakitCount: number;
+  izinCount: number;
+  alfaCount: number;
+  recordTotal: number;
+  hadirPercent: number;
+  trendData: { day: string; count: number }[];
+  timestamp: number;
+}
+
 export const DashboardView: React.FC = () => {
   const {
     currentUser,
@@ -43,39 +62,55 @@ export const DashboardView: React.FC = () => {
     setActiveView,
     schoolProfile,
     currentAttendanceDate,
+    isDataLoading,
   } = useApp();
 
   const [copiedCode, setCopiedCode] = useState(false);
 
+  // Workspace cache key
+  const cacheKey = `kawacanaan_summary_cache_${activeWorkspace?.workspaceId || currentUser?.schoolId || 'global'}`;
+
+  // Read initial cache from localStorage to prevent zero-value flash
+  const [cachedSummary, setCachedSummary] = useState<SummaryCache | null>(() => {
+    try {
+      const raw = localStorage.getItem(cacheKey);
+      if (raw) return JSON.parse(raw);
+    } catch (_) {}
+    return null;
+  });
+
   // Resolve user role scope (Wali Kelas, Guru Mapel, Admin, KS)
-  const userScope = React.useMemo(
+  const userScope = useMemo(
     () => getUserRoleScope(currentUser, classes, subjects, teachers),
     [currentUser, classes, subjects, teachers]
   );
 
   // Month & time calculation
-  const now = new Date();
+  const now = useMemo(() => new Date(), []);
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth() + 1;
-  const monthNames = [
-    'Januari',
-    'Februari',
-    'Maret',
-    'April',
-    'Mei',
-    'Juni',
-    'Juli',
-    'Agustus',
-    'September',
-    'Oktober',
-    'November',
-    'Desember',
-  ];
+  const monthNames = useMemo(
+    () => [
+      'Januari',
+      'Februari',
+      'Maret',
+      'April',
+      'Mei',
+      'Juni',
+      'Juli',
+      'Agustus',
+      'September',
+      'Oktober',
+      'November',
+      'Desember',
+    ],
+    []
+  );
   const currentMonthName = monthNames[now.getMonth()];
   const effectiveDaysThisMonth = getEffectiveDaysForMonth(currentYear, currentMonth);
 
   // Scoped students calculation based on role
-  const scopedStudents = React.useMemo(() => {
+  const scopedStudents = useMemo(() => {
     if (userScope.isWaliKelas) {
       if (userScope.assignedWaliClassId) {
         return students.filter((s) => s.classId === userScope.assignedWaliClassId);
@@ -95,52 +130,21 @@ export const DashboardView: React.FC = () => {
     return students;
   }, [userScope, students, currentUser]);
 
-  const scopedStudentIds = React.useMemo(() => new Set(scopedStudents.map((s) => s.id)), [scopedStudents]);
+  const scopedStudentIds = useMemo(() => new Set(scopedStudents.map((s) => s.id)), [scopedStudents]);
 
   // Metrics for scoped students
-  const scopedTotal = scopedStudents.length;
-  const scopedMale = scopedStudents.filter((s) => s.gender === 'L').length;
-  const scopedFemale = scopedStudents.filter((s) => s.gender === 'P').length;
+  const scopedTotal = scopedStudents.length || cachedSummary?.scopedTotal || 0;
+  const scopedMale = scopedStudents.filter((s) => s.gender === 'L').length || cachedSummary?.scopedMale || 0;
+  const scopedFemale = scopedStudents.filter((s) => s.gender === 'P').length || cachedSummary?.scopedFemale || 0;
 
   // Today's attendance calculation (Context-aware for Wali Kelas vs Guru Mapel vs Admin/KS)
-  const todayStr = now.toISOString().split('T')[0];
-  const todayRecords = attendanceRecords.filter((r) => {
-    const isDateMatch = r.date === todayStr || r.date === currentAttendanceDate;
-    if (!isDateMatch) return false;
+  const todayStr = useMemo(() => now.toISOString().split('T')[0], [now]);
 
-    if (userScope.isWaliKelas) {
-      return scopedStudentIds.has(r.studentId) && r.type !== 'SUBJECT';
-    }
-    if (userScope.isGuruMapel) {
-      const assignedSubjectIds = new Set(userScope.assignedSubjectIds);
-      if (assignedSubjectIds.size > 0) {
-        return (
-          scopedStudentIds.has(r.studentId) &&
-          r.type === 'SUBJECT' &&
-          r.subjectId &&
-          assignedSubjectIds.has(r.subjectId)
-        );
-      }
-      return scopedStudentIds.has(r.studentId) && r.type === 'SUBJECT';
-    }
-    return r.type !== 'SUBJECT';
-  });
+  const todayRecords = useMemo(() => {
+    return attendanceRecords.filter((r) => {
+      const isDateMatch = r.date === todayStr || r.date === currentAttendanceDate;
+      if (!isDateMatch) return false;
 
-  const hadirCount = todayRecords.filter((r) => r.status === 'Hadir').length;
-  const sakitCount = todayRecords.filter((r) => r.status === 'Sakit').length;
-  const izinCount = todayRecords.filter((r) => r.status === 'Izin').length;
-  const alfaCount = todayRecords.filter((r) => r.status === 'Alfa').length;
-  const recordTotal = hadirCount + sakitCount + izinCount + alfaCount || scopedTotal || students.length || 0;
-  const hadirPercent = recordTotal > 0 ? Math.round((hadirCount / recordTotal) * 100) : 0;
-
-  // 7-day trend data (Sab, Min, Sen, Sel, Rab, Kam, Jum)
-  const dayNames = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
-  const trendData = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (6 - i));
-    const dStr = d.toISOString().split('T')[0];
-    const recs = attendanceRecords.filter((r) => {
-      if (r.date !== dStr) return false;
       if (userScope.isWaliKelas) {
         return scopedStudentIds.has(r.studentId) && r.type !== 'SUBJECT';
       }
@@ -158,15 +162,108 @@ export const DashboardView: React.FC = () => {
       }
       return r.type !== 'SUBJECT';
     });
-    const hCount = recs.filter((r) => r.status === 'Hadir').length;
-    return {
-      day: dayNames[d.getDay()],
-      count: hCount,
-    };
-  });
+  }, [attendanceRecords, todayStr, currentAttendanceDate, userScope, scopedStudentIds]);
+
+  const hadirCount = todayRecords.filter((r) => r.status === 'Hadir').length || cachedSummary?.hadirCount || 0;
+  const sakitCount = todayRecords.filter((r) => r.status === 'Sakit').length || cachedSummary?.sakitCount || 0;
+  const izinCount = todayRecords.filter((r) => r.status === 'Izin').length || cachedSummary?.izinCount || 0;
+  const alfaCount = todayRecords.filter((r) => r.status === 'Alfa').length || cachedSummary?.alfaCount || 0;
+  const recordTotal =
+    hadirCount + sakitCount + izinCount + alfaCount ||
+    scopedTotal ||
+    students.length ||
+    cachedSummary?.recordTotal ||
+    0;
+  const hadirPercent =
+    recordTotal > 0 ? Math.round((hadirCount / recordTotal) * 100) : cachedSummary?.hadirPercent || 0;
+
+  // 7-day trend data (Sab, Min, Sen, Sel, Rab, Kam, Jum)
+  const dayNames = useMemo(() => ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'], []);
+  const trendData = useMemo(() => {
+    if (attendanceRecords.length === 0 && cachedSummary?.trendData) {
+      return cachedSummary.trendData;
+    }
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (6 - i));
+      const dStr = d.toISOString().split('T')[0];
+      const recs = attendanceRecords.filter((r) => {
+        if (r.date !== dStr) return false;
+        if (userScope.isWaliKelas) {
+          return scopedStudentIds.has(r.studentId) && r.type !== 'SUBJECT';
+        }
+        if (userScope.isGuruMapel) {
+          const assignedSubjectIds = new Set(userScope.assignedSubjectIds);
+          if (assignedSubjectIds.size > 0) {
+            return (
+              scopedStudentIds.has(r.studentId) &&
+              r.type === 'SUBJECT' &&
+              r.subjectId &&
+              assignedSubjectIds.has(r.subjectId)
+            );
+          }
+          return scopedStudentIds.has(r.studentId) && r.type === 'SUBJECT';
+        }
+        return r.type !== 'SUBJECT';
+      });
+      const hCount = recs.filter((r) => r.status === 'Hadir').length;
+      return {
+        day: dayNames[d.getDay()],
+        count: hCount,
+      };
+    });
+  }, [attendanceRecords, cachedSummary?.trendData, dayNames, userScope, scopedStudentIds]);
+
+  // Save calculated summary to localStorage cache for lightning-fast next load
+  useEffect(() => {
+    if (!isDataLoading && (students.length > 0 || users.length > 0 || classes.length > 0)) {
+      const summaryToCache: SummaryCache = {
+        scopedTotal,
+        scopedMale,
+        scopedFemale,
+        usersCount: users.length,
+        studentsCount: students.length,
+        classesCount: classes.length,
+        guruKsCount: users.filter(
+          (u) =>
+            u.role === 'GURU' ||
+            u.role === 'WALI KELAS' ||
+            u.role === 'GURU MAPEL' ||
+            u.role === 'KEPALA SEKOLAH'
+        ).length,
+        hadirCount,
+        sakitCount,
+        izinCount,
+        alfaCount,
+        recordTotal,
+        hadirPercent,
+        trendData,
+        timestamp: Date.now(),
+      };
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify(summaryToCache));
+      } catch (_) {}
+    }
+  }, [
+    isDataLoading,
+    cacheKey,
+    scopedTotal,
+    scopedMale,
+    scopedFemale,
+    users,
+    students,
+    classes,
+    hadirCount,
+    sakitCount,
+    izinCount,
+    alfaCount,
+    recordTotal,
+    hadirPercent,
+    trendData,
+  ]);
 
   // Up to 2 upcoming events
-  const upcomingEvents = academicEvents.slice(0, 2);
+  const upcomingEvents = useMemo(() => academicEvents.slice(0, 2), [academicEvents]);
 
   const menuItems = [
     {
@@ -231,17 +328,32 @@ export const DashboardView: React.FC = () => {
     },
   ] as const;
 
-  const allowedMenuItems = menuItems.filter((item) => {
-    if (!currentUser) return false;
-    if (currentUser.role === 'ADMIN' || currentUser.role === 'SUPER_ADMIN') return true;
-    if (currentUser.role === 'GURU' || currentUser.role === 'WALI KELAS' || currentUser.role === 'GURU MAPEL') {
-      return ['data-referensi', 'kalender-akademik', 'absensi', 'rekapitulasi', 'laporan', 'pengaturan'].includes(item.id);
-    }
-    if (currentUser.role === 'KEPALA SEKOLAH') {
-      return ['data-referensi', 'kalender-akademik', 'rekapitulasi', 'laporan', 'pengaturan'].includes(item.id);
-    }
-    return false;
-  });
+  const allowedMenuItems = useMemo(() => {
+    return menuItems.filter((item) => {
+      if (!currentUser) return false;
+      if (currentUser.role === 'ADMIN' || currentUser.role === 'SUPER_ADMIN') return true;
+      if (
+        currentUser.role === 'GURU' ||
+        currentUser.role === 'WALI KELAS' ||
+        currentUser.role === 'GURU MAPEL'
+      ) {
+        return [
+          'data-referensi',
+          'kalender-akademik',
+          'absensi',
+          'rekapitulasi',
+          'laporan',
+          'pengaturan',
+        ].includes(item.id);
+      }
+      if (currentUser.role === 'KEPALA SEKOLAH') {
+        return ['data-referensi', 'kalender-akademik', 'rekapitulasi', 'laporan', 'pengaturan'].includes(
+          item.id
+        );
+      }
+      return false;
+    });
+  }, [currentUser, menuItems]);
 
   // Role-specific widgets definition
   const isTeacherOrWali = userScope.isWaliKelas || userScope.isGuruMapel;
@@ -256,60 +368,6 @@ export const DashboardView: React.FC = () => {
     currentUser?.subscriptionPlan === 'guru_gratis' ||
     (!currentUser?.schoolId && currentUser?.role !== 'SUPER_ADMIN');
 
-  // Package & Subscription Expiration Details
-  const packageInfo = React.useMemo(() => {
-    const rawPlan = (currentUser?.subscriptionPlan || activeWorkspace?.subscriptionPlan || 'teacher').toLowerCase();
-    const rawStatus = (currentUser?.subscriptionStatus || activeWorkspace?.subscriptionStatus || 'trial').toLowerCase();
-    const rawExpiresAt = currentUser?.subscriptionExpiresAt || activeWorkspace?.subscriptionExpiresAt;
-
-    let planName = 'Paket Guru (TRIAL)';
-    let isTrial = false;
-
-    if (rawPlan.includes('guru_uji_coba') || rawPlan === 'teacher' || rawPlan === 'guru_pro' || rawPlan === 'guru' || isPersonalWorkspace) {
-      if (rawStatus === 'trial' || rawPlan.includes('trial') || rawPlan.includes('uji_coba') || rawPlan === 'teacher' || rawStatus === 'active') {
-        planName = 'Paket Guru (TRIAL)';
-        isTrial = true;
-      } else {
-        planName = 'Paket Guru';
-      }
-    } else if (rawPlan.includes('sekolah_pro') || rawPlan.includes('sekolah')) {
-      if (rawStatus === 'trial' || rawPlan.includes('trial') || rawPlan.includes('uji_coba')) {
-        planName = 'Paket Sekolah (TRIAL)';
-        isTrial = true;
-      } else {
-        planName = 'Paket Sekolah';
-      }
-    } else if (rawPlan.includes('sekolah_gratis')) {
-      planName = 'Paket Sekolah Gratis';
-    } else if (rawPlan.includes('gratis') || rawPlan === 'mulai' || rawPlan === 'free') {
-      planName = 'Paket Guru Gratis';
-    }
-
-    // Format Expiry Date
-    let expiryFormatted = '';
-    if (rawExpiresAt) {
-      try {
-        const d = new Date(rawExpiresAt);
-        if (!isNaN(d.getTime())) {
-          expiryFormatted = `${d.getDate()} ${monthNames[d.getMonth()]} ${d.getFullYear()}`;
-        }
-      } catch (_) {}
-    }
-
-    if (!expiryFormatted && isPersonalWorkspace) {
-      // Aturan sistem: Masa trial Guru berlaku s.d akhir bulan berikutnya
-      const endOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 2, 0);
-      expiryFormatted = `${endOfNextMonth.getDate()} ${monthNames[endOfNextMonth.getMonth()]} ${endOfNextMonth.getFullYear()}`;
-    }
-
-    return {
-      planName,
-      isTrial,
-      expiryFormatted,
-      isPersonal: isPersonalWorkspace,
-    };
-  }, [currentUser, activeWorkspace, isPersonalWorkspace, now, monthNames]);
-
   const toneClasses: Record<string, string> = {
     blue: 'bg-blue-50 border-blue-100 text-blue-600',
     emerald: 'bg-emerald-50 border-emerald-100 text-emerald-600',
@@ -318,21 +376,24 @@ export const DashboardView: React.FC = () => {
     amber: 'bg-amber-50 border-amber-100 text-amber-600',
   };
 
-  const cleanInvitationCode = React.useMemo(() => {
-    const raw =
-      schoolProfile?.kodeSekolah ||
-      activeWorkspace?.workspaceCode ||
-      currentUser?.schoolCode ||
-      schoolProfile?.npsn ||
-      (currentUser?.schoolId ? currentUser.schoolId.slice(0, 8) : '9B3366AB');
-    return (raw || '9B3366AB').replace(/^SCH-?/i, '').trim().toUpperCase();
-  }, [schoolProfile?.kodeSekolah, schoolProfile?.npsn, activeWorkspace?.workspaceCode, currentUser?.schoolCode, currentUser?.schoolId]);
+  const usersCountDisplay = users.length || cachedSummary?.usersCount || 0;
+  const studentsCountDisplay = students.length || cachedSummary?.studentsCount || 0;
+  const classesCountDisplay = classes.length || cachedSummary?.classesCount || 0;
+  const guruKsCountDisplay =
+    users.filter(
+      (u) =>
+        u.role === 'GURU' ||
+        u.role === 'WALI KELAS' ||
+        u.role === 'GURU MAPEL' ||
+        u.role === 'KEPALA SEKOLAH'
+    ).length || cachedSummary?.guruKsCount || 0;
 
-  const handleCopyInvitationCode = () => {
-    navigator.clipboard.writeText(cleanInvitationCode);
-    setCopiedCode(true);
-    setTimeout(() => setCopiedCode(false), 2000);
-  };
+  // Show Skeleton Loader if data is completely empty and currently loading
+  const isInitialEmptyLoad = isDataLoading && !cachedSummary && students.length === 0 && users.length === 0;
+
+  if (isInitialEmptyLoad) {
+    return <DashboardSkeleton isTeacherOrWali={isTeacherOrWali} />;
+  }
 
   return (
     <div className="w-full max-w-7xl 2xl:max-w-[1500px] mx-auto px-3.5 sm:px-6 lg:px-8 py-3.5 sm:py-5 space-y-3.5 sm:space-y-4 animate-in fade-in duration-300">
@@ -384,7 +445,7 @@ export const DashboardView: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Widgets: If Wali Kelas or Guru Mapel -> 4 widgets (Jumlah Siswa, Siswa Laki-laki, Siswa Perempuan, Hari Efektif Belajar) */}
+      {/* Main Widgets: If Wali Kelas or Guru Mapel -> 4 widgets */}
       {isTeacherOrWali ? (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
           {[
@@ -449,18 +510,17 @@ export const DashboardView: React.FC = () => {
         /* Admin & Kepala Sekolah Overview Widgets (5 widgets) */
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3">
           {[
-            { label: 'PENGGUNA', value: users.length, desc: 'Total akun', icon: Users, tone: 'blue' },
+            { label: 'PENGGUNA', value: usersCountDisplay, desc: 'Total akun', icon: Users, tone: 'blue' },
             { label: 'ONLINE', value: currentUser ? 1 : 0, desc: 'Sesi aktif', icon: UserCheck, tone: 'emerald' },
             {
               label: 'GURU & KS',
-              value: users.filter((u) => u.role === 'GURU' || u.role === 'WALI KELAS' || u.role === 'GURU MAPEL' || u.role === 'KEPALA SEKOLAH')
-                .length,
+              value: guruKsCountDisplay,
               desc: 'Tenaga pendidik',
               icon: GraduationCap,
               tone: 'violet',
             },
-            { label: 'SISWA', value: students.length, desc: 'Terdaftar', icon: Users, tone: 'sky' },
-            { label: 'ROMBEL', value: classes.length, desc: 'Data kelas', icon: Building, tone: 'amber' },
+            { label: 'SISWA', value: studentsCountDisplay, desc: 'Terdaftar', icon: Users, tone: 'sky' },
+            { label: 'ROMBEL', value: classesCountDisplay, desc: 'Data kelas', icon: Building, tone: 'amber' },
           ].map((item) => {
             const Icon = item.icon;
             return (
@@ -518,7 +578,7 @@ export const DashboardView: React.FC = () => {
 
               {/* Grid Lines & Y-axis labels */}
               {(() => {
-                const maxVal = Math.max(scopedTotal || students.length, 1);
+                const maxVal = Math.max(scopedTotal || students.length || 1, 1);
                 const stepValues = [
                   maxVal,
                   Math.round(maxVal * 0.75),
@@ -541,7 +601,7 @@ export const DashboardView: React.FC = () => {
 
               {/* Dynamic Path Calculation based on trendData */}
               {(() => {
-                const maxVal = Math.max(scopedTotal || students.length, 1);
+                const maxVal = Math.max(scopedTotal || students.length || 1, 1);
                 const points = trendData.map((item, idx) => {
                   const x = 35 + idx * 70;
                   const ratio = Math.min(Math.max(item.count / maxVal, 0), 1);
@@ -801,4 +861,3 @@ export const DashboardView: React.FC = () => {
     </div>
   );
 };
-
