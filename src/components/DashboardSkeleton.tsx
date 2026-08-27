@@ -149,3 +149,32 @@ export const DashboardSkeleton: React.FC<{ isTeacherOrWali?: boolean }> = ({ isT
     </div>
   );
 };
+
+export const AppAuthLoadingSkeleton: React.FC = () => {
+  return (
+    <div className="min-h-screen bg-[#F8FAFC] text-slate-800 flex flex-col antialiased">
+      {/* Header Skeleton */}
+      <header className="w-full bg-white/95 backdrop-blur-md border-b border-slate-200 px-3 sm:px-6 lg:px-8 py-2.5 sticky top-0 z-30 shadow-xs">
+        <div className="max-w-7xl 2xl:max-w-[1500px] mx-auto flex items-center justify-between gap-3 animate-pulse">
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-200 shrink-0" />
+            <div className="space-y-1.5 min-w-0">
+              <div className="h-4 w-36 sm:w-52 bg-slate-200 rounded-md" />
+              <div className="h-2.5 w-24 bg-slate-100 rounded" />
+            </div>
+          </div>
+          <div className="flex items-center gap-2.5 sm:gap-3.5">
+            <div className="hidden md:block h-7 w-36 bg-slate-100 rounded-full" />
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-slate-200 shrink-0" />
+            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-slate-200 shrink-0" />
+          </div>
+        </div>
+      </header>
+
+      {/* Body Skeleton */}
+      <main className="flex-1 pb-12">
+        <DashboardSkeleton />
+      </main>
+    </div>
+  );
+};

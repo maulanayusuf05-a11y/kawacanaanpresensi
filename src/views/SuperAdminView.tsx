@@ -36,7 +36,22 @@ const mainTabs: MainTabConfig[] = [
 
 export const SuperAdminView: React.FC = () => {
   const { currentUser, showToast } = useApp();
-  const [mainTab, setMainTab] = useState<SuperAdminMainTab>('beranda');
+  const [mainTab, setMainTabState] = useState<SuperAdminMainTab>(() => {
+    try {
+      const saved = localStorage.getItem('kawacanaan_last_superadmin_tab') as SuperAdminMainTab;
+      if (saved && ['beranda', 'sekolah', 'pembayaran', 'keamanan', 'pengaturan'].includes(saved)) {
+        return saved;
+      }
+    } catch (_) {}
+    return 'beranda';
+  });
+
+  const setMainTab = (tab: SuperAdminMainTab) => {
+    setMainTabState(tab);
+    try {
+      localStorage.setItem('kawacanaan_last_superadmin_tab', tab);
+    } catch (_) {}
+  };
   
   // Specific active sub-tabs for direct deep navigation
   const [schoolsSubTab, setSchoolsSubTab] = useState<string>('semua');

@@ -1,5 +1,5 @@
 import React from 'react';
-import { AppProvider, useApp } from './context/AppContext';
+import { AppProvider, useApp, hasPersistedAuthToken } from './context/AppContext';
 import { Header } from './components/Header';
 import { LoginView } from './views/LoginView';
 import { ChangePasswordView } from './views/ChangePasswordView';
@@ -18,6 +18,7 @@ import { SuperAdminView } from './views/SuperAdminView';
 import { SetupSuperAdminView } from './views/SetupSuperAdminView';
 import { OnboardingView } from './views/OnboardingView';
 import { WorkspaceSelectorView } from './views/WorkspaceSelectorView';
+import { AppAuthLoadingSkeleton } from './components/DashboardSkeleton';
 import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
 import type { ActiveView, UserRole } from './types';
 
@@ -132,7 +133,8 @@ const MainAppContent: React.FC = () => {
     isSelectingWorkspace, 
     selectWorkspace, 
     openOnboarding, 
-    loadUserDataAfterOnboarding 
+    loadUserDataAfterOnboarding,
+    isAuthChecking
   } = useApp();
   const [showLanding, setShowLanding] = React.useState(() => {
     if (typeof window === 'undefined') return true;
@@ -146,6 +148,9 @@ const MainAppContent: React.FC = () => {
       hash.includes('type=recovery') ||
       hash.includes('type=signup') ||
       hash.includes('type=invite');
+
+    if (hasPersistedAuthToken()) return false;
+
     return params.get('page') !== 'login' && params.get('page') !== 'setup' && !hasAuthHash;
   });
 
@@ -161,6 +166,12 @@ const MainAppContent: React.FC = () => {
 
   if (passwordRecovery) {
     return <ResetPasswordView />;
+  }
+
+  // Jika sedang memeriksa sesi auth dan profil pengguna belum ter-hydrate, tampilkan skeleton loading
+  // Jangan pernah menampilkan LoginView saat reload di dashboard / halaman lain
+  if (isAuthChecking && !currentUser) {
+    return <AppAuthLoadingSkeleton />;
   }
 
   // Jika user sedang dalam proses Onboarding (mis. registrasi akun pertama via Google / Baru)

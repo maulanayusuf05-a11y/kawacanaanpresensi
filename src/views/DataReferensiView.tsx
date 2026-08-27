@@ -36,12 +36,24 @@ export const DataReferensiView: React.FC = () => {
 
   // If Guru Mapel, prioritize 'mapel' tab by default
   const defaultTab = useMemo<ReferensiTab>(() => {
+    try {
+      const saved = localStorage.getItem('kawacanaan_last_referensi_tab') as ReferensiTab;
+      if (saved && allowedTabs.includes(saved)) {
+        return saved;
+      }
+    } catch (_) {}
     if (userScope.isGuruMapel) return 'mapel';
     return allowedTabs[0] || 'sekolah';
   }, [userScope.isGuruMapel, allowedTabs]);
 
-  const [activeTab, setActiveTab] = useState<ReferensiTab>(defaultTab);
-  const currentTab = allowedTabs.includes(activeTab) ? activeTab : allowedTabs[0];
+  const [activeTab, setActiveTabState] = useState<ReferensiTab>(defaultTab);
+  const setActiveTab = (tab: ReferensiTab) => {
+    setActiveTabState(tab);
+    try {
+      localStorage.setItem('kawacanaan_last_referensi_tab', tab);
+    } catch (_) {}
+  };
+  const currentTab = allowedTabs.includes(activeTab) ? activeTab : (allowedTabs[0] || 'sekolah');
 
   return (
     <div className="w-full max-w-6xl mx-auto px-4 sm:px-8 py-6 space-y-5 animate-in fade-in duration-200">
