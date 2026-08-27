@@ -1049,7 +1049,12 @@ export default async function handler(req: any, res: any) {
           .single();
 
         if (!uErr && updated) {
-          return json(res, 200, { ok: true, success: true, teacher: updated, teacherId: updated.id });
+          return json(res, 200, {
+            ok: true,
+            success: true,
+            teacher: { ...updated, jabatan, jenis_ptk: jabatan, mata_pelajaran: jabatan },
+            teacherId: updated.id,
+          });
         }
       }
 
@@ -1072,7 +1077,7 @@ export default async function handler(req: any, res: any) {
       return json(res, 200, {
         ok: true,
         success: true,
-        teacher: inserted,
+        teacher: { ...inserted, jabatan, jenis_ptk: jabatan, mata_pelajaran: jabatan },
         teacherId: inserted.id,
       });
     }

@@ -141,11 +141,12 @@ export const DataPenggunaView: React.FC = () => {
 
         // Explicit check for Guru Mapel
         const isExplicitMapel =
+          u.role === 'GURU MAPEL' ||
           (u.classIds && u.classIds.length > 1) ||
           (matchedTeacher && (
             matchedTeacher.jabatan?.toLowerCase().includes('mapel') ||
             matchedTeacher.jenisPTK?.toLowerCase().includes('mapel') ||
-            (matchedTeacher.mataPelajaran && !matchedTeacher.mataPelajaran.toLowerCase().includes('kelas'))
+            matchedTeacher.mataPelajaran?.toLowerCase() === 'guru mapel'
           )) ||
           subjects.some(
             (s) =>
@@ -166,7 +167,8 @@ export const DataPenggunaView: React.FC = () => {
           ) ||
           (matchedTeacher && (
             matchedTeacher.jabatan?.toLowerCase().includes('wali') ||
-            matchedTeacher.jenisPTK?.toLowerCase().includes('kelas')
+            matchedTeacher.jenisPTK?.toLowerCase().includes('wali') ||
+            matchedTeacher.mataPelajaran?.toLowerCase() === 'wali kelas'
           ));
 
         if (isAssignedWali && !isExplicitMapel) {

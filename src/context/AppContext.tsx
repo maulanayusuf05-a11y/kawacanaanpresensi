@@ -69,29 +69,46 @@ const emptyUser=(p:any):UserAccount=>{
 };
 const dbStudent=(s:any):Student=>({id:s.id,nisn:s.nisn,nama:s.nama,gender:s.gender,classId:s.class_id||null,className:s.class_name||''});
 const dbTeacher=(t:any):Teacher=>{
-  const rawJab = String(t.jabatan || t.jenis_ptk || t.mata_pelajaran || '').trim();
-  const rawLower = rawJab.toLowerCase();
-  let cleanJab: 'Wali Kelas' | 'Guru Mapel' | 'Kepala Sekolah' = 'Wali Kelas';
-  if (rawLower.includes('kepala')) {
-    cleanJab = 'Kepala Sekolah';
-  } else if (
-    rawLower === 'guru mapel' ||
-    rawLower.includes('mapel') ||
-    rawLower.includes('mata pelajaran') ||
-    rawLower.includes('bidang studi')
-  ) {
-    cleanJab = 'Guru Mapel';
-  } else {
-    cleanJab = 'Wali Kelas';
+  const jabRaw = String(t.jabatan || '').trim();
+  const jenisRaw = String(t.jenis_ptk || '').trim();
+  const mapelRaw = String(t.mata_pelajaran || '').trim();
+
+  let resolvedJabatan: 'Wali Kelas' | 'Guru Mapel' | 'Kepala Sekolah' = 'Wali Kelas';
+  
+  if (jabRaw) {
+    if (jabRaw.toLowerCase().includes('kepala')) {
+      resolvedJabatan = 'Kepala Sekolah';
+    } else if (jabRaw.toLowerCase().includes('mapel') || jabRaw.toLowerCase().includes('mata pelajaran') || jabRaw.toLowerCase().includes('bidang studi')) {
+      resolvedJabatan = 'Guru Mapel';
+    } else {
+      resolvedJabatan = 'Wali Kelas';
+    }
+  } else if (jenisRaw) {
+    if (jenisRaw.toLowerCase().includes('kepala')) {
+      resolvedJabatan = 'Kepala Sekolah';
+    } else if (jenisRaw.toLowerCase().includes('mapel') || jenisRaw.toLowerCase().includes('mata pelajaran')) {
+      resolvedJabatan = 'Guru Mapel';
+    } else {
+      resolvedJabatan = 'Wali Kelas';
+    }
+  } else if (mapelRaw) {
+    if (mapelRaw.toLowerCase().includes('kepala')) {
+      resolvedJabatan = 'Kepala Sekolah';
+    } else if (mapelRaw === 'Guru Mapel' || mapelRaw.toLowerCase() === 'guru mapel' || mapelRaw.toLowerCase() === 'mapel') {
+      resolvedJabatan = 'Guru Mapel';
+    } else {
+      resolvedJabatan = 'Wali Kelas';
+    }
   }
+
   return {
     id: t.id,
     nama: t.nama || '',
     nip: t.nip || '',
     jenisKelamin: t.jenis_kelamin || 'L',
-    jabatan: t.jabatan || cleanJab,
-    jenisPTK: t.jenis_ptk || cleanJab,
-    mataPelajaran: t.mata_pelajaran || cleanJab,
+    jabatan: t.jabatan || resolvedJabatan,
+    jenisPTK: t.jenis_ptk || resolvedJabatan,
+    mataPelajaran: t.mata_pelajaran || resolvedJabatan,
     statusKepegawaian: t.status_kepegawaian || 'PNS',
     noHp: t.no_hp || '',
   };
@@ -879,8 +896,8 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
     }
   };
  const deleteClass=async(id:string)=>{try{const {error}=await supabase.from('classes').delete().eq('id',id);if(error)throw error;setClasses(p=>p.filter(x=>x.id!==id));setStudents(p=>p.map(s=>s.classId===id?{...s,classId:null,className:''}:s));showToast('Kelas berhasil dihapus','info')}catch(e:any){showToast(e.message,'error')}};
- const addTeacher=async(t:Omit<Teacher,'id'>)=>{try{const jab=t.jabatan||t.jenisPTK||'Wali Kelas';const schoolId=currentUser?.schoolId||null;let savedTeacher:any=null;try{const {data:sessionData}=await supabase.auth.getSession();const token=sessionData.session?.access_token||'';const res=await fetch('/api/onboarding',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({action:'save_teacher',schoolId,nama:t.nama.trim(),nip:t.nip.trim(),jenisKelamin:t.jenisKelamin,jabatan:jab.trim(),statusKepegawaian:(t.statusKepegawaian||'').trim(),noHp:(t.noHp||'').trim()})});const json=await res.json();if(json.teacher)savedTeacher=json.teacher}catch(_){};if(!savedTeacher){const {data,error}=await supabase.from('teachers').insert({nama:t.nama.trim(),nip:t.nip.trim(),jenis_kelamin:t.jenisKelamin,mata_pelajaran:jab.trim(),status_kepegawaian:(t.statusKepegawaian||'').trim(),no_hp:(t.noHp||'').trim(),school_id:schoolId}).select().single();if(error)throw error;savedTeacher=data}const finalTeacher=dbTeacher({...savedTeacher,jabatan:jab});setTeachers(p=>[...p.filter(x=>x.id!==finalTeacher.id),finalTeacher]);showToast(`Data guru ${finalTeacher.nama} berhasil ditambahkan`)}catch(e:any){showToast(e.message,'error')}};
- const updateTeacher=async(id:string,t:Omit<Teacher,'id'>)=>{try{const jab=t.jabatan||t.jenisPTK||'Wali Kelas';const schoolId=currentUser?.schoolId||null;let updatedTeacher:any=null;try{const {data:sessionData}=await supabase.auth.getSession();const token=sessionData.session?.access_token||'';const res=await fetch('/api/onboarding',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({action:'save_teacher',teacherId:id,schoolId,nama:t.nama.trim(),nip:t.nip.trim(),jenisKelamin:t.jenisKelamin,jabatan:jab.trim(),statusKepegawaian:(t.statusKepegawaian||'').trim(),noHp:(t.noHp||'').trim()})});const json=await res.json();if(json.teacher)updatedTeacher=json.teacher}catch(_){};if(!updatedTeacher){const {data,error}=await supabase.from('teachers').update({nama:t.nama.trim(),nip:t.nip.trim(),jenis_kelamin:t.jenisKelamin,mata_pelajaran:jab.trim(),status_kepegawaian:(t.statusKepegawaian||'').trim(),no_hp:(t.noHp||'').trim()}).eq('id',id).select().single();if(error)throw error;updatedTeacher=data}const finalTeacher=dbTeacher({...updatedTeacher,jabatan:jab});setTeachers(p=>p.map(x=>x.id===id?finalTeacher:x));showToast('Data guru berhasil diperbarui')}catch(e:any){showToast(e.message,'error')}};
+  const addTeacher=async(t:Omit<Teacher,'id'>)=>{try{const jab=(t.jabatan||t.jenisPTK||'Wali Kelas').trim();const schoolId=currentUser?.schoolId||null;let savedTeacher:any=null;try{const {data:sessionData}=await supabase.auth.getSession();const token=sessionData.session?.access_token||'';const res=await fetch('/api/onboarding',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({action:'save_teacher',schoolId,nama:t.nama.trim(),nip:t.nip.trim(),jenisKelamin:t.jenisKelamin,jabatan:jab,statusKepegawaian:(t.statusKepegawaian||'').trim(),noHp:(t.noHp||'').trim()})});const json=await res.json();if(json.teacher)savedTeacher=json.teacher}catch(_){};if(!savedTeacher){const {data,error}=await supabase.from('teachers').insert({nama:t.nama.trim(),nip:t.nip.trim(),jenis_kelamin:t.jenisKelamin,mata_pelajaran:jab,status_kepegawaian:(t.statusKepegawaian||'').trim(),no_hp:(t.noHp||'').trim(),school_id:schoolId}).select().single();if(error)throw error;savedTeacher=data}const finalTeacher=dbTeacher({...savedTeacher,jabatan:jab,jenis_ptk:jab,mata_pelajaran:jab});setTeachers(p=>[...p.filter(x=>x.id!==finalTeacher.id),finalTeacher]);showToast(`Data guru ${finalTeacher.nama} berhasil ditambahkan`)}catch(e:any){showToast(e.message,'error')}};
+  const updateTeacher=async(id:string,t:Omit<Teacher,'id'>)=>{try{const jab=(t.jabatan||t.jenisPTK||'Wali Kelas').trim();const schoolId=currentUser?.schoolId||null;let updatedTeacher:any=null;try{const {data:sessionData}=await supabase.auth.getSession();const token=sessionData.session?.access_token||'';const res=await fetch('/api/onboarding',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({action:'save_teacher',teacherId:id,schoolId,nama:t.nama.trim(),nip:t.nip.trim(),jenisKelamin:t.jenisKelamin,jabatan:jab,statusKepegawaian:(t.statusKepegawaian||'').trim(),noHp:(t.noHp||'').trim()})});const json=await res.json();if(json.teacher)updatedTeacher=json.teacher}catch(_){};if(!updatedTeacher){const {data,error}=await supabase.from('teachers').update({nama:t.nama.trim(),nip:t.nip.trim(),jenis_kelamin:t.jenisKelamin,mata_pelajaran:jab,status_kepegawaian:(t.statusKepegawaian||'').trim(),no_hp:(t.noHp||'').trim()}).eq('id',id).select().single();if(error)throw error;updatedTeacher=data}const finalTeacher=dbTeacher({...updatedTeacher,jabatan:jab,jenis_ptk:jab,mata_pelajaran:jab});setTeachers(p=>p.map(x=>x.id===id?finalTeacher:x));showToast('Data guru berhasil diperbarui')}catch(e:any){showToast(e.message,'error')}};
   const importTeachers = async (items: Omit<Teacher, 'id'>[], replaceExisting = false) => {
     try {
       if (!items.length) throw new Error('Tidak ada data guru yang valid untuk diimpor');
