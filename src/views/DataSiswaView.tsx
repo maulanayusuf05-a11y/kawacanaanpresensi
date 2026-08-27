@@ -20,9 +20,12 @@ import {
 } from 'lucide-react';
 
 interface ParsedStudentItem {
-  nisn: string;
   nama: string;
   gender: 'L' | 'P';
+  nisn: string;
+  classNameInput?: string;
+  matchedClassId?: string | null;
+  matchedClassName?: string;
   isValid: boolean;
   error?: string;
 }
@@ -33,6 +36,7 @@ export const DataSiswaView: React.FC = () => {
     classes,
     students,
     schoolProfile,
+    addClass,
     addStudent,
     updateStudent,
     deleteStudent,
@@ -221,17 +225,37 @@ export const DataSiswaView: React.FC = () => {
     setDeletingId(null);
   };
 
+  const findMatchingClass = (rawClass: string, classList: Array<{ id: string; name: string }>) => {
+    if (!rawClass || !rawClass.trim()) return undefined;
+    const clean = rawClass.trim().toLowerCase();
+    // 1. Exact match
+    const exact = classList.find((c) => c.name.trim().toLowerCase() === clean);
+    if (exact) return exact;
+
+    // 2. Normalized match (e.g. "1A" matching "Kelas 1A" or "1 A")
+    const normClean = clean.replace(/^(kelas|tingkat|rombel)\s*/i, '').replace(/\s+/g, '');
+    const match = classList.find((c) => {
+      const cNorm = c.name.toLowerCase().replace(/^(kelas|tingkat|rombel)\s*/i, '').replace(/\s+/g, '');
+      return cNorm === normClean;
+    });
+    if (match) return match;
+
+    // 3. Substring match
+    return classList.find((c) => c.name.toLowerCase().includes(clean) || clean.includes(c.name.toLowerCase()));
+  };
+
   // Download Template CSV (Standardized for Excel with UTF-8 BOM)
+  // Format: NAMA LENGKAP, L/P, NISN, KELAS
   const handleDownloadTemplate = () => {
-    const header = 'NISN,NAMA LENGKAP,JENIS KELAMIN\n';
+    const header = 'NAMA LENGKAP,L/P,NISN,KELAS\n';
     const sampleRows = [
-      '3140787024,ADLAN AR RASHAFI SUBHAN,L',
-      '3141380962,AINUN FAJARIAH,P',
-      '3149811568,AISYAH AZ ZAHRA,P',
-      '3145450700,ALBY FAKHRI ARSYAD,L',
-      '3148157704,AQILA SHAFA MAHYA,P',
-      '3146473211,BAGAS SATRIA PRATAMA,L',
-      '3149021145,CITRA LESTARI DEWI,P',
+      'ADLAN AR RASHAFI SUBHAN,L,3140787024,Kelas 1A',
+      'AINUN FAJARIAH,P,3141380962,Kelas 1A',
+      'AISYAH AZ ZAHRA,P,3149811568,Kelas 1B',
+      'ALBY FAKHRI ARSYAD,L,3145450700,Kelas 2A',
+      'AQILA SHAFA MAHYA,P,3148157704,Kelas 2B',
+      'BAGAS SATRIA PRATAMA,L,3146473211,Kelas 3A',
+      'CITRA LESTARI DEWI,P,3149021145,Kelas 3B',
     ].join('\n');
 
     const csvContent = '\uFEFF' + header + sampleRows;
@@ -248,6 +272,7 @@ export const DataSiswaView: React.FC = () => {
   };
 
   // Parser helper function for CSV / TSV text
+  // Urutan kolom utama: NAMA LENGKAP, L/P, NISN, KELAS
   const parseRawTextToStudents = (text: string): ParsedStudentItem[] => {
     if (!text.trim()) return [];
 
@@ -260,6 +285,19 @@ export const DataSiswaView: React.FC = () => {
 
     const results: ParsedStudentItem[] = [];
 
+    // Helper token split
+    const splitTokens = (lineStr: string): string[] => {
+      let t: string[] = [];
+      if (lineStr.includes('\t')) {
+        t = lineStr.split('\t');
+      } else if (lineStr.includes(';')) {
+        t = lineStr.split(';');
+      } else {
+        t = lineStr.split(',');
+      }
+      return t.map((x) => x.trim().replace(/^["']|["']$/g, ''));
+    };
+
     // Detect if first line is header
     const firstLineLower = lines[0].toLowerCase();
     const hasHeader =
@@ -267,70 +305,138 @@ export const DataSiswaView: React.FC = () => {
       firstLineLower.includes('nama') ||
       firstLineLower.includes('siswa') ||
       firstLineLower.includes('jenis') ||
-      firstLineLower.includes('gender');
+      firstLineLower.includes('gender') ||
+      firstLineLower.includes('l/p') ||
+      firstLineLower.includes('kelas') ||
+      firstLineLower.includes('rombel');
+
+    let nameCol = 0;
+    let genderCol = 1;
+    let nisnCol = 2;
+    let classCol = 3;
+
+    if (hasHeader) {
+      const headerTokens = splitTokens(lines[0]).map((t) => t.toLowerCase());
+      headerTokens.forEach((tok, idx) => {
+        if (tok.includes('nama') || tok.includes('name') || tok.includes('siswa')) nameCol = idx;
+        else if (
+          tok.includes('l/p') ||
+          tok.includes('lp') ||
+          tok.includes('jenis') ||
+          tok.includes('gender') ||
+          tok.includes('kelamin') ||
+          tok.includes('jk')
+        )
+          genderCol = idx;
+        else if (tok.includes('nisn') || tok.includes('nis') || tok.includes('induk')) nisnCol = idx;
+        else if (tok.includes('kelas') || tok.includes('rombel') || tok.includes('tingkat') || tok.includes('class'))
+          classCol = idx;
+      });
+    }
 
     const dataLines = hasHeader ? lines.slice(1) : lines;
 
     dataLines.forEach((line) => {
-      // Split by tab, semicolon, or comma
-      let tokens: string[] = [];
-      if (line.includes('\t')) {
-        tokens = line.split('\t');
-      } else if (line.includes(';')) {
-        tokens = line.split(';');
-      } else {
-        // Basic CSV split
-        tokens = line.split(',');
-      }
+      const tokens = splitTokens(line);
+      if (tokens.length < 2) return;
 
-      // Clean tokens
-      tokens = tokens.map((t) => t.trim().replace(/^["']|["']$/g, ''));
+      let nama = '';
+      let genderRaw = '';
+      let nisn = '';
+      let classRaw = '';
 
-      if (tokens.length >= 2) {
-        let nisn = '';
-        let nama = '';
-        let genderRaw = '';
-
-        // If 3 columns: NISN, Nama, Gender
-        if (tokens.length >= 3) {
+      if (hasHeader) {
+        nama = tokens[nameCol] || '';
+        genderRaw = tokens[genderCol] || '';
+        nisn = tokens[nisnCol] || '';
+        classRaw = tokens[classCol] || '';
+      } else if (tokens.length >= 4) {
+        // Standard requested order: NAMA LENGKAP, L/P, NISN, KELAS
+        // Check if token[0] is digits (legacy NISN, NAMA, L/P, KELAS)
+        if (/^\d{6,15}$/.test(tokens[0]) && !/^\d{6,15}$/.test(tokens[2])) {
           nisn = tokens[0];
           nama = tokens[1];
           genderRaw = tokens[2];
+          classRaw = tokens[3];
         } else {
-          // 2 columns: NISN, Nama (default L)
+          nama = tokens[0];
+          genderRaw = tokens[1];
+          nisn = tokens[2];
+          classRaw = tokens[3];
+        }
+      } else if (tokens.length === 3) {
+        // 3 tokens: check if token[0] is digits vs token[2] is digits
+        if (/^\d{6,15}$/.test(tokens[0])) {
+          // NISN, NAMA, L/P
           nisn = tokens[0];
           nama = tokens[1];
-        }
-
-        // Clean gender
-        let gender: 'L' | 'P' = 'L';
-        const gUpper = genderRaw.trim().toUpperCase();
-        if (
-          gUpper === 'P' ||
-          gUpper.startsWith('PEREMPUAN') ||
-          gUpper.startsWith('PUTRI') ||
-          gUpper === 'F' ||
-          gUpper === 'W'
-        ) {
-          gender = 'P';
+          genderRaw = tokens[2];
+        } else if (/^\d{6,15}$/.test(tokens[2])) {
+          // NAMA, L/P, NISN
+          nama = tokens[0];
+          genderRaw = tokens[1];
+          nisn = tokens[2];
         } else {
-          gender = 'L';
+          // NAMA, L/P, KELAS
+          nama = tokens[0];
+          genderRaw = tokens[1];
+          classRaw = tokens[2];
+          nisn = '';
         }
-
-        // Validation
-        const isValid = nisn.length > 0 && nama.length > 0;
-        let error = undefined;
-        if (!nisn) error = 'NISN kosong';
-        else if (!nama) error = 'Nama kosong';
-
-        results.push({
-          nisn,
-          nama: nama.toUpperCase(),
-          gender,
-          isValid,
-          error,
-        });
+      } else {
+        // 2 tokens: NAMA, NISN or NISN, NAMA
+        if (/^\d{6,15}$/.test(tokens[0])) {
+          nisn = tokens[0];
+          nama = tokens[1];
+        } else {
+          nama = tokens[0];
+          nisn = tokens[1];
+        }
       }
+
+      // Clean gender
+      let gender: 'L' | 'P' = 'L';
+      const gUpper = (genderRaw || '').trim().toUpperCase();
+      if (
+        gUpper === 'P' ||
+        gUpper.startsWith('PEREMPUAN') ||
+        gUpper.startsWith('PUTRI') ||
+        gUpper.startsWith('WANITA') ||
+        gUpper === 'F' ||
+        gUpper === 'FEMALE' ||
+        gUpper === 'W'
+      ) {
+        gender = 'P';
+      } else {
+        gender = 'L';
+      }
+
+      // Clean class match
+      const cleanClassInput = (classRaw || '').trim();
+      const matchedClass = cleanClassInput ? findMatchingClass(cleanClassInput, availableClasses) : undefined;
+      const matchedClassId = matchedClass?.id || selectedImportClassId || availableClasses[0]?.id || null;
+      const matchedClassName =
+        matchedClass?.name ||
+        cleanClassInput ||
+        availableClasses.find((c) => c.id === matchedClassId)?.name ||
+        '';
+
+      // Validation
+      const isValid = (nama || '').trim().length > 0 && (nisn || '').trim().length > 0;
+      let error = undefined;
+      if (!nama.trim()) error = 'Nama lengkap kosong';
+      else if (!nisn.trim()) error = 'NISN kosong';
+
+      results.push({
+        nama: nama.trim().toUpperCase(),
+        gender,
+        nisn: nisn.trim(),
+        classNameInput: cleanClassInput || undefined,
+        matchedClassId,
+        matchedClassName,
+        isValid,
+        error,
+      });
     });
 
     return results;
@@ -361,7 +467,7 @@ export const DataSiswaView: React.FC = () => {
     setParsedStudents(parsed);
   };
 
-  const handleExecuteImport = () => {
+  const handleExecuteImport = async () => {
     const validOnes = parsedStudents.filter((p) => p.isValid);
     if (validOnes.length === 0) {
       showToast('Tidak ada data siswa yang valid untuk diimpor', 'error');
@@ -379,16 +485,56 @@ export const DataSiswaView: React.FC = () => {
       }
     }
 
-    const targetClassId = selectedImportClassId || myAssignedClasses[0]?.id || classes[0]?.id || null;
+    const currentClasses = [...classes];
+    const createdClassMap = new Map<string, string>();
 
-    const payload = validOnes.map((s) => ({
-      nisn: s.nisn,
-      nama: s.nama,
-      gender: s.gender,
-      classId: targetClassId,
-    }));
+    const payload: Array<{ nisn: string; nama: string; gender: 'L' | 'P'; classId: string | null }> = [];
 
-    importStudents(payload, importMode === 'replace', targetClassId || undefined);
+    for (const s of validOnes) {
+      let targetClassId = s.matchedClassId || null;
+
+      if (!targetClassId && s.classNameInput && isAdmin) {
+        const inputClean = s.classNameInput.trim();
+        if (createdClassMap.has(inputClean.toLowerCase())) {
+          targetClassId = createdClassMap.get(inputClean.toLowerCase()) || null;
+        } else {
+          const existing = findMatchingClass(inputClean, currentClasses);
+          if (existing) {
+            targetClassId = existing.id;
+          } else {
+            const matchNum = inputClean.match(/\d+/);
+            const autoGrade = matchNum ? parseInt(matchNum[0], 10) : 1;
+            try {
+              await addClass({
+                name: inputClean,
+                grade: autoGrade,
+                academicYear: schoolProfile?.tahunPelajaran || '2026/2027',
+                waliKelasId: null,
+                waliKelasName: null,
+              });
+              const newlyAdded = classes.find((c) => c.name.trim().toLowerCase() === inputClean.toLowerCase());
+              if (newlyAdded) {
+                targetClassId = newlyAdded.id;
+                createdClassMap.set(inputClean.toLowerCase(), newlyAdded.id);
+              }
+            } catch (_) {}
+          }
+        }
+      }
+
+      if (!targetClassId) {
+        targetClassId = selectedImportClassId || availableClasses[0]?.id || classes[0]?.id || null;
+      }
+
+      payload.push({
+        nisn: s.nisn,
+        nama: s.nama,
+        gender: s.gender,
+        classId: targetClassId,
+      });
+    }
+
+    await importStudents(payload, importMode === 'replace');
     setIsImportModalOpen(false);
     setParsedStudents([]);
     setPasteText('');
@@ -739,9 +885,13 @@ export const DataSiswaView: React.FC = () => {
                     <span>Langkah 1: Unduh Format Template Standar</span>
                   </div>
                   <p className="text-[11px] text-blue-800 leading-relaxed">
-                    Format kolom yang didukung: <code className="bg-white px-1.5 py-0.5 rounded font-mono font-bold text-blue-950">NISN</code>,{' '}
-                    <code className="bg-white px-1.5 py-0.5 rounded font-mono font-bold text-blue-950">NAMA LENGKAP</code>,{' '}
-                    <code className="bg-white px-1.5 py-0.5 rounded font-mono font-bold text-blue-950">JENIS KELAMIN (L/P)</code>.
+                    Format urutan kolom: <code className="bg-white px-1.5 py-0.5 rounded font-mono font-bold text-blue-950">NAMA LENGKAP</code>,{' '}
+                    <code className="bg-white px-1.5 py-0.5 rounded font-mono font-bold text-blue-950">L/P</code>,{' '}
+                    <code className="bg-white px-1.5 py-0.5 rounded font-mono font-bold text-blue-950">NISN</code>,{' '}
+                    <code className="bg-white px-1.5 py-0.5 rounded font-mono font-bold text-blue-950">KELAS</code>.
+                  </p>
+                  <p className="text-[10px] text-blue-700 mt-0.5">
+                    Kolom KELAS otomatis terintegrasi dengan Data Kelas (otomatis menghitung siswa L/P & total per kelas).
                   </p>
                 </div>
                 <button
@@ -822,11 +972,11 @@ export const DataSiswaView: React.FC = () => {
                       rows={5}
                       value={pasteText}
                       onChange={(e) => handlePasteChange(e.target.value)}
-                      placeholder="Salin kolom dari Excel dan tempel di sini...&#10;Contoh:&#10;3140787024	ADLAN AR RASHAFI SUBHAN	L&#10;3141380962	AINUN FAJARIAH	P"
+                      placeholder="Salin kolom dari Excel dan tempel di sini...&#10;Format: NAMA LENGKAP	L/P	NISN	KELAS&#10;Contoh:&#10;ADLAN AR RASHAFI SUBHAN	L	3140787024	Kelas 1A&#10;AINUN FAJARIAH	P	3141380962	Kelas 1A&#10;AISYAH AZ ZAHRA	P	3149811568	Kelas 1B"
                       className="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl font-mono text-xs text-slate-800 focus:outline-none focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-500/10 leading-relaxed"
                     />
                     <p className="text-[11px] text-slate-400 italic">
-                      Tips: Cukup blok baris NISN, Nama, dan JK di Microsoft Excel / Google Docs, lalu tekan Ctrl+C dan Ctrl+V di kotak ini.
+                      Tips: Urutan kolom di Excel: NAMA LENGKAP, L/P, NISN, KELAS. Lalu blok baris, tekan Ctrl+C dan Ctrl+V di kotak ini.
                     </p>
                   </div>
                 )}
@@ -856,10 +1006,11 @@ export const DataSiswaView: React.FC = () => {
                       <thead className="bg-slate-100 text-[10px] font-bold text-slate-600 uppercase sticky top-0 border-b border-slate-200">
                         <tr>
                           <th className="p-2.5 w-10">NO</th>
-                          <th className="p-2.5 w-32">NISN</th>
                           <th className="p-2.5">NAMA LENGKAP</th>
-                          <th className="p-2.5 w-20 text-center">L/P</th>
-                          <th className="p-2.5 w-24 text-center">STATUS</th>
+                          <th className="p-2.5 w-16 text-center">L/P</th>
+                          <th className="p-2.5 w-28">NISN</th>
+                          <th className="p-2.5 w-32">KELAS</th>
+                          <th className="p-2.5 w-20 text-center">STATUS</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -869,9 +1020,6 @@ export const DataSiswaView: React.FC = () => {
                             className={item.isValid ? 'hover:bg-slate-50' : 'bg-rose-50/50'}
                           >
                             <td className="p-2.5 font-bold text-slate-400">{idx + 1}</td>
-                            <td className="p-2.5 font-mono text-slate-700 font-medium">
-                              {item.nisn || <span className="text-rose-500 italic">-</span>}
-                            </td>
                             <td className="p-2.5 font-bold text-slate-900">{item.nama}</td>
                             <td className="p-2.5 text-center">
                               <span
@@ -882,6 +1030,14 @@ export const DataSiswaView: React.FC = () => {
                                 }`}
                               >
                                 {item.gender === 'L' ? 'L' : 'P'}
+                              </span>
+                            </td>
+                            <td className="p-2.5 font-mono text-slate-700 font-medium">
+                              {item.nisn || <span className="text-rose-500 italic">-</span>}
+                            </td>
+                            <td className="p-2.5">
+                              <span className="inline-block px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 font-bold text-[10px]">
+                                {item.matchedClassName || item.classNameInput || availableClasses.find(c => c.id === selectedImportClassId)?.name || 'Default'}
                               </span>
                             </td>
                             <td className="p-2.5 text-center">

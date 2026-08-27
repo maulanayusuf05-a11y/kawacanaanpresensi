@@ -719,17 +719,6 @@ export const DataKelasView: React.FC = () => {
                       </td>
                       <td className="py-3.5 px-4 text-center">
                         <div className="flex items-center justify-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setViewingClass(c);
-                              setStudentSearchTerm('');
-                            }}
-                            className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
-                            title="Lihat Data Siswa di Kelas Ini"
-                          >
-                            <Eye size={15} />
-                          </button>
                           {canEditClass && (
                             <button
                               type="button"
