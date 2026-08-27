@@ -152,6 +152,17 @@ export const PengaturanView: React.FC = () => {
     showToast('Contoh logo resmi sekolah berhasil diterapkan sebagai sampel', 'success');
   };
 
+  const handleRemoveLogo = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    setFormData((prev) => ({
+      ...prev,
+      schoolLogoUrl: '',
+    }));
+    showToast('File logo kustom berhasil dihapus (kembali ke logo bawaan sistem)', 'info');
+  };
+
   const handleKopUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -195,12 +206,15 @@ export const PengaturanView: React.FC = () => {
   };
 
   const handleRemoveKop = () => {
+    if (kopInputRef.current) {
+      kopInputRef.current.value = '';
+    }
     setFormData((prev) => ({
       ...prev,
       letterheadImageUrl: '',
       letterheadType: 'standard_text',
     }));
-    showToast('Kop surat gambar dihapus, beralih ke kop teks standar', 'info');
+    showToast('File gambar kop surat berhasil dihapus (beralih ke kop teks standar)', 'info');
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -460,14 +474,11 @@ export const PengaturanView: React.FC = () => {
                 {formData.schoolLogoUrl && (
                   <button
                     type="button"
-                    onClick={() => {
-                      setFormData((prev) => ({ ...prev, schoolLogoUrl: '' }));
-                      showToast('Logo kustom dihapus, kembali ke logo default sekolah', 'info');
-                    }}
+                    onClick={handleRemoveLogo}
                     className="px-3.5 py-2.5 text-rose-600 hover:bg-rose-50 border border-rose-200 text-xs font-bold rounded-xl transition-colors min-h-[40px] flex items-center gap-1.5 cursor-pointer"
                   >
                     <Trash2 size={14} />
-                    <span>Pakai Logo Default</span>
+                    <span>Hapus / Pakai Logo Default</span>
                   </button>
                 )}
               </div>
@@ -621,10 +632,11 @@ export const PengaturanView: React.FC = () => {
                   <button
                     type="button"
                     onClick={handleRemoveKop}
-                    className="p-2.5 text-rose-600 hover:bg-rose-50 border border-rose-200 rounded-xl transition-colors min-h-[38px] min-w-[38px] flex items-center justify-center cursor-pointer"
+                    className="px-3.5 py-2.5 text-rose-600 hover:bg-rose-50 border border-rose-200 text-xs font-bold rounded-xl transition-colors min-h-[38px] flex items-center justify-center gap-1.5 cursor-pointer"
                     title="Hapus Gambar Kop"
                   >
-                    <Trash2 size={15} />
+                    <Trash2 size={14} />
+                    <span>Hapus Gambar Kop</span>
                   </button>
                 )}
               </div>

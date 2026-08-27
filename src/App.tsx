@@ -18,6 +18,7 @@ import { SuperAdminView } from './views/SuperAdminView';
 import { SetupSuperAdminView } from './views/SetupSuperAdminView';
 import { OnboardingView } from './views/OnboardingView';
 import { WorkspaceSelectorView } from './views/WorkspaceSelectorView';
+import { DashboardSkeleton } from './components/DashboardSkeleton';
 import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
 import type { ActiveView, UserRole } from './types';
 
@@ -132,7 +133,8 @@ const MainAppContent: React.FC = () => {
     isSelectingWorkspace, 
     selectWorkspace, 
     openOnboarding, 
-    loadUserDataAfterOnboarding 
+    loadUserDataAfterOnboarding,
+    isAuthChecking
   } = useApp();
   const [showLanding, setShowLanding] = React.useState(() => {
     if (typeof window === 'undefined') return true;
@@ -146,6 +148,26 @@ const MainAppContent: React.FC = () => {
       hash.includes('type=recovery') ||
       hash.includes('type=signup') ||
       hash.includes('type=invite');
+
+    let hasToken = false;
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i) || '';
+        if ((k.startsWith('sb-') && k.endsWith('-auth-token')) || k.includes('supabase.auth.token')) {
+          const val = localStorage.getItem(k);
+          if (val) {
+            const parsed = JSON.parse(val);
+            if (parsed?.access_token || parsed?.user || parsed?.currentSession?.access_token) {
+              hasToken = true;
+              break;
+            }
+          }
+        }
+      }
+    } catch (_) {}
+
+    if (hasToken) return false;
+
     return params.get('page') !== 'login' && params.get('page') !== 'setup' && !hasAuthHash;
   });
 
@@ -161,6 +183,19 @@ const MainAppContent: React.FC = () => {
 
   if (passwordRecovery) {
     return <ResetPasswordView />;
+  }
+
+  // Jika sedang memeriksa sesi login saat reload (F5) dan belum ada user di cache:
+  // Render DashboardSkeleton yang tenang & mulus, BUKAN halaman login!
+  if (isAuthChecking && !currentUser) {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] flex flex-col antialiased">
+        <div className="h-16 border-b border-slate-200 bg-white/80 animate-pulse" />
+        <div className="flex-1 p-6 max-w-7xl mx-auto w-full">
+          <DashboardSkeleton />
+        </div>
+      </div>
+    );
   }
 
   // Jika user sedang dalam proses Onboarding (mis. registrasi akun pertama via Google / Baru)
