@@ -7,7 +7,6 @@ interface Toast { id:string; type:'success'|'info'|'error'; message:string; }
 interface AppContextType {
  currentUser: UserAccount|null; setCurrentUser:(u:UserAccount|null)=>void; logout:()=>Promise<void>; registrationRequired:boolean; setRegistrationRequired:(v:boolean)=>void; activeView:ActiveView; setActiveView:(v:ActiveView)=>void;
  isDataLoading: boolean;
- isAuthChecking: boolean;
  // Workspace & Onboarding
  userWorkspaces: WorkspaceMembership[];
  activeWorkspace: WorkspaceMembership | null;
@@ -229,111 +228,25 @@ const dbSchool=(p:any, extraCode?:string):SchoolProfile=>{
 };
 const dbConfig=(c:any):SystemConfig=>({appTitle:c.app_title||INITIAL_SYSTEM_CONFIG.appTitle,appSubtitle:c.app_subtitle||'',footerCopyright:c.footer_copyright||INITIAL_SYSTEM_CONFIG.footerCopyright,schoolLogoUrl:c.school_logo_url||'',letterheadType:c.letterhead_type||'standard_text',letterheadImageUrl:c.letterhead_image_url||'',showLetterhead:c.show_letterhead??true,defaultCheckInTime:c.default_check_in_time||'06:30 AM',defaultCheckOutTime:c.default_check_out_time||'12:20 PM',reportPlace:c.report_place||'',reportDate:c.report_date||new Date().toISOString().slice(0,10),activeStudyDays:c.active_study_days||[1,2,3,4,5],studentSelfAttendanceEnabled:c.student_self_attendance_enabled??true,checkInStartTime:String(c.check_in_start_time||'06:00').slice(0,5),checkInDeadlineTime:String(c.check_in_deadline_time||'07:00').slice(0,5),checkOutStartTime:String(c.check_out_start_time||'12:30').slice(0,5),autoMarkLate:c.auto_mark_late??true});
 
-const checkHasSupabaseSession = (): boolean => {
-  if (typeof window === 'undefined') return false;
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i) || '';
-      if ((key.startsWith('sb-') && key.endsWith('-auth-token')) || key.includes('supabase.auth.token')) {
-        const val = localStorage.getItem(key);
-        if (val) {
-          const parsed = JSON.parse(val);
-          if (parsed?.access_token || parsed?.user || parsed?.currentSession?.access_token) {
-            return true;
-          }
-        }
-      }
-    }
-  } catch (_) {}
-  return false;
-};
-
-const getCachedUser = (): UserAccount | null => {
-  if (typeof window === 'undefined') return null;
-  try {
-    if (checkHasSupabaseSession()) {
-      const cached = localStorage.getItem('kawacanaan_cached_user');
-      if (cached) return JSON.parse(cached);
-    }
-  } catch (_) {}
-  return null;
-};
-
-const getInitialActiveView = (): ActiveView => {
-  if (typeof window === 'undefined') return 'login';
-  try {
-    const hasToken = checkHasSupabaseSession();
-    if (hasToken) {
-      const cachedUser = getCachedUser();
-      const savedView = localStorage.getItem('kawacanaan_last_active_view') as ActiveView | null;
-      if (savedView && savedView !== 'login') {
-        return savedView;
-      }
-      if (cachedUser?.role === 'SUPER_ADMIN') return 'superadmin';
-      if (cachedUser?.role === 'SISWA') return 'portal-siswa';
-      return 'dashboard';
-    }
-  } catch (_) {}
-  return 'login';
-};
-
 export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
-  const [currentUser, setCurrentUserState] = useState<UserAccount | null>(() => getCachedUser());
-  const setCurrentUser = (u: UserAccount | null | ((prev: UserAccount | null) => UserAccount | null)) => {
-    setCurrentUserState((prev) => {
-      const next = typeof u === 'function' ? u(prev) : u;
-      if (typeof window !== 'undefined') {
-        if (next) {
-          localStorage.setItem('kawacanaan_cached_user', JSON.stringify(next));
-        } else {
-          localStorage.removeItem('kawacanaan_cached_user');
-        }
-      }
-      return next;
-    });
-  };
+ const [currentUser,setCurrentUser]=useState<UserAccount|null>(null);
+ const [registrationRequired,setRegistrationRequired]=useState(false);
+ const [passwordRecovery,setPasswordRecovery]=useState(false);
 
-  const [registrationRequired, setRegistrationRequired] = useState(false);
-  const [passwordRecovery, setPasswordRecovery] = useState(false);
+ // Workspace & Onboarding State
+ const [userWorkspaces, setUserWorkspaces] = useState<WorkspaceMembership[]>([]);
+ const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceMembership | null>(null);
+ const [isOnboarding, setIsOnboarding] = useState<boolean>(false);
+ const [isSelectingWorkspace, setIsSelectingWorkspace] = useState<boolean>(false);
+ const [isJoinSchoolModalOpen, setIsJoinSchoolModalOpen] = useState<boolean>(false);
 
-  // Workspace & Onboarding State
-  const [userWorkspaces, setUserWorkspaces] = useState<WorkspaceMembership[]>([]);
-  const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceMembership | null>(null);
-  const [isOnboarding, setIsOnboarding] = useState<boolean>(false);
-  const [isSelectingWorkspace, setIsSelectingWorkspace] = useState<boolean>(false);
-  const [isJoinSchoolModalOpen, setIsJoinSchoolModalOpen] = useState<boolean>(false);
-
-  const [activeView, setActiveViewState] = useState<ActiveView>(() => getInitialActiveView());
-  const activeViewRef = React.useRef<ActiveView>(activeView);
-  const loadRequestRef = React.useRef(0);
-  const navigationIntentRef = React.useRef(0);
-  const setActiveView = (view: ActiveView) => {
-    navigationIntentRef.current += 1;
-    activeViewRef.current = view;
-    setActiveViewState(view);
-    if (typeof window !== 'undefined') {
-      if (view !== 'login') {
-        localStorage.setItem('kawacanaan_last_active_view', view);
-      } else {
-        localStorage.removeItem('kawacanaan_last_active_view');
-      }
-    }
-  };
-
-  const [isDataLoading, setIsDataLoading] = useState<boolean>(false);
-  const [isAuthChecking, setIsAuthChecking] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('page') === 'setup') return false;
-    const hash = window.location.hash || '';
-    const hasAuthHash =
-      hash.includes('access_token=') ||
-      hash.includes('refresh_token=') ||
-      hash.includes('type=recovery') ||
-      hash.includes('type=signup') ||
-      hash.includes('type=invite');
-    return checkHasSupabaseSession() || hasAuthHash;
-  });
+ const getInitialActiveView = (): ActiveView => 'login';
+ const [activeView,setActiveViewState]=useState<ActiveView>('login');
+ const activeViewRef = React.useRef<ActiveView>('login');
+ const loadRequestRef=React.useRef(0);
+ const navigationIntentRef=React.useRef(0);
+ const setActiveView=(view:ActiveView)=>{ navigationIntentRef.current+=1; activeViewRef.current=view; setActiveViewState(view); };
+ const [isDataLoading, setIsDataLoading] = useState<boolean>(false);
  const [schoolProfile,setSchoolProfile]=useState<SchoolProfile>(INITIAL_SCHOOL_PROFILE);
  const [systemConfig,setSystemConfig]=useState<SystemConfig>(INITIAL_SYSTEM_CONFIG);
  const [classes,setClasses]=useState<SchoolClass[]>([]);
@@ -377,19 +290,13 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
  
  const logout=async()=>{
    try { 
-     await supabase.auth.signOut();
-   } catch (_) {}
-   if (typeof window !== 'undefined') {
-     localStorage.removeItem('kawacanaan_cached_user');
-     localStorage.removeItem('kawacanaan_last_active_view');
-     localStorage.removeItem('kawacanaan_last_workspace_id');
-   }
-   setCurrentUserState(null);
+    } catch (_) {}
+   await supabase.auth.signOut();
+   setCurrentUser(null);
    setUserWorkspaces([]);
    setActiveWorkspace(null);
    setIsOnboarding(false);
    setIsSelectingWorkspace(false);
-   setIsAuthChecking(false);
    activeViewRef.current = 'login';
    setActiveViewState('login');
    setStudents([]);
@@ -753,7 +660,6 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
      setIsOnboarding(true);
      setIsSelectingWorkspace(false);
      setRegistrationRequired(false);
-     setIsAuthChecking(false);
      return;
    }
 
@@ -761,7 +667,6 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
      await supabase.auth.signOut(); 
      setCurrentUser(null); 
      setActiveView('login'); 
-     setIsAuthChecking(false);
      showToast('Akun Anda dinonaktifkan oleh administrator.','error'); 
      return; 
    }
@@ -771,13 +676,12 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
      if(platform?.security?.mfaRequiredForSuperAdmin){
        const {data:factors}=await supabase.auth.mfa.listFactors();
        const verified=(factors?.totp||[]).some((f:any)=>f.status==='verified');
-       if(!verified){ await supabase.auth.signOut(); setCurrentUser(null); setActiveView('login'); setIsAuthChecking(false); showToast('MFA wajib untuk akun Super Admin. Aktifkan authenticator terlebih dahulu.','error'); return; }
+       if(!verified){ await supabase.auth.signOut(); setCurrentUser(null); setActiveView('login'); showToast('MFA wajib untuk akun Super Admin. Aktifkan authenticator terlebih dahulu.','error'); return; }
      }
      try { await supabase.rpc('touch_presence'); } catch (_) { /* presence is non-blocking */ }
      setRegistrationRequired(false);
      setIsOnboarding(false);
      setIsSelectingWorkspace(false);
-     setIsAuthChecking(false);
      setCurrentUser(emptyUser(baseProfile));
      if (activeViewRef.current === 'login') {
        setActiveView('superadmin');
@@ -815,7 +719,6 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
    if (memberships.length === 0) {
      setIsOnboarding(true);
      setIsSelectingWorkspace(false);
-     setIsAuthChecking(false);
      return;
    }
 
@@ -858,21 +761,14 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
    setCurrentUser(initialMe);
 
    if (activeViewRef.current === 'login') {
-     const savedView = (typeof window !== 'undefined' ? localStorage.getItem('kawacanaan_last_active_view') : null) as ActiveView | null;
      if (chosenWorkspace.role === 'SISWA') {
        setActiveView('portal-siswa');
-     } else if (savedView && savedView !== 'login' && savedView !== 'superadmin' && savedView !== 'portal-siswa') {
-       setActiveView(savedView);
      } else {
        setActiveView('dashboard');
      }
    }
 
-   try {
-     await loadDataForSchool(chosenWorkspace.workspaceId, baseProfile, chosenWorkspace.role);
-   } finally {
-     setIsAuthChecking(false);
-   }
+   await loadDataForSchool(chosenWorkspace.workspaceId, baseProfile, chosenWorkspace.role);
  };
  useEffect(()=>{
    let mounted=true;
@@ -888,7 +784,6 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
        setCurrentUser(null);
        setRegistrationRequired(false);
        setActiveView('login');
-       setIsAuthChecking(false);
        return;
      }
 
@@ -897,9 +792,7 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
        if (typeof window !== 'undefined' && window.location.hash && (window.location.hash.includes('access_token=') || window.location.hash.includes('refresh_token='))) {
          window.history.replaceState(null, '', window.location.pathname + window.location.search);
        }
-       loadData(session.user.id).finally(() => {
-         if (mounted) setIsAuthChecking(false);
-       });
+       setTimeout(()=>loadData(session.user.id),0);
        return;
      }
 
@@ -907,11 +800,6 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
      setCurrentUser(null);
      setRegistrationRequired(false);
      setActiveView('login');
-     setIsAuthChecking(false);
-     if (typeof window !== 'undefined') {
-       localStorage.removeItem('kawacanaan_cached_user');
-       localStorage.removeItem('kawacanaan_last_active_view');
-     }
      setStudents([]);
      setClasses([]);
      setTeachers([]);
@@ -925,23 +813,9 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
      // refresh setelah link diproses), tetap tampilkan form selama ada session.
      if(window.location.pathname==='/reset-password' && data.session){
        setPasswordRecovery(true);
-       setIsAuthChecking(false);
        return;
      }
-     if(data.session?.user) {
-       loadData(data.session.user.id).finally(() => {
-         if (mounted) setIsAuthChecking(false);
-       });
-     } else {
-       setIsAuthChecking(false);
-       setCurrentUser(null);
-       if (typeof window !== 'undefined') {
-         localStorage.removeItem('kawacanaan_cached_user');
-         localStorage.removeItem('kawacanaan_last_active_view');
-       }
-     }
-   }).catch(() => {
-     if (mounted) setIsAuthChecking(false);
+     if(data.session?.user) loadData(data.session.user.id);
    });
 
    const {data:sub}=supabase.auth.onAuthStateChange(handleAuthEvent);
@@ -1912,6 +1786,6 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
    return {success:true,message:'Berhasil'};
   }catch(e:any){const message=e?.message||'Gagal mengganti password.';showToast(message,'error');return{success:false,message}}
  };
-    return <AppContext.Provider value={{logout,classes,addClass,updateClass,deleteClass,assignTeacherClasses,importClasses,teachers,addTeacher,updateTeacher,deleteTeacher,importTeachers,subjects,addSubject,updateSubject,deleteSubject,currentUser,setCurrentUser,registrationRequired,setRegistrationRequired,passwordRecovery,setPasswordRecovery,activeView,setActiveView,isDataLoading,isAuthChecking,userWorkspaces,activeWorkspace,isOnboarding,setIsOnboarding,isSelectingWorkspace,setIsSelectingWorkspace,isJoinSchoolModalOpen,setIsJoinSchoolModalOpen,selectWorkspace,switchToSchoolWorkspace,switchToPersonalWorkspace,openOnboarding,returnToWorkspaceSelector,loadUserDataAfterOnboarding,loadData,schoolProfile,updateSchoolProfile,systemConfig,updateSystemConfig,students,addStudent,updateStudent,deleteStudent,deleteStudentsByClass,importStudents,users,addUser,deleteUser,updateUser,syncUsersWithStudents,generateAccountsFromReferences,updateUserPassword,academicEvents,addAcademicEvent,deleteAcademicEvent,activeStudyDays,updateActiveStudyDays,effectiveDaysConfig,updateEffectiveDays,getBaseStudyDaysForMonth,getEffectiveDaysForMonth,getDateStatus,attendanceRecords,currentAttendanceDate,setCurrentAttendanceDate,saveDailyAttendance,getAttendanceForDate,submitStudentAttendance,changeOwnPassword,resetAllDataToProductionReady,toasts,showToast,removeToast,impersonateSchool,stopImpersonation,globalAnnouncement,updateGlobalAnnouncement}}>{children}</AppContext.Provider>;
+    return <AppContext.Provider value={{logout,classes,addClass,updateClass,deleteClass,assignTeacherClasses,importClasses,teachers,addTeacher,updateTeacher,deleteTeacher,importTeachers,subjects,addSubject,updateSubject,deleteSubject,currentUser,setCurrentUser,registrationRequired,setRegistrationRequired,passwordRecovery,setPasswordRecovery,activeView,setActiveView,userWorkspaces,activeWorkspace,isOnboarding,setIsOnboarding,isSelectingWorkspace,setIsSelectingWorkspace,isJoinSchoolModalOpen,setIsJoinSchoolModalOpen,selectWorkspace,switchToSchoolWorkspace,switchToPersonalWorkspace,openOnboarding,returnToWorkspaceSelector,loadUserDataAfterOnboarding,loadData,schoolProfile,updateSchoolProfile,systemConfig,updateSystemConfig,students,addStudent,updateStudent,deleteStudent,deleteStudentsByClass,importStudents,users,addUser,deleteUser,updateUser,syncUsersWithStudents,generateAccountsFromReferences,updateUserPassword,academicEvents,addAcademicEvent,deleteAcademicEvent,activeStudyDays,updateActiveStudyDays,effectiveDaysConfig,updateEffectiveDays,getBaseStudyDaysForMonth,getEffectiveDaysForMonth,getDateStatus,attendanceRecords,currentAttendanceDate,setCurrentAttendanceDate,saveDailyAttendance,getAttendanceForDate,submitStudentAttendance,changeOwnPassword,resetAllDataToProductionReady,toasts,showToast,removeToast,impersonateSchool,stopImpersonation,globalAnnouncement,updateGlobalAnnouncement}}>{children}</AppContext.Provider>;
 };
 export const useApp=()=>{const c=useContext(AppContext);if(!c)throw new Error('useApp must be used within an AppProvider');return c};
