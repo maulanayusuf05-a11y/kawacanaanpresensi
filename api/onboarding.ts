@@ -243,67 +243,318 @@ export default async function handler(req: any, res: any) {
       const { data: profile } = await db.from('profiles').select('*').eq('id', userId).maybeSingle();
       
       const workspaces: any[] = [];
-      let targetSchoolId = profile?.school_id || null;
+      const visitedSchoolIds = new Set<string>();
 
-      // Jika di profile belum ada school_id, periksa apakah ada sekolah/ruang kerja yang di-own oleh userId
-      if (!targetSchoolId) {
-        const { data: ownedSchool } = await db
-          .from('schools')
-          .select('id')
-          .eq('owner_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+      // 1. Ambil sekolah yang dimiliki (owned) oleh user
+      const { data: ownedSchools } = await db
+        .from('schools')
+        .select('*')
+        .eq('owner_id', userId)
+        .order('created_at', { ascending: false });
 
-        if (ownedSchool) {
-          targetSchoolId = ownedSchool.id;
-          // Sinkronkan ke profiles jika profile ada
-          if (profile) {
-            await db.from('profiles').update({ school_id: targetSchoolId }).eq('id', userId);
-          }
-        }
+      // 2. Ambil penugasan guru di tabel teachers
+      const { data: teacherRecords } = await db
+        .from('teachers')
+        .select('school_id, jabatan, jenis_ptk, mata_pelajaran')
+        .eq('id', userId);
+
+      // Kumpulkan kandidat school ID
+      const candidateSchoolIds: string[] = [];
+      if (profile?.school_id) candidateSchoolIds.push(profile.school_id);
+      for (const s of ownedSchools || []) {
+        if (s.id && !candidateSchoolIds.includes(s.id)) candidateSchoolIds.push(s.id);
+      }
+      for (const t of teacherRecords || []) {
+        if (t.school_id && !candidateSchoolIds.includes(t.school_id)) candidateSchoolIds.push(t.school_id);
       }
 
-      if (targetSchoolId) {
-        const { data: school } = await db.from('schools').select('*').eq('id', targetSchoolId).maybeSingle();
-        const { data: sp } = await db.from('school_profile').select('*').eq('school_id', targetSchoolId).maybeSingle();
+      for (const sId of candidateSchoolIds) {
+        if (!sId || visitedSchoolIds.has(sId)) continue;
+        visitedSchoolIds.add(sId);
 
-        // Pastikan kode sekolah selalu tersedia dan konsisten dengan Superadmin
+        const { data: school } = await db.from('schools').select('*').eq('id', sId).maybeSingle();
+        const { data: sp } = await db.from('school_profile').select('*').eq('school_id', sId).maybeSingle();
+
         let schoolCode = school?.code ? String(school.code).replace(/^SCH-?/i, '').trim().toUpperCase() : '';
         if (school && !schoolCode) {
           schoolCode = generateSchoolInviteCode();
           try {
-            await db.from('schools').update({ code: schoolCode }).eq('id', targetSchoolId);
+            await db.from('schools').update({ code: schoolCode }).eq('id', sId);
           } catch (_) {}
         }
 
         const isPersonal =
-          (profile as any)?.workspace_type === 'personal' ||
-          (profile as any)?.registration_mode === 'personal' ||
-          (school as any)?.workspace_type === 'personal' ||
+          school?.workspace_type === 'personal' ||
           (school as any)?.is_personal === true ||
+          (sId === profile?.school_id && ((profile as any)?.workspace_type === 'personal' || (profile as any)?.registration_mode === 'personal')) ||
           school?.plan === 'mulai' ||
           school?.plan === 'teacher' ||
           school?.plan === 'guru';
 
-        const userRole = profile?.role || 'WALI KELAS';
+        const userRole = (sId === profile?.school_id ? profile?.role : (teacherRecords?.find(t => t.school_id === sId)?.jabatan === 'Guru Mapel' ? 'GURU MAPEL' : 'WALI KELAS')) || profile?.role || 'WALI KELAS';
 
         workspaces.push({
-          id: `ws-mem-${userId}`,
+          id: `ws-mem-${userId}-${sId}`,
           userId: userId,
-          workspaceId: targetSchoolId,
+          workspaceId: sId,
           workspaceCode: schoolCode || null,
           role: userRole,
-          workspaceName: school?.name || sp?.nama_sekolah || (isPersonal ? 'Ruang Kerja Individu' : 'Ruang Kerja Sekolah'),
+          workspaceName: isPersonal ? 'Ruang Kerja Individu' : (school?.name || sp?.nama_sekolah || 'Ruang Kerja Sekolah'),
           workspaceType: isPersonal ? 'personal' : 'school',
           registrationMode: isPersonal ? 'personal' : 'school',
           npsn: school?.npsn || sp?.npsn || null,
           subscriptionPlan: school?.plan || (isPersonal ? 'teacher' : 'sekolah'),
-          joinedAt: profile?.created_at || new Date().toISOString(),
+          joinedAt: school?.created_at || profile?.created_at || new Date().toISOString(),
         });
       }
 
       return json(res, 200, { ok: true, success: true, workspaces });
+    }
+
+    // -------------------------------------------------------------
+    // 3.1. CREATE FRESH PERSONAL WORKSPACE
+    // -------------------------------------------------------------
+    if (action === 'create_personal_workspace') {
+      const userId = String(body.user_id || body.userId || '').trim();
+      const fullName = String(body.fullName || body.name || '').trim() || 'Pendidik';
+      const nip = String(body.nip || '-').trim();
+      const role = String(body.role || 'WALI KELAS').toUpperCase();
+
+      if (!userId) {
+        return json(res, 400, { error: 'User ID wajib disertakan.' });
+      }
+
+      // Periksa apakah user sudah memiliki ruang kerja individu
+      const { data: existingPersonal } = await db
+        .from('schools')
+        .select('*')
+        .eq('owner_id', userId)
+        .or('workspace_type.eq.personal,is_personal.eq.true,plan.eq.teacher,plan.eq.mulai')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existingPersonal) {
+        await db.from('profiles').update({
+          school_id: existingPersonal.id,
+          workspace_type: 'personal',
+        }).eq('id', userId);
+
+        const wsObj = {
+          id: `ws-mem-${userId}-${existingPersonal.id}`,
+          userId,
+          workspaceId: existingPersonal.id,
+          workspaceCode: existingPersonal.code ? String(existingPersonal.code).replace(/^SCH-?/i, '').trim().toUpperCase() : null,
+          role: role as any,
+          workspaceName: 'Ruang Kerja Individu',
+          workspaceType: 'personal',
+          registrationMode: 'personal',
+          npsn: null,
+          subscriptionPlan: existingPersonal.plan || 'teacher',
+          joinedAt: existingPersonal.created_at || new Date().toISOString(),
+        };
+
+        return json(res, 200, { ok: true, success: true, workspace: wsObj, isNew: false });
+      }
+
+      // Buat Ruang Kerja Individu baru dengan data fresh (kosong)
+      const trial = calculateGuruProTrialPeriod();
+      const inviteCode = generateSchoolInviteCode();
+      const { data: newSchool, error: schoolErr } = await db.from('schools').insert({
+        name: 'Ruang Kerja Individu',
+        code: inviteCode,
+        plan: trial.plan,
+        status: 'active',
+        workspace_type: 'personal',
+        is_personal: true,
+        owner_id: userId,
+        subscription_started_at: trial.startedAt,
+        subscription_expires_at: trial.expiresAt,
+        notes: trial.notes,
+        max_teachers: trial.maxTeachers,
+        max_students: trial.maxStudents,
+        max_classes: trial.maxClasses,
+      }).select().single();
+
+      if (schoolErr || !newSchool) {
+        return json(res, 500, { error: schoolErr?.message || 'Gagal membuat ruang kerja individu baru.' });
+      }
+
+      // Inisialisasi school_profile kosong (fresh workspace)
+      await db.from('school_profile').upsert({
+        school_id: newSchool.id,
+        nama_sekolah: '',
+        npsn: '',
+        jenjang: 'SD',
+        nama_wali_kelas: role === 'WALI KELAS' ? fullName : '',
+        nip_wali_kelas: role === 'WALI KELAS' ? nip : '',
+        tahun_pelajaran: '2026/2027',
+        semester: '1',
+        kelas: '',
+      }, { onConflict: 'school_id' });
+
+      await db.from('system_config').upsert({
+        school_id: newSchool.id,
+        app_title: 'Kawacanaan Presensi',
+        app_subtitle: '',
+      }, { onConflict: 'school_id' });
+
+      // Daftarkan data guru untuk user ini di ruang kerja individu
+      await db.from('teachers').upsert({
+        id: userId,
+        school_id: newSchool.id,
+        nama: fullName,
+        nip: nip || '-',
+        jenis_kelamin: 'L',
+        jabatan: role === 'WALI KELAS' ? 'Wali Kelas' : 'Guru Mapel',
+        jenis_ptk: role === 'WALI KELAS' ? 'Wali Kelas' : 'Guru Mapel',
+        mata_pelajaran: role === 'WALI KELAS' ? 'Wali Kelas' : 'Guru Mapel',
+        status_kepegawaian: 'PNS',
+        no_hp: '',
+      }, { onConflict: 'id' });
+
+      // Update profil aktif
+      await db.from('profiles').update({
+        school_id: newSchool.id,
+        workspace_type: 'personal',
+      }).eq('id', userId);
+
+      const wsObj = {
+        id: `ws-mem-${userId}-${newSchool.id}`,
+        userId,
+        workspaceId: newSchool.id,
+        workspaceCode: inviteCode,
+        role: role as any,
+        workspaceName: 'Ruang Kerja Individu',
+        workspaceType: 'personal',
+        registrationMode: 'personal',
+        npsn: null,
+        subscriptionPlan: 'teacher',
+        joinedAt: new Date().toISOString(),
+      };
+
+      return json(res, 200, { ok: true, success: true, workspace: wsObj, isNew: true });
+    }
+
+    // -------------------------------------------------------------
+    // 3.2. JOIN SCHOOL WORKSPACE VIA CODE
+    // -------------------------------------------------------------
+    if (action === 'join_school_workspace') {
+      const userId = String(body.user_id || body.userId || '').trim();
+      const rawCode = String(body.code || body.schoolCode || body.schoolId || '').trim();
+      const role = String(body.role || 'WALI KELAS').toUpperCase();
+      const teacherName = String(body.teacherName || body.name || '').trim();
+      const nip = String(body.nip || '-').trim();
+      const classId = body.classId || null;
+      const className = body.className || null;
+      const grade = Number(body.grade || 5);
+      const subjectName = String(body.subjectName || '').trim();
+
+      if (!userId || !rawCode) {
+        return json(res, 400, { error: 'User ID dan Kode Sekolah wajib disertakan.' });
+      }
+
+      const strippedCode = rawCode.toUpperCase().replace(/^SCH-?/i, '').trim();
+      const cleanCode = strippedCode.replace(/[^A-Z0-9]/g, '');
+
+      // Cari sekolah target berdasarkan kode atau ID
+      let schQuery = db.from('schools').select('*');
+      if (cleanCode.length >= 4) {
+        schQuery = schQuery.or(`code.ilike.%${cleanCode}%,code.ilike.%${strippedCode}%,id.eq.${rawCode}`);
+      } else {
+        schQuery = schQuery.or(`code.ilike.%${strippedCode}%,id.eq.${rawCode}`);
+      }
+      let { data: targetSchool } = await schQuery.limit(1).maybeSingle();
+
+      if (!targetSchool) {
+        const { data: sp } = await db
+          .from('school_profile')
+          .select('school_id')
+          .or(`npsn.eq.${rawCode}`)
+          .limit(1)
+          .maybeSingle();
+
+        if (sp?.school_id) {
+          const { data: sch } = await db.from('schools').select('*').eq('id', sp.school_id).maybeSingle();
+          targetSchool = sch;
+        }
+      }
+
+      if (!targetSchool) {
+        return json(res, 404, { error: 'Kode sekolah tidak valid atau sekolah tidak ditemukan. Silakan periksa kembali kode sekolah dari administrator.' });
+      }
+
+      const schoolId = targetSchool.id;
+
+      // Handle penugasan rombel/kelas
+      let targetClassId = classId;
+      if (className && (!targetClassId || targetClassId === '__NEW_CLASS__')) {
+        const { data: newCls } = await db.from('classes').insert({
+          school_id: schoolId,
+          name: className,
+          grade: grade,
+          academic_year: '2026/2027',
+          wali_kelas_id: role === 'WALI KELAS' ? userId : null,
+        }).select('id').single();
+
+        if (newCls) targetClassId = newCls.id;
+      } else if (targetClassId && role === 'WALI KELAS') {
+        await db.from('classes').update({
+          wali_kelas_id: userId,
+        }).eq('id', targetClassId);
+      }
+
+      if (targetClassId) {
+        await db.from('teacher_class_assignments').upsert({
+          school_id: schoolId,
+          teacher_id: userId,
+          class_id: targetClassId,
+        }, { onConflict: 'teacher_id,class_id' });
+      }
+
+      // Upsert master guru di sekolah ini
+      await db.from('teachers').upsert({
+        id: userId,
+        school_id: schoolId,
+        nama: teacherName || 'Guru',
+        nip: nip || '-',
+        jenis_kelamin: 'L',
+        jabatan: role === 'WALI KELAS' ? 'Wali Kelas' : 'Guru Mapel',
+        jenis_ptk: role === 'WALI KELAS' ? 'Wali Kelas' : 'Guru Mapel',
+        mata_pelajaran: role === 'WALI KELAS' ? 'Wali Kelas' : (subjectName || 'Guru Mapel'),
+        status_kepegawaian: 'PNS',
+      }, { onConflict: 'id' });
+
+      // Update profil aktif ke ruang kerja sekolah
+      await db.from('profiles').update({
+        school_id: schoolId,
+        role: role as any,
+        workspace_type: 'school',
+      }).eq('id', userId);
+
+      const { data: sp } = await db.from('school_profile').select('nama_sekolah, npsn').eq('school_id', schoolId).maybeSingle();
+
+      const wsObj = {
+        id: `ws-mem-${userId}-${schoolId}`,
+        userId,
+        workspaceId: schoolId,
+        workspaceCode: targetSchool.code ? String(targetSchool.code).replace(/^SCH-?/i, '').trim().toUpperCase() : null,
+        role: role as any,
+        workspaceName: targetSchool.name || sp?.nama_sekolah || 'Ruang Kerja Sekolah',
+        workspaceType: 'school',
+        registrationMode: 'school',
+        npsn: targetSchool.npsn || sp?.npsn || null,
+        subscriptionPlan: targetSchool.plan || 'sekolah',
+        joinedAt: new Date().toISOString(),
+      };
+
+      return json(res, 200, {
+        ok: true,
+        success: true,
+        message: `Berhasil terhubung ke Ruang Kerja Sekolah: ${wsObj.workspaceName}!`,
+        workspace: wsObj,
+        school: targetSchool,
+      });
     }
 
     // -------------------------------------------------------------

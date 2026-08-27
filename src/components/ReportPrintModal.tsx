@@ -1136,7 +1136,7 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
               <p>Mengetahui,</p>
               <p className="font-bold">Kepala {schoolProfile.namaSekolah || 'Sekolah'}</p>
               <div className="h-14 sm:h-20" />
-              <p className="font-bold underline text-sm uppercase">{schoolProfile.namaKepalaSekolah}</p>
+              <p className="font-bold underline text-sm">{schoolProfile.namaKepalaSekolah}</p>
               <p className="text-slate-600 font-mono">NIP. {schoolProfile.nipKepalaSekolah}</p>
             </div>
 
@@ -1149,7 +1149,7 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
                   : formatHomeroomTeacherTitle(activeClassName)}
               </p>
               <div className="h-14 sm:h-20" />
-              <p className="font-bold underline text-sm uppercase">
+              <p className="font-bold underline text-sm">
                 {resolvedTeacherInfo.name}
               </p>
               <p className="text-slate-600 font-mono">

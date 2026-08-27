@@ -13,7 +13,11 @@ interface AppContextType {
  setIsOnboarding: (v: boolean) => void;
  isSelectingWorkspace: boolean;
  setIsSelectingWorkspace: (v: boolean) => void;
+ isJoinSchoolModalOpen: boolean;
+ setIsJoinSchoolModalOpen: (v: boolean) => void;
  selectWorkspace: (ws: WorkspaceMembership) => Promise<void>;
+ switchToSchoolWorkspace: () => Promise<void>;
+ switchToPersonalWorkspace: () => Promise<void>;
  openOnboarding: () => void;
  returnToWorkspaceSelector: () => void;
  loadUserDataAfterOnboarding: (userId: string) => Promise<void>;
@@ -233,6 +237,7 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
  const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceMembership | null>(null);
  const [isOnboarding, setIsOnboarding] = useState<boolean>(false);
  const [isSelectingWorkspace, setIsSelectingWorkspace] = useState<boolean>(false);
+ const [isJoinSchoolModalOpen, setIsJoinSchoolModalOpen] = useState<boolean>(false);
 
  const getInitialActiveView = (): ActiveView => 'login';
  const [activeView,setActiveViewState]=useState<ActiveView>('login');
@@ -466,6 +471,95 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
      setActiveView('dashboard');
    }
  };
+
+  const switchToSchoolWorkspace = async () => {
+    if (!currentUser) return;
+    if (currentUser.role === 'ADMIN' || currentUser.role === 'KEPALA SEKOLAH' || currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'SISWA') {
+      showToast('Fitur ganti ruang kerja hanya untuk Wali Kelas dan Guru Mapel.', 'info');
+      return;
+    }
+
+    let currentMemberships = [...userWorkspaces];
+    try {
+      const res = await fetch('/api/onboarding', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get_user_workspaces', user_id: currentUser.id })
+      });
+      const json = await res.json();
+      if (json.success && Array.isArray(json.workspaces)) {
+        currentMemberships = json.workspaces;
+        setUserWorkspaces(json.workspaces);
+      }
+    } catch (_) {}
+
+    const schoolWs = currentMemberships.find(
+      (ws) => ws.workspaceType !== 'personal' && ws.workspaceType !== 'individu'
+    );
+
+    if (schoolWs) {
+      await selectWorkspace(schoolWs);
+      showToast(`Beralih ke Ruang Kerja Sekolah: ${schoolWs.workspaceName}`, 'success');
+    } else {
+      setIsJoinSchoolModalOpen(true);
+    }
+  };
+
+  const switchToPersonalWorkspace = async () => {
+    if (!currentUser) return;
+    if (currentUser.role === 'ADMIN' || currentUser.role === 'KEPALA SEKOLAH' || currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'SISWA') {
+      showToast('Fitur ganti ruang kerja hanya untuk Wali Kelas dan Guru Mapel.', 'info');
+      return;
+    }
+
+    let currentMemberships = [...userWorkspaces];
+    try {
+      const res = await fetch('/api/onboarding', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get_user_workspaces', user_id: currentUser.id })
+      });
+      const json = await res.json();
+      if (json.success && Array.isArray(json.workspaces)) {
+        currentMemberships = json.workspaces;
+        setUserWorkspaces(json.workspaces);
+      }
+    } catch (_) {}
+
+    const personalWs = currentMemberships.find(
+      (ws) => ws.workspaceType === 'personal' || ws.workspaceType === 'individu'
+    );
+
+    if (personalWs) {
+      await selectWorkspace(personalWs);
+      showToast('Beralih ke Ruang Kerja Individu.', 'success');
+    } else {
+      try {
+        const res = await fetch('/api/onboarding', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'create_personal_workspace',
+            user_id: currentUser.id,
+            fullName: currentUser.name || currentUser.username,
+            nip: currentUser.nip,
+            role: currentUser.role,
+          }),
+        });
+        const json = await res.json();
+        if (json.success && json.workspace) {
+          const updated = [...currentMemberships, json.workspace];
+          setUserWorkspaces(updated);
+          await selectWorkspace(json.workspace);
+          showToast('Ruang Kerja Individu baru berhasil dibuka.', 'success');
+        } else {
+          showToast(json.error || 'Gagal membuka ruang kerja individu baru.', 'error');
+        }
+      } catch (err: any) {
+        showToast(err.message || 'Gagal membuat ruang kerja individu.', 'error');
+      }
+    }
+  };
 
  const openOnboarding = () => {
    setIsOnboarding(true);
@@ -1572,6 +1666,6 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
    return {success:true,message:'Berhasil'};
   }catch(e:any){const message=e?.message||'Gagal mengganti password.';showToast(message,'error');return{success:false,message}}
  };
-    return <AppContext.Provider value={{logout,classes,addClass,updateClass,deleteClass,assignTeacherClasses,importClasses,teachers,addTeacher,updateTeacher,deleteTeacher,importTeachers,subjects,addSubject,updateSubject,deleteSubject,currentUser,setCurrentUser,registrationRequired,setRegistrationRequired,passwordRecovery,setPasswordRecovery,activeView,setActiveView,userWorkspaces,activeWorkspace,isOnboarding,setIsOnboarding,isSelectingWorkspace,setIsSelectingWorkspace,selectWorkspace,openOnboarding,returnToWorkspaceSelector,loadUserDataAfterOnboarding,loadData,schoolProfile,updateSchoolProfile,systemConfig,updateSystemConfig,students,addStudent,updateStudent,deleteStudent,deleteStudentsByClass,importStudents,users,addUser,deleteUser,updateUser,syncUsersWithStudents,generateAccountsFromReferences,updateUserPassword,academicEvents,addAcademicEvent,deleteAcademicEvent,activeStudyDays,updateActiveStudyDays,effectiveDaysConfig,updateEffectiveDays,getBaseStudyDaysForMonth,getEffectiveDaysForMonth,getDateStatus,attendanceRecords,currentAttendanceDate,setCurrentAttendanceDate,saveDailyAttendance,getAttendanceForDate,submitStudentAttendance,changeOwnPassword,resetAllDataToProductionReady,toasts,showToast,removeToast,impersonateSchool,stopImpersonation,globalAnnouncement,updateGlobalAnnouncement}}>{children}</AppContext.Provider>;
+    return <AppContext.Provider value={{logout,classes,addClass,updateClass,deleteClass,assignTeacherClasses,importClasses,teachers,addTeacher,updateTeacher,deleteTeacher,importTeachers,subjects,addSubject,updateSubject,deleteSubject,currentUser,setCurrentUser,registrationRequired,setRegistrationRequired,passwordRecovery,setPasswordRecovery,activeView,setActiveView,userWorkspaces,activeWorkspace,isOnboarding,setIsOnboarding,isSelectingWorkspace,setIsSelectingWorkspace,isJoinSchoolModalOpen,setIsJoinSchoolModalOpen,selectWorkspace,switchToSchoolWorkspace,switchToPersonalWorkspace,openOnboarding,returnToWorkspaceSelector,loadUserDataAfterOnboarding,loadData,schoolProfile,updateSchoolProfile,systemConfig,updateSystemConfig,students,addStudent,updateStudent,deleteStudent,deleteStudentsByClass,importStudents,users,addUser,deleteUser,updateUser,syncUsersWithStudents,generateAccountsFromReferences,updateUserPassword,academicEvents,addAcademicEvent,deleteAcademicEvent,activeStudyDays,updateActiveStudyDays,effectiveDaysConfig,updateEffectiveDays,getBaseStudyDaysForMonth,getEffectiveDaysForMonth,getDateStatus,attendanceRecords,currentAttendanceDate,setCurrentAttendanceDate,saveDailyAttendance,getAttendanceForDate,submitStudentAttendance,changeOwnPassword,resetAllDataToProductionReady,toasts,showToast,removeToast,impersonateSchool,stopImpersonation,globalAnnouncement,updateGlobalAnnouncement}}>{children}</AppContext.Provider>;
 };
 export const useApp=()=>{const c=useContext(AppContext);if(!c)throw new Error('useApp must be used within an AppProvider');return c};

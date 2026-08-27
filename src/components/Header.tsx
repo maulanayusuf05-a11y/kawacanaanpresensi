@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { SchoolLogo } from './SchoolLogo';
 import { UserProfileModal } from './UserProfileModal';
 import { ChangePasswordModal } from './ChangePasswordModal';
+import { JoinSchoolModal } from './JoinSchoolModal';
 import { 
   LogOut, 
   UserCircle, 
@@ -19,7 +20,8 @@ import {
   CreditCard,
   Layers,
   PlusCircle,
-  Building2
+  Building2,
+  UserCheck
 } from 'lucide-react';
 import { getTenantLifecycleInfo } from '../utils/tenantLifecycle';
 
@@ -36,6 +38,10 @@ export const Header: React.FC = () => {
     academicEvents,
     userWorkspaces,
     activeWorkspace,
+    isJoinSchoolModalOpen,
+    setIsJoinSchoolModalOpen,
+    switchToSchoolWorkspace,
+    switchToPersonalWorkspace,
     setIsSelectingWorkspace,
     openOnboarding
   } = useApp();
@@ -52,6 +58,24 @@ export const Header: React.FC = () => {
     activeWorkspace?.workspaceType === 'personal' ||
     activeWorkspace?.workspaceType === 'individu' ||
     (currentUser?.subscriptionPlan === 'mulai' && !currentUser?.schoolId);
+
+  const canSwitchWorkspace =
+    currentUser &&
+    (currentUser.role === 'WALI KELAS' || currentUser.role === 'GURU MAPEL' || currentUser.role === 'GURU') &&
+    currentUser.role !== 'ADMIN' &&
+    currentUser.role !== 'KEPALA SEKOLAH' &&
+    currentUser.role !== 'SUPER_ADMIN' &&
+    currentUser.role !== 'SISWA';
+
+  const isCurrentlyPersonal = isPersonalWorkspace;
+
+  const existingSchoolWs = userWorkspaces.find(
+    (ws) => ws.workspaceType !== 'personal' && ws.workspaceType !== 'individu'
+  );
+
+  const existingPersonalWs = userWorkspaces.find(
+    (ws) => ws.workspaceType === 'personal' || ws.workspaceType === 'individu'
+  );
 
   const [readNotifIds, setReadNotifIds] = useState<string[]>([]);
 
@@ -444,28 +468,42 @@ export const Header: React.FC = () => {
                       {/* Menu List */}
                       <div className="mt-4 space-y-1">
                         {/* Workspace Info & Switcher between Ruang Kerja Sekolah and Ruang Kerja Individu */}
-                        {currentUser?.role !== 'SUPER_ADMIN' && (
+                        {canSwitchWorkspace && (
                           <>
                             <button
                               type="button"
                               onClick={() => {
                                 setShowProfileDropdown(false);
-                                setIsSelectingWorkspace(true);
+                                if (isCurrentlyPersonal) {
+                                  void switchToSchoolWorkspace();
+                                } else {
+                                  void switchToPersonalWorkspace();
+                                }
                               }}
                               className="w-full flex items-center justify-between px-3 py-2.5 rounded-2xl text-sm font-medium text-slate-700 hover:text-blue-600 hover:bg-blue-50/60 transition-colors group cursor-pointer"
                               id="btn-menu-ganti-workspace"
                             >
                               <div className="flex items-center gap-3.5 min-w-0">
-                                <Layers className="w-5 h-5 text-slate-400 group-hover:text-blue-600 transition-colors stroke-[1.75] shrink-0" />
+                                {isCurrentlyPersonal ? (
+                                  <Building2 className="w-5 h-5 text-indigo-500 group-hover:text-blue-600 transition-colors stroke-[1.75] shrink-0" />
+                                ) : (
+                                  <UserCheck className="w-5 h-5 text-emerald-500 group-hover:text-emerald-600 transition-colors stroke-[1.75] shrink-0" />
+                                )}
                                 <div className="text-left min-w-0">
-                                  <div className="font-semibold truncate">Ganti Ruang Kerja</div>
+                                  <div className="font-semibold truncate">
+                                    {isCurrentlyPersonal ? 'Ganti ke Ruang Kerja Sekolah' : 'Ganti ke Ruang Kerja Individu'}
+                                  </div>
                                   <div className="text-[10px] text-slate-500 font-normal truncate">
-                                    {activeWorkspace?.workspaceName || (activeWorkspace?.workspaceType === 'personal' ? 'Ruang Kerja Individu' : 'Ruang Kerja Sekolah')}
+                                    {isCurrentlyPersonal 
+                                      ? (existingSchoolWs ? `Ke ${existingSchoolWs.workspaceName}` : 'Masukkan kode sekolah') 
+                                      : (existingPersonalWs ? 'Kembali ke ruang mandiri' : 'Buka fresh workspace')}
                                   </div>
                                 </div>
                               </div>
-                              <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-black shrink-0">
-                                2 Ruang Kerja
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-black shrink-0 ${
+                                isCurrentlyPersonal ? 'bg-indigo-100 text-indigo-800' : 'bg-emerald-100 text-emerald-800'
+                              }`}>
+                                {isCurrentlyPersonal ? 'Sekolah' : 'Individu'}
                               </span>
                             </button>
                             
@@ -550,6 +588,12 @@ export const Header: React.FC = () => {
       <ChangePasswordModal
         isOpen={showPasswordModal}
         onClose={() => setShowPasswordModal(false)}
+      />
+
+      {/* Join School Modal */}
+      <JoinSchoolModal
+        isOpen={isJoinSchoolModalOpen}
+        onClose={() => setIsJoinSchoolModalOpen(false)}
       />
     </>
   );

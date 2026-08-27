@@ -496,7 +496,6 @@ export const DataGuruView: React.FC = () => {
               <th className="py-3.5 px-4 w-44">NIP</th>
               <th className="py-3.5 px-4 w-24 text-center">JK</th>
               <th className="py-3.5 px-4 w-36 text-center">PENUGASAN</th>
-              <th className="py-3.5 px-4 w-36 text-center">STATUS AKUN</th>
               {canEdit && <th className="py-3.5 px-4 w-24 text-center rounded-r-xl">AKSI</th>}
             </tr>
           </thead>
@@ -519,7 +518,6 @@ export const DataGuruView: React.FC = () => {
                 }
 
                 const isGuruMapel = displayType === 'Guru Mapel';
-                const account = getTeacherAccount(t);
 
                 return (
                   <tr key={t.id} className="hover:bg-slate-50 transition-colors">
@@ -543,26 +541,6 @@ export const DataGuruView: React.FC = () => {
                       >
                         {displayType}
                       </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-center">
-                      {account ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          <CheckCircle2 size={12} />
-                          <span>{account.username}</span>
-                        </span>
-                      ) : (
-                        isAdmin && (
-                          <button
-                            type="button"
-                            onClick={() => openCreateAccountModal(t)}
-                            title="Buat akun login pengguna untuk guru ini"
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-700 border border-slate-200 hover:border-blue-200 transition cursor-pointer"
-                          >
-                            <UserPlus size={12} />
-                            <span>Buat Akun</span>
-                          </button>
-                        )
-                      )}
                     </td>
                     {canEdit && (
                       <td className="py-3.5 px-4 text-center">
