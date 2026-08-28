@@ -1,4 +1,4 @@
-import { UserAccount, SchoolClass, Subject, Teacher, Student } from '../types';
+import { UserAccount, SchoolClass, Subject, Teacher } from '../types';
 
 export interface UserRoleScope {
   isSuperAdmin: boolean;
@@ -8,26 +8,30 @@ export interface UserRoleScope {
   isGuruMapel: boolean;
   isSiswa: boolean;
 
-  // Wali Kelas specific scope
   assignedWaliClass: SchoolClass | null;
   assignedWaliClassId: string | null;
   assignedWaliClassName: string | null;
 
-  // Guru Mapel specific scope
   assignedSubjects: Subject[];
   assignedSubjectIds: string[];
   primarySubject: Subject | null;
 
-  // Accessible rombels / classes
   accessibleClasses: SchoolClass[];
-  
-  // Display text & role badge
+  accessibleClassIds: string[];
+
   roleBadgeLabel: string;
   scopeDescription: string;
 }
 
 /**
- * Resolves the role-based authority and class/subject scope for the currently authenticated user.
+ * Resolves the UI scope from authoritative identity/assignment fields.
+ *
+ * SECURITY NOTE:
+ * This function is intentionally fail-closed. It is only a UX filter;
+ * Supabase RLS remains the actual security boundary.
+ *
+ * Never infer authorization from display names, the first class, or a
+ * "specialized" subject fallback. Missing assignment means no access.
  */
 export function getUserRoleScope(
   currentUser: UserAccount | null | undefined,
@@ -35,166 +39,89 @@ export function getUserRoleScope(
   subjects: Subject[],
   teachers: Teacher[] = []
 ): UserRoleScope {
-  if (!currentUser) {
-    return {
-      isSuperAdmin: false,
-      isAdmin: false,
-      isKepalaSekolah: false,
-      isWaliKelas: false,
-      isGuruMapel: false,
-      isSiswa: false,
-      assignedWaliClass: null,
-      assignedWaliClassId: null,
-      assignedWaliClassName: null,
-      assignedSubjects: [],
-      assignedSubjectIds: [],
-      primarySubject: null,
-      accessibleClasses: classes,
-      roleBadgeLabel: 'Pengguna',
-      scopeDescription: '',
-    };
-  }
+  const empty = (overrides: Partial<UserRoleScope> = {}): UserRoleScope => ({
+    isSuperAdmin: false,
+    isAdmin: false,
+    isKepalaSekolah: false,
+    isWaliKelas: false,
+    isGuruMapel: false,
+    isSiswa: false,
+    assignedWaliClass: null,
+    assignedWaliClassId: null,
+    assignedWaliClassName: null,
+    assignedSubjects: [],
+    assignedSubjectIds: [],
+    primarySubject: null,
+    accessibleClasses: [],
+    accessibleClassIds: [],
+    roleBadgeLabel: 'Pengguna',
+    scopeDescription: '',
+    ...overrides,
+  });
+
+  if (!currentUser) return empty();
 
   const role = currentUser.role;
   const isSuperAdmin = role === 'SUPER_ADMIN';
   const isAdmin = role === 'ADMIN' || isSuperAdmin;
   const isKepalaSekolah = role === 'KEPALA SEKOLAH';
+  const isWaliKelas = role === 'WALI KELAS';
+  const isGuruMapel = role === 'GURU MAPEL';
   const isSiswa = role === 'SISWA';
 
-  // 1. Check if user is linked to teacher record
-  const currentUserNameClean = (currentUser.name || '').trim().toLowerCase();
-  const currentUserUsernameClean = (currentUser.username || '').trim().toLowerCase();
-  
-  const matchedTeacher = teachers.find(
-    (t) =>
-      (t.nip && t.nip !== '-' && t.nip.trim().toLowerCase() === currentUserUsernameClean) ||
-      (t.nama && t.nama.trim().toLowerCase() === currentUserNameClean)
-  );
+  // Prefer the explicit teacher identity. Do not match by name/NIP because
+  // names are mutable display data and can create accidental authorization.
+  const currentTeacherId = currentUser.teacherId || null;
+  const currentTeacher = currentTeacherId
+    ? teachers.find((teacher) => teacher.id === currentTeacherId) || null
+    : null;
 
-  // 2. Identify Wali Kelas assignment
-  let assignedWaliClass: SchoolClass | null = null;
+  // WALI KELAS: only an explicit classes.wali_kelas_teacher_id relation.
+  const assignedWaliClass = isWaliKelas && currentTeacherId
+    ? classes.find((schoolClass) => schoolClass.waliKelasTeacherId === currentTeacherId) || null
+    : null;
 
-  // Check 1: class where waliKelasTeacherId matches user id or teacher id
-  if (currentUser.teacherId) {
-    assignedWaliClass = classes.find((c) => c.waliKelasTeacherId === currentUser.teacherId) || null;
-  }
-  if (!assignedWaliClass && matchedTeacher?.id) {
-    assignedWaliClass = classes.find((c) => c.waliKelasTeacherId === matchedTeacher.id) || null;
-  }
-
-  // Check 2: classIds stored on currentUser account
-  if (!assignedWaliClass && currentUser.classIds && currentUser.classIds.length > 0) {
-    assignedWaliClass = classes.find((c) => currentUser.classIds?.includes(c.id)) || null;
-  }
-
-  // Check 3: name matching on class.waliKelasName
-  if (!assignedWaliClass && currentUserNameClean) {
-    assignedWaliClass = classes.find(
-      (c) => c.waliKelasName && c.waliKelasName.trim().toLowerCase() === currentUserNameClean
-    ) || null;
-  }
-
-  // Check 4: teacher record has matching class name or assignment
-  if (!assignedWaliClass && matchedTeacher) {
-    assignedWaliClass = classes.find(
-      (c) => c.waliKelasName && c.waliKelasName.trim().toLowerCase() === matchedTeacher.nama.trim().toLowerCase()
-    ) || null;
-  }
-
-  // 3. Identify Guru Mapel subject assignment
+  // GURU MAPEL: subject assignment must be explicit. The normalized subject
+  // data should expose teacherId + targetClassIds after AppContext hydration.
+  // We deliberately do not fall back to all subjects/classes.
   let assignedSubjects: Subject[] = [];
+  if (isGuruMapel && currentTeacherId) {
+    assignedSubjects = subjects.filter((subject) => subject.teacherId === currentTeacherId);
 
-  // Match by teacherId on subjects
-  if (currentUser.teacherId) {
-    assignedSubjects = subjects.filter((s) => s.teacherId === currentUser.teacherId);
-  }
-  if (assignedSubjects.length === 0 && matchedTeacher?.id) {
-    assignedSubjects = subjects.filter((s) => s.teacherId === matchedTeacher.id);
-  }
-
-  // Match by teacherName on subjects
-  if (assignedSubjects.length === 0 && currentUserNameClean) {
-    assignedSubjects = subjects.filter(
-      (s) => s.teacherName && s.teacherName.trim().toLowerCase() === currentUserNameClean
-    );
-  }
-
-  // Match by subjectId on currentUser
-  if (currentUser.subjectId) {
-    const directSubject = subjects.find((s) => s.id === currentUser.subjectId);
-    if (directSubject && !assignedSubjects.some((s) => s.id === directSubject.id)) {
-      assignedSubjects.push(directSubject);
-    }
-  }
-
-  // If role is GURU MAPEL and still no subject matched, check teacher's mataPelajaran or provide specialized subjects
-  const isGuruMapelRole = role === 'GURU MAPEL';
-  const isWaliRole = role === 'WALI KELAS';
-  const isTeacherRole = isWaliRole || isGuruMapelRole;
-
-  if (isGuruMapelRole && assignedSubjects.length === 0) {
-    if (matchedTeacher?.mataPelajaran) {
-      const mpLower = matchedTeacher.mataPelajaran.toLowerCase();
-      const foundByMp = subjects.find(
-        (s) => mpLower.includes(s.name.toLowerCase()) || (s.code && mpLower.includes(s.code.toLowerCase()))
+    // A profile may carry an explicit subjectId as a compatibility bridge,
+    // but it is accepted only when the subject itself points to this teacher.
+    if (currentUser.subjectId) {
+      const directSubject = subjects.find(
+        (subject) => subject.id === currentUser.subjectId && subject.teacherId === currentTeacherId
       );
-      if (foundByMp) assignedSubjects.push(foundByMp);
-    }
-    // Fallback: if still empty, assign all specialized subjects or all subjects
-    if (assignedSubjects.length === 0) {
-      const specialized = subjects.filter((s) => s.isSpecialized);
-      assignedSubjects = specialized.length > 0 ? specialized : subjects;
-    }
-  }
-
-  // Determine final isWaliKelas and isGuruMapel boolean flags
-  let isWaliKelas = false;
-  let isGuruMapel = false;
-
-  if (!isAdmin && !isKepalaSekolah && !isSiswa) {
-    if (isWaliRole) {
-      isWaliKelas = true;
-      isGuruMapel = false;
-    } else if (role === 'GURU MAPEL') {
-      isGuruMapel = true;
-      isWaliKelas = false;
-    }
-  }
-
-  // If user is Wali Kelas but assignedWaliClass was not found in DB, fallback to first class
-  if (isWaliKelas && !assignedWaliClass && classes.length > 0) {
-    assignedWaliClass = classes[0];
-  }
-
-  // Accessible rombels / classes calculation
-  let accessibleClasses: SchoolClass[] = classes;
-
-  if (isWaliKelas && assignedWaliClass) {
-    accessibleClasses = [assignedWaliClass];
-  } else if (isGuruMapel) {
-    // If the Guru Mapel's subjects specify targetClassIds, collect those classes
-    const targetClassIdSet = new Set<string>();
-    assignedSubjects.forEach((sub) => {
-      if (sub.targetClassIds && sub.targetClassIds.length > 0) {
-        sub.targetClassIds.forEach((cid) => targetClassIdSet.add(cid));
+      if (directSubject && !assignedSubjects.some((subject) => subject.id === directSubject.id)) {
+        assignedSubjects.push(directSubject);
       }
-    });
-
-    if (currentUser.classIds && currentUser.classIds.length > 0) {
-      currentUser.classIds.forEach((cid) => targetClassIdSet.add(cid));
-    }
-
-    if (targetClassIdSet.size > 0) {
-      const filtered = classes.filter((c) => targetClassIdSet.has(c.id));
-      accessibleClasses = filtered.length > 0 ? filtered : classes;
-    } else {
-      // If no specific target class restriction was set, Guru Mapel can teach all rombels in the school
-      accessibleClasses = classes;
     }
   }
 
-  // Determine user friendly badge label and scope description
-  let roleBadgeLabel: string = role;
+  // Class scope for Guru Mapel is the intersection implied by their assigned
+  // subjects. An empty assignment intentionally produces an empty scope.
+  let accessibleClasses: SchoolClass[] = [];
+  if (isSuperAdmin || isAdmin || isKepalaSekolah) {
+    accessibleClasses = classes;
+  } else if (isWaliKelas) {
+    accessibleClasses = assignedWaliClass ? [assignedWaliClass] : [];
+  } else if (isGuruMapel) {
+    const targetClassIds = new Set<string>();
+    assignedSubjects.forEach((subject) => {
+      (subject.targetClassIds || []).forEach((classId) => targetClassIds.add(classId));
+    });
+    accessibleClasses = classes.filter((schoolClass) => targetClassIds.has(schoolClass.id));
+  } else if (isSiswa) {
+    // Student UI normally filters its own records using studentId. We do not
+    // use currentUser.classIds as an authorization fallback here.
+    accessibleClasses = currentUser.classIds?.length
+      ? classes.filter((schoolClass) => currentUser.classIds?.includes(schoolClass.id))
+      : [];
+  }
+
+  let roleBadgeLabel = role;
   let scopeDescription = '';
 
   if (isSuperAdmin) {
@@ -205,15 +132,19 @@ export function getUserRoleScope(
     scopeDescription = 'Akses penuh ke seluruh data & kelas sekolah';
   } else if (isKepalaSekolah) {
     roleBadgeLabel = 'Kepala Sekolah';
-    scopeDescription = 'Akses supervisi & rekapitulasi seluruh kelas';
+    scopeDescription = 'Akses supervisi & rekapitulasi data sekolah';
   } else if (isWaliKelas) {
-    const className = assignedWaliClass?.name || 'Binaan';
+    const className = assignedWaliClass?.name || 'Tidak ada kelas';
     roleBadgeLabel = `Wali Kelas ${className}`;
-    scopeDescription = `Kewenangan khusus Kelas ${className} (Absensi & Laporan Harian)`;
+    scopeDescription = assignedWaliClass
+      ? `Kewenangan khusus Kelas ${className}`
+      : 'Belum memiliki assignment Wali Kelas';
   } else if (isGuruMapel) {
-    const subjectNames = assignedSubjects.map((s) => s.name).join(', ') || 'Mata Pelajaran';
+    const subjectNames = assignedSubjects.map((subject) => subject.name).join(', ') || 'Tidak ada mapel';
     roleBadgeLabel = `Guru ${assignedSubjects[0]?.code || assignedSubjects[0]?.name || 'Mapel'}`;
-    scopeDescription = `Kewenangan Guru Mapel (${subjectNames}) untuk ${accessibleClasses.length} Rombel`;
+    scopeDescription = assignedSubjects.length > 0
+      ? `Kewenangan Guru Mapel (${subjectNames}) untuk ${accessibleClasses.length} Rombel`
+      : 'Belum memiliki assignment Guru Mapel';
   } else if (isSiswa) {
     roleBadgeLabel = 'Siswa';
     scopeDescription = 'Portal kehadiran mandiri siswa';
@@ -230,9 +161,10 @@ export function getUserRoleScope(
     assignedWaliClassId: assignedWaliClass?.id || null,
     assignedWaliClassName: assignedWaliClass?.name || null,
     assignedSubjects,
-    assignedSubjectIds: assignedSubjects.map((s) => s.id),
+    assignedSubjectIds: assignedSubjects.map((subject) => subject.id),
     primarySubject: assignedSubjects[0] || null,
     accessibleClasses,
+    accessibleClassIds: accessibleClasses.map((schoolClass) => schoolClass.id),
     roleBadgeLabel,
     scopeDescription,
   };
