@@ -265,8 +265,26 @@ export const DashboardView: React.FC = () => {
     trendData,
   ]);
 
-  // Up to 2 upcoming events
-  const upcomingEvents = useMemo(() => academicEvents.slice(0, 2), [academicEvents]);
+  // Agenda Mendatang: hanya untuk bulan berjalan dan tanggal yang belum terlewat (>= tanggal hari ini)
+  const upcomingEvents = useMemo(() => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
+    const currentDay = String(now.getDate()).padStart(2, '0');
+    const todayFormatted = `${currentYear}-${currentMonth}-${currentDay}`;
+    const currentMonthPrefix = `${currentYear}-${currentMonth}`;
+
+    return academicEvents
+      .filter((e) => {
+        if (!e.date) return false;
+        // Hanya untuk bulan berjalan
+        const inCurrentMonth = e.date.startsWith(currentMonthPrefix);
+        // Tanggal yang belum terlewat (>= tanggal hari ini)
+        const isUpcomingOrToday = e.date >= todayFormatted;
+        return inCurrentMonth && isUpcomingOrToday;
+      })
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }, [academicEvents]);
 
   const menuItems = [
     {
@@ -745,8 +763,8 @@ export const DashboardView: React.FC = () => {
             {upcomingEvents.length === 0 ? (
               <div className="py-6 text-center text-slate-400 bg-slate-50/70 rounded-xl border border-dashed border-slate-200">
                 <Calendar size={22} className="mx-auto mb-1.5 text-slate-300" />
-                <p className="text-xs font-semibold text-slate-600">Belum ada agenda terdaftar</p>
-                <p className="text-[10px] text-slate-400">Tambahkan agenda melalui menu Kalender Akademik</p>
+                <p className="text-xs font-semibold text-slate-600">Tidak ada agenda mendatang di bulan ini</p>
+                <p className="text-[10px] text-slate-400">Semua agenda bulan ini telah selesai atau belum dijadwalkan</p>
               </div>
             ) : (
               upcomingEvents.map((ev) => (

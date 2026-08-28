@@ -57,6 +57,7 @@ export const DataSiswaView: React.FC = () => {
 
   const isWaliKelas = currentUser?.role === 'WALI KELAS';
   const isGuru = currentUser?.role === 'GURU' || currentUser?.role === 'GURU MAPEL';
+  const isKepalaSekolah = currentUser?.role === 'KEPALA SEKOLAH';
 
   // Kelas yang diampu oleh Wali Kelas / Guru
   const myAssignedClasses = useMemo(() => {
@@ -102,8 +103,11 @@ export const DataSiswaView: React.FC = () => {
     return students;
   }, [isAdmin, isPersonalWorkspace, isWaliKelas, isGuru, students, myAssignedClasses, accessibleClassIds, classes.length]);
 
-  // Akses input data siswa hanya untuk Admin & Ruang Kerja Individu (Wali Kelas dalam Ruang Kerja Sekolah hanya melihat)
-  const canInputStudents = isAdmin || isPersonalWorkspace;
+  // Akses aksi data siswa (tambah/edit/hapus/import) & kolom AKSI hanya muncul untuk Role Admin Sekolah / Admin Individu
+  // Tidak muncul untuk role Kepala Sekolah, Wali Kelas, dan Guru Mapel
+  const isRestrictedRole = isWaliKelas || isGuru || isKepalaSekolah;
+  const showAksiColumn = isAdmin || (isPersonalWorkspace && !isRestrictedRole);
+  const canInputStudents = showAksiColumn;
 
   // Kuota siswa pada paket mulai / gratis
   const maxStudentsLimit = currentUser?.maxStudents || (isPersonalWorkspace ? 32 : undefined);
@@ -705,25 +709,34 @@ export const DataSiswaView: React.FC = () => {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-200 text-[10px] font-bold text-blue-700 uppercase tracking-widest bg-blue-50/60 select-none">
-                <th className="py-3.5 px-4 w-12 rounded-l-xl">NO</th>
-                <th className="py-3.5 px-4 w-40">NISN</th>
-                <th className="py-3.5 px-4">NAMA LENGKAP</th>
-                <th className="py-3.5 px-4 text-center">KELAS</th>
+                <th className="py-3.5 px-4 rounded-l-xl">NAMA LENGKAP</th>
                 <th className="py-3.5 px-4 text-center w-28">L/P</th>
-                <th className="py-3.5 px-4 text-center w-24 rounded-r-xl">AKSI</th>
+                <th className="py-3.5 px-4 w-40">NISN</th>
+                <th className={`py-3.5 px-4 text-center ${!showAksiColumn ? 'rounded-r-xl' : ''}`}>KELAS</th>
+                {showAksiColumn && (
+                  <th className="py-3.5 px-4 text-center w-24 rounded-r-xl">AKSI</th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
               {currentStudents.length > 0 ? (
-                currentStudents.map((s, idx) => (
+                currentStudents.map((s) => (
                   <tr key={s.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="py-3.5 px-4 font-semibold text-slate-400">
-                      {startIndex + idx + 1}
-                    </td>
-                    <td className="py-3.5 px-4 font-mono font-medium text-slate-600">{s.nisn}</td>
                     <td className="py-3.5 px-4 font-bold text-slate-900 tracking-tight">
                       {s.nama}
                     </td>
+                    <td className="py-3.5 px-4 text-center">
+                      <span
+                        className={`inline-block px-3 py-1 rounded-full text-[11px] font-bold border ${
+                          s.gender === 'L'
+                            ? 'bg-sky-50 text-sky-700 border-sky-200'
+                            : 'bg-rose-50 text-rose-700 border-rose-200'
+                        }`}
+                      >
+                        {s.gender === 'L' ? 'Laki-laki' : 'Perempuan'}
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-4 font-mono font-medium text-slate-600">{s.nisn}</td>
                     <td className="py-3.5 px-4 text-center font-bold text-slate-600">
                       <div className="inline-flex items-center justify-center gap-1.5">
                         <span>{s.className || 'Belum ada kelas'}</span>
@@ -738,46 +751,31 @@ export const DataSiswaView: React.FC = () => {
                         )}
                       </div>
                     </td>
-                    <td className="py-3.5 px-4 text-center">
-                      <span
-                        className={`inline-block px-3 py-1 rounded-full text-[11px] font-bold border ${
-                          s.gender === 'L'
-                            ? 'bg-sky-50 text-sky-700 border-sky-200'
-                            : 'bg-rose-50 text-rose-700 border-rose-200'
-                        }`}
-                      >
-                        {s.gender === 'L' ? 'Laki-laki' : 'Perempuan'}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-center">
-                      <div className="flex items-center justify-center gap-2">
-                        {canInputStudents ? (
-                          <>
-                            <button
-                              onClick={() => openEditModal(s)}
-                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                              title="Edit Siswa"
-                            >
-                              <Edit2 size={15} />
-                            </button>
-                            <button
-                              onClick={() => setDeletingId(s.id)}
-                              className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                              title="Hapus Siswa"
-                            >
-                              <Trash2 size={15} />
-                            </button>
-                          </>
-                        ) : (
-                          <span className="text-[11px] font-bold text-slate-400 italic">Lihat Saja</span>
-                        )}
-                      </div>
-                    </td>
+                    {showAksiColumn && (
+                      <td className="py-3.5 px-4 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => openEditModal(s)}
+                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                            title="Edit Siswa"
+                          >
+                            <Edit2 size={15} />
+                          </button>
+                          <button
+                            onClick={() => setDeletingId(s.id)}
+                            className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title="Hapus Siswa"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={6} className="text-center py-10 text-slate-400 font-medium">
+                  <td colSpan={showAksiColumn ? 5 : 4} className="text-center py-10 text-slate-400 font-medium">
                     Tidak ada data siswa yang sesuai.
                   </td>
                 </tr>
