@@ -709,7 +709,8 @@ export const DataSiswaView: React.FC = () => {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-200 text-[10px] font-bold text-blue-700 uppercase tracking-widest bg-blue-50/60 select-none">
-                <th className="py-3.5 px-4 rounded-l-xl">NAMA LENGKAP</th>
+                <th className="py-3.5 px-4 w-12 rounded-l-xl">NO</th>
+                <th className="py-3.5 px-4">NAMA LENGKAP</th>
                 <th className="py-3.5 px-4 text-center w-28">L/P</th>
                 <th className="py-3.5 px-4 w-40">NISN</th>
                 <th className={`py-3.5 px-4 text-center ${!showAksiColumn ? 'rounded-r-xl' : ''}`}>KELAS</th>
@@ -720,8 +721,11 @@ export const DataSiswaView: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
               {currentStudents.length > 0 ? (
-                currentStudents.map((s) => (
+                currentStudents.map((s, idx) => (
                   <tr key={s.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="py-3.5 px-4 font-semibold text-slate-400">
+                      {startIndex + idx + 1}
+                    </td>
                     <td className="py-3.5 px-4 font-bold text-slate-900 tracking-tight">
                       {s.nama}
                     </td>
@@ -775,7 +779,7 @@ export const DataSiswaView: React.FC = () => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={showAksiColumn ? 5 : 4} className="text-center py-10 text-slate-400 font-medium">
+                  <td colSpan={showAksiColumn ? 6 : 5} className="text-center py-10 text-slate-400 font-medium">
                     Tidak ada data siswa yang sesuai.
                   </td>
                 </tr>
