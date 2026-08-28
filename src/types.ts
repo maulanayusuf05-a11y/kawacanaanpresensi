@@ -143,6 +143,7 @@ export type TenantSubscriptionStatus = 'ACTIVE' | 'EXPIRING_SOON' | 'GRACE_PERIO
 
 export interface UserAccount {
   id: string;
+  teacherId?: string | null;
   name: string;
   username: string;
   password?: string;

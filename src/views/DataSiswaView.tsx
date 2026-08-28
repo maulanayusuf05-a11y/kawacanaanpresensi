@@ -67,7 +67,7 @@ export const DataSiswaView: React.FC = () => {
       currentUser.classIds.forEach((id) => ids.add(id));
     }
     classes.forEach((c) => {
-      if (c.waliKelasId && (c.waliKelasId === currentUser?.id || c.waliKelasId === currentUser?.username)) {
+      if (c.waliKelasId && (c.waliKelasId === currentUser?.teacherId || c.waliKelasId === currentUser?.username)) {
         ids.add(c.id);
       }
       if (

@@ -75,8 +75,8 @@ export function getUserRoleScope(
   let assignedWaliClass: SchoolClass | null = null;
 
   // Check 1: class where waliKelasId matches user id or teacher id
-  if (currentUser.id) {
-    assignedWaliClass = classes.find((c) => c.waliKelasId === currentUser.id) || null;
+  if (currentUser.teacherId) {
+    assignedWaliClass = classes.find((c) => c.waliKelasId === currentUser.teacherId) || null;
   }
   if (!assignedWaliClass && matchedTeacher?.id) {
     assignedWaliClass = classes.find((c) => c.waliKelasId === matchedTeacher.id) || null;
@@ -105,8 +105,8 @@ export function getUserRoleScope(
   let assignedSubjects: Subject[] = [];
 
   // Match by teacherId on subjects
-  if (currentUser.id) {
-    assignedSubjects = subjects.filter((s) => s.teacherId === currentUser.id);
+  if (currentUser.teacherId) {
+    assignedSubjects = subjects.filter((s) => s.teacherId === currentUser.teacherId);
   }
   if (assignedSubjects.length === 0 && matchedTeacher?.id) {
     assignedSubjects = subjects.filter((s) => s.teacherId === matchedTeacher.id);

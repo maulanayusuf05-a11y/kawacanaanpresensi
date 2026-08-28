@@ -523,14 +523,15 @@ export default async function handler(req:any,res:any){
       const id=req.body.user_id||req.body.userId||req.body.id;
       if(!id) return json(res,400,{error:'User ID wajib disertakan.'});
 
-      const { data: targetProfile } = await admin.from('profiles').select('id, name, username, role, school_id').eq('id', id).maybeSingle();
+      const { data: targetProfile } = await admin.from('profiles').select('id, name, username, role, school_id, teacher_id').eq('id', id).maybeSingle();
       if(!targetProfile) {
         return json(res,404,{error:'Pengguna tidak ditemukan di database profil.'});
       }
 
-      // Bersihkan relasi penugasan guru jika ada
-      try { await admin.from('teacher_class_assignments').delete().eq('teacher_id', id); } catch (_) {}
-      try { await admin.from('teachers').delete().eq('id', id); } catch (_) {}
+      // Hapus AKUN tanpa menghapus master GURU. Guru tetap dapat ada tanpa akun.
+      // Penugasan kelas juga tetap milik master guru.
+      const { error: unlinkError } = await admin.from('profiles').update({ teacher_id: null }).eq('id', id);
+      if (unlinkError) throw unlinkError;
       
       // Hapus profil
       const { error: pErr } = await admin.from('profiles').delete().eq('id', id);

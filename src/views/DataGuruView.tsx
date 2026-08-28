@@ -360,7 +360,7 @@ export const DataGuruView: React.FC = () => {
 
         results.push({
           nama: rawNama.trim(),
-          nip: rawNip.trim() || '-',
+          nip: rawNip.trim() && rawNip.trim() !== '-' ? rawNip.trim() : null,
           jenisKelamin: gender,
           jabatan,
           statusKepegawaian: rawStatus.trim() || 'PNS',

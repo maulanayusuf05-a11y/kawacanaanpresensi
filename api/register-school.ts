@@ -317,27 +317,29 @@ export default async function handler(req: any, res: any) {
     // 10b. Hubungkan Guru ke Guru Table & Class Assignment
     if (isTeacherPlan) {
       try {
-        await admin.from('teachers').insert({
-          id: authData.user.id,
+        const { data: teacherRow, error: teacherError } = await admin.from('teachers').insert({
           school_id: school.id,
           nama: adminName,
-          nip: teacherNip || '-',
+          nip: (teacherNip || '').trim() || null,
           jenis_kelamin: 'L',
           jabatan: teacherType === 'GURU_MAPEL' ? 'Guru Mapel' : 'Wali Kelas',
+          jenis_ptk: teacherType === 'GURU_MAPEL' ? 'Guru Mapel' : 'Wali Kelas',
           no_hp: adminPhone || '-',
           mata_pelajaran: teacherType === 'GURU_MAPEL' ? teacherSubject : 'Tematik',
-        });
+        }).select('id').single();
+        if (teacherError || !teacherRow) throw teacherError || new Error('Gagal membuat data guru.');
+        await admin.from('profiles').update({ teacher_id: teacherRow.id }).eq('id', authData.user.id);
 
         if (createdClassRows.length > 0) {
           const primaryClass = createdClassRows[0];
           await admin.from('teacher_class_assignments').insert({
             school_id: school.id,
-            teacher_id: authData.user.id,
+            teacher_id: teacherRow.id,
             class_id: primaryClass.id,
           });
 
           if (teacherType === 'WALI_KELAS') {
-            await admin.from('classes').update({ wali_kelas_id: authData.user.id }).eq('id', primaryClass.id);
+            await admin.from('classes').update({ wali_kelas_id: teacherRow.id }).eq('id', primaryClass.id);
           }
         }
       } catch (linkErr) {

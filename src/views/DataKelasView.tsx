@@ -78,7 +78,7 @@ export const DataKelasView: React.FC = () => {
       currentUser.classIds.forEach((id) => ids.add(id));
     }
     classes.forEach((c) => {
-      if (c.waliKelasId && currentUser?.id && c.waliKelasId === currentUser.id) {
+      if (c.waliKelasId && currentUser?.teacherId && c.waliKelasId === currentUser.teacherId) {
         ids.add(c.id);
       }
       if (
@@ -171,11 +171,10 @@ export const DataKelasView: React.FC = () => {
 
       // ID yang digunakan: id akun pengguna jika ada (karena FK database ke profiles),
       // atau id pengguna yang cocok, jika belum ada fallback ke matched user atau u.id
-      const candidateId = matchedUser?.id || t.id;
+      const candidateId = t.id;
 
       // Cek apakah guru ini sudah ditugaskan sebagai wali kelas di kelas manapun
       const assignedClass = classes.find((c) => {
-        if (matchedUser && c.waliKelasId === matchedUser.id) return true;
         if (c.waliKelasId === t.id) return true;
         if (c.waliKelasName && c.waliKelasName.trim().toLowerCase() === teacherName.toLowerCase()) return true;
         return false;
@@ -190,27 +189,7 @@ export const DataKelasView: React.FC = () => {
       });
     });
 
-    // 2. Tambahkan akun pengguna khusus jika di Ruang Kerja Sekolah
-    if (!isPersonalWorkspace) {
-      users
-        .filter((u) => u.role === 'WALI KELAS' || u.role === 'GURU MAPEL' || u.role === 'ADMIN')
-        .forEach((u) => {
-          const uName = (u.name || u.username).trim().toLowerCase();
-          const alreadyInList = list.some(
-            (item) => item.id === u.id || item.name.trim().toLowerCase() === uName
-          );
-          if (!alreadyInList) {
-            const assignedClass = classes.find((c) => c.waliKelasId === u.id);
-            list.push({
-              id: u.id,
-              name: u.name || u.username,
-              role: u.role,
-              assignedClassName: assignedClass?.name || null,
-              isAccount: true,
-            });
-          }
-        });
-    }
+    // Akun tanpa master guru tidak menjadi kandidat wali kelas.
 
     return list;
   }, [teachers, users, classes, isPersonalWorkspace]);

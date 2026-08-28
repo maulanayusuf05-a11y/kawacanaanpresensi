@@ -71,7 +71,7 @@ export const DataMapelView: React.FC = () => {
   // Check if a specific subject is taught by current user
   const isMySubject = (sub: Subject) => {
     if (!currentUser) return false;
-    if (sub.teacherId && (sub.teacherId === currentUser.id || (currentTeacher && sub.teacherId === currentTeacher.id))) {
+    if (sub.teacherId && (sub.teacherId === currentUser.teacherId || (currentTeacher && sub.teacherId === currentTeacher.id))) {
       return true;
     }
     if (userScope.assignedSubjectIds.includes(sub.id)) return true;
@@ -247,7 +247,7 @@ export const DataMapelView: React.FC = () => {
     const chosenClasses = classes.filter((c) => selectedClassIds.includes(c.id));
     const targetClassNames = chosenClasses.map((c) => c.name);
 
-    const teacherIdToAssign = chosenTeacher ? chosenTeacher.id : (currentUser?.id || null);
+    const teacherIdToAssign = chosenTeacher ? chosenTeacher.id : (currentUser?.teacherId || null);
 
     if (teacherIdToAssign) {
       const validation = validateTeacherRoleAssignment(

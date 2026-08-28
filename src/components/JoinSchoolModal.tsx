@@ -115,7 +115,7 @@ export const JoinSchoolModal: React.FC<JoinSchoolModalProps> = ({ isOpen, onClos
         role: role,
         teacherName: teacherName.trim(),
         name: teacherName.trim(),
-        nip: teacherNip.trim() || '-',
+        nip: teacherNip.trim() || null,
         subjectName: role === 'GURU MAPEL' ? subjectName : '',
       };
 
