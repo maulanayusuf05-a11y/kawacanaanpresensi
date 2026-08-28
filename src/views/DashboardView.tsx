@@ -333,8 +333,10 @@ export const DashboardView: React.FC = () => {
     },
     {
       id: 'laporan',
-      title: 'Laporan',
-      desc: 'Cetak & Ekspor Dokumen',
+      title: userScope.isKepalaSekolah ? 'Laporan Kepala Sekolah' : 'Laporan',
+      desc: userScope.isKepalaSekolah
+        ? 'Rekap Bulanan, Semester & Tahunan'
+        : 'Cetak & Ekspor Dokumen',
       icon: FileText,
       color: 'text-blue-600',
       bg: 'bg-blue-50 border border-blue-100',

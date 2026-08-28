@@ -14,6 +14,8 @@ interface ReportPrintModalProps {
   selectedWeek?: string;
   month: string;
   year: string;
+  semester?: 'Ganjil' | 'Genap';
+  academicYear?: string;
   attendanceType?: AttendanceType;
   subjectId?: string | null;
   subjectName?: string | null;
@@ -29,6 +31,8 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
   selectedWeek = 'Minggu Ke-1',
   month,
   year,
+  semester = 'Ganjil',
+  academicYear,
   attendanceType = 'DAILY',
   subjectId = null,
   subjectName = null,
@@ -38,6 +42,19 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
   const { schoolProfile, systemConfig, students, attendanceRecords, getEffectiveDaysForMonth, currentUser, classes, teachers, subjects } = useApp();
 
   if (!isOpen) return null;
+
+  const isKepalaSekolahReport = reportType.startsWith('Laporan Kepala Sekolah') || reportType.includes('Tingkat Sekolah');
+
+  const { startYear, endYear } = useMemo(() => {
+    const matches = (academicYear || schoolProfile.tahunPelajaran || '').match(/\d{4}/g);
+    if (matches && matches.length >= 2) {
+      return { startYear: parseInt(matches[0], 10), endYear: parseInt(matches[1], 10) };
+    } else if (matches && matches.length === 1) {
+      const y1 = parseInt(matches[0], 10);
+      return { startYear: y1, endYear: y1 + 1 };
+    }
+    return { startYear: 2026, endYear: 2027 };
+  }, [academicYear, schoolProfile.tahunPelajaran]);
 
   const currentClass = useMemo(() => {
     if (classId) return classes.find((c) => c.id === classId) || null;
@@ -456,6 +473,162 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
     ? (monthlyStudentRows.reduce((acc, s) => acc + s.percentNum, 0) / monthlyStudentRows.length)
     : 0;
 
+  // =========================================================================
+  // DATA COMPUTATION: LAPORAN KEPALA SEKOLAH (SELURUH KELAS / ROMBEL)
+  // =========================================================================
+  const kepsekPeriodInfo = useMemo(() => {
+    if (reportType.includes('Bulanan')) {
+      const mNum = monthNumberMap[month] || 7;
+      const mKey = `${year}-${String(mNum).padStart(2, '0')}`;
+      const effDays = getEffectiveDaysForMonth(Number(year) || 2026, mNum) || 20;
+      return {
+        mode: 'bulanan',
+        periodLabel: `Bulan ${month} ${year}`,
+        monthKeys: [mKey],
+        totalEffectiveDays: effDays,
+        title: 'LAPORAN REKAPITULASI KEHADIRAN SISWA BULANAN TINGKAT SEKOLAH',
+        subTitle: `BULAN: ${month.toUpperCase()} ${year} | TAHUN PELAJARAN: ${academicYear || schoolProfile.tahunPelajaran || '2026/2027'}`,
+      };
+    } else if (reportType.includes('Semester')) {
+      const isSem1 = semester === 'Ganjil' || ['Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'].includes(month);
+      const semYear = isSem1 ? startYear : endYear;
+      const mList = isSem1
+        ? [7, 8, 9, 10, 11, 12].map((m) => ({ mNum: m, key: `${startYear}-${String(m).padStart(2, '0')}` }))
+        : [1, 2, 3, 4, 5, 6].map((m) => ({ mNum: m, key: `${endYear}-${String(m).padStart(2, '0')}` }));
+
+      const effDays = mList.reduce((acc, item) => acc + (getEffectiveDaysForMonth(semYear, item.mNum) || 20), 0);
+      return {
+        mode: 'semester',
+        periodLabel: `Semester ${isSem1 ? '1 (Ganjil)' : '2 (Genap)'} TP ${academicYear || schoolProfile.tahunPelajaran || '2026/2027'}`,
+        monthKeys: mList.map((m) => m.key),
+        totalEffectiveDays: effDays,
+        title: `LAPORAN REKAPITULASI KEHADIRAN SISWA SEMESTER ${isSem1 ? '1 (GANJIL)' : '2 (GENAP)'} TINGKAT SEKOLAH`,
+        subTitle: `SEMESTER: ${isSem1 ? '1 (GANJIL)' : '2 (GENAP)'} | TAHUN PELAJARAN: ${academicYear || schoolProfile.tahunPelajaran || '2026/2027'}`,
+      };
+    } else {
+      // Tahunan (Semester Ganjil + Genap)
+      const sem1List = [7, 8, 9, 10, 11, 12].map((m) => ({ mNum: m, key: `${startYear}-${String(m).padStart(2, '0')}` }));
+      const sem2List = [1, 2, 3, 4, 5, 6].map((m) => ({ mNum: m, key: `${endYear}-${String(m).padStart(2, '0')}` }));
+      const allMonths = [...sem1List, ...sem2List];
+      const effDays = sem1List.reduce((acc, item) => acc + (getEffectiveDaysForMonth(startYear, item.mNum) || 20), 0) +
+                      sem2List.reduce((acc, item) => acc + (getEffectiveDaysForMonth(endYear, item.mNum) || 20), 0);
+      return {
+        mode: 'tahunan',
+        periodLabel: `Tahun Pelajaran Penuh ${academicYear || schoolProfile.tahunPelajaran || '2026/2027'}`,
+        monthKeys: allMonths.map((m) => m.key),
+        totalEffectiveDays: effDays,
+        title: 'LAPORAN REKAPITULASI KEHADIRAN SISWA TAHUNAN TINGKAT SEKOLAH',
+        subTitle: `TAHUN PELAJARAN: ${academicYear || schoolProfile.tahunPelajaran || '2026/2027'} (SEMESTER 1 & 2)`,
+      };
+    }
+  }, [reportType, month, year, semester, academicYear, schoolProfile.tahunPelajaran, startYear, endYear, getEffectiveDaysForMonth, monthNumberMap]);
+
+  // Aggregate class rows for Kepala Sekolah
+  const kepsekClassRows = useMemo(() => {
+    const sortedClasses = [...classes].sort((a, b) => (a.grade || 1) - (b.grade || 1) || a.name.localeCompare(b.name));
+
+    return sortedClasses.map((cls) => {
+      const classStudents = students.filter((s) => s.classId === cls.id);
+      const studentIds = new Set(classStudents.map((s) => s.id));
+      const maleCount = classStudents.filter((s) => s.gender === 'L').length;
+      const femaleCount = classStudents.filter((s) => s.gender === 'P').length;
+      const totalStudents = classStudents.length;
+
+      // Filter daily attendance records for this class
+      const clsRecords = attendanceRecords.filter((r) => {
+        if (r.type === 'SUBJECT') return false;
+        const isClassMatch = r.classId === cls.id || studentIds.has(r.studentId);
+        if (!isClassMatch) return false;
+        return kepsekPeriodInfo.monthKeys.some((mKey) => r.date.startsWith(mKey));
+      });
+
+      const hadir = clsRecords.filter((r) => r.status === 'Hadir').length;
+      const sakit = clsRecords.filter((r) => r.status === 'Sakit').length;
+      const izin = clsRecords.filter((r) => r.status === 'Izin').length;
+      const alfa = clsRecords.filter((r) => r.status === 'Alfa').length;
+      const totalRecorded = hadir + sakit + izin + alfa;
+
+      const denom = (totalStudents * kepsekPeriodInfo.totalEffectiveDays) || totalRecorded || 1;
+      const pctHadir = denom > 0 ? (hadir / denom) * 100 : 0;
+      const pctSakit = denom > 0 ? (sakit / denom) * 100 : 0;
+      const pctIzin = denom > 0 ? (izin / denom) * 100 : 0;
+      const pctAlfa = denom > 0 ? (alfa / denom) * 100 : 0;
+
+      let predicate = 'Sangat Baik';
+      if (pctHadir < 75) predicate = 'Perlu Pembinaan';
+      else if (pctHadir < 85) predicate = 'Cukup';
+      else if (pctHadir < 95) predicate = 'Baik';
+
+      let waliName = cls.waliKelasName || '';
+      if (!waliName && cls.waliKelasId) {
+        const t = teachers.find((tc) => tc.id === cls.waliKelasId);
+        if (t) waliName = t.nama;
+      }
+
+      return {
+        classId: cls.id,
+        className: formatClassDisplay(cls.name),
+        grade: cls.grade,
+        fase: getFaseByClassName(cls.name, cls.grade),
+        waliKelasName: waliName || '-',
+        maleCount,
+        femaleCount,
+        totalStudents,
+        hadir,
+        sakit,
+        izin,
+        alfa,
+        totalRecorded,
+        pctHadir: formatPct(pctHadir),
+        pctSakit: formatPct(pctSakit),
+        pctIzin: formatPct(pctIzin),
+        pctAlfa: formatPct(pctAlfa),
+        pctHadirNum: pctHadir,
+        predicate,
+      };
+    });
+  }, [classes, students, attendanceRecords, kepsekPeriodInfo, teachers]);
+
+  // Aggregate School Totals for Kepala Sekolah
+  const kepsekSchoolTotals = useMemo(() => {
+    const totalMale = kepsekClassRows.reduce((a, c) => a + c.maleCount, 0);
+    const totalFemale = kepsekClassRows.reduce((a, c) => a + c.femaleCount, 0);
+    const totalStudents = kepsekClassRows.reduce((a, c) => a + c.totalStudents, 0);
+    const totalHadir = kepsekClassRows.reduce((a, c) => a + c.hadir, 0);
+    const totalSakit = kepsekClassRows.reduce((a, c) => a + c.sakit, 0);
+    const totalIzin = kepsekClassRows.reduce((a, c) => a + c.izin, 0);
+    const totalAlfa = kepsekClassRows.reduce((a, c) => a + c.alfa, 0);
+    const grandRecorded = totalHadir + totalSakit + totalIzin + totalAlfa;
+
+    const grandDenom = (totalStudents * kepsekPeriodInfo.totalEffectiveDays) || grandRecorded || 1;
+    const pctHadir = grandDenom > 0 ? (totalHadir / grandDenom) * 100 : 0;
+    const pctSakit = grandDenom > 0 ? (totalSakit / grandDenom) * 100 : 0;
+    const pctIzin = grandDenom > 0 ? (totalIzin / grandDenom) * 100 : 0;
+    const pctAlfa = grandDenom > 0 ? (totalAlfa / grandDenom) * 100 : 0;
+
+    let predicate = 'Sangat Baik';
+    if (pctHadir < 75) predicate = 'Perlu Pembinaan';
+    else if (pctHadir < 85) predicate = 'Cukup';
+    else if (pctHadir < 95) predicate = 'Baik';
+
+    return {
+      totalMale,
+      totalFemale,
+      totalStudents,
+      totalHadir,
+      totalSakit,
+      totalIzin,
+      totalAlfa,
+      grandRecorded,
+      pctHadir: formatPct(pctHadir),
+      pctSakit: formatPct(pctSakit),
+      pctIzin: formatPct(pctIzin),
+      pctAlfa: formatPct(pctAlfa),
+      pctHadirNum: pctHadir,
+      predicate,
+    };
+  }, [kepsekClassRows, kepsekPeriodInfo.totalEffectiveDays]);
+
   const handlePrint = () => {
     const printContent = document.getElementById('printable-report');
     if (!printContent) {
@@ -655,7 +828,11 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
                       {schoolProfile.alamat || 'Jl. Pendidikan No. 123, Kel. Merdeka, Kec. Nusantara, Kota Jakarta'}
                     </p>
                     <p className="text-[10px] sm:text-[11px] text-slate-600 font-semibold">
-                      NPSN: {schoolProfile.npsn || '20104501'} | KELAS: {activeClassClean} | FASE: {activeFase.toUpperCase()}
+                      {isKepalaSekolahReport ? (
+                        <>NPSN: {schoolProfile.npsn || '20104501'} | TAHUN PELAJARAN: {academicYear || schoolProfile.tahunPelajaran} | KEPALA SEKOLAH: {schoolProfile.namaKepalaSekolah || '-'}</>
+                      ) : (
+                        <>NPSN: {schoolProfile.npsn || '20104501'} | KELAS: {activeClassClean} | FASE: {activeFase.toUpperCase()}</>
+                      )}
                     </p>
                   </div>
                   <div className="w-16 hidden sm:block" />
@@ -667,22 +844,26 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
           {/* Report Document Title based on Report Type */}
           <div className="text-center mb-5 sm:mb-6 font-sans">
             <h3 className="text-sm sm:text-lg font-extrabold uppercase underline tracking-wide">
-              {reportType === 'Laporan Harian' && 'LAPORAN KEHADIRAN HARIAN SISWA'}
-              {reportType === 'Laporan Mingguan' && 'LAPORAN KEHADIRAN MINGGUAN SISWA'}
-              {reportType === 'Laporan Bulanan' && 'LAPORAN REKAPITULASI KEHADIRAN BULANAN'}
-              {reportType === 'Laporan Semester' && 'LAPORAN REKAPITULASI KEHADIRAN SEMESTER'}
+              {isKepalaSekolahReport
+                ? kepsekPeriodInfo.title
+                : reportType === 'Laporan Harian'
+                ? 'LAPORAN KEHADIRAN HARIAN SISWA'
+                : reportType === 'Laporan Mingguan'
+                ? 'LAPORAN KEHADIRAN MINGGUAN SISWA'
+                : reportType === 'Laporan Bulanan'
+                ? 'LAPORAN REKAPITULASI KEHADIRAN BULANAN'
+                : 'LAPORAN REKAPITULASI KEHADIRAN SEMESTER'}
             </h3>
             <p className="text-[11px] sm:text-xs text-slate-600 font-bold mt-1 uppercase">
-              {reportType === 'Laporan Harian' && (
+              {isKepalaSekolahReport ? (
+                <>{kepsekPeriodInfo.subTitle}</>
+              ) : reportType === 'Laporan Harian' ? (
                 <>HARI/TANGGAL: {getDayNameIndo(selectedDate).toUpperCase()}, {formatReportDateIndo(selectedDate).toUpperCase()} | SEMESTER: {schoolProfile.semester.toUpperCase()} (TP: {schoolProfile.tahunPelajaran})</>
-              )}
-              {reportType === 'Laporan Mingguan' && (
+              ) : reportType === 'Laporan Mingguan' ? (
                 <>PERIODE: {selectedWeek.toUpperCase()} ({month.toUpperCase()} {year}) | KELAS: {activeClassClean} (TP: {schoolProfile.tahunPelajaran})</>
-              )}
-              {reportType === 'Laporan Bulanan' && (
+              ) : reportType === 'Laporan Bulanan' ? (
                 <>BULAN: {month.toUpperCase()} {year} | SEMESTER: {schoolProfile.semester.toUpperCase()} (TP: {schoolProfile.tahunPelajaran})</>
-              )}
-              {reportType === 'Laporan Semester' && (
+              ) : (
                 <>SEMESTER: {month === 'Januari' ? 'GENAP' : 'GANJIL'} | TAHUN PELAJARAN: {schoolProfile.tahunPelajaran}</>
               )}
             </p>
@@ -692,15 +873,31 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 text-xs font-sans mb-4 border border-slate-200 p-3 rounded-lg bg-slate-50/50">
             <div>
               <p><span className="font-semibold text-slate-600">Satuan Pendidikan:</span> {schoolProfile.namaSekolah}</p>
-              <p><span className="font-semibold text-slate-600">Kelas / Fase:</span> {activeClassName} / {activeFase}</p>
-              {attendanceType === 'SUBJECT' ? (
-                <p><span className="font-semibold text-slate-600">Mata Pelajaran:</span> <strong className="text-blue-900">{subjectName || 'Mata Pelajaran Khusus'}</strong></p>
+              {isKepalaSekolahReport ? (
+                <>
+                  <p><span className="font-semibold text-slate-600">NPSN:</span> {schoolProfile.npsn || '20104501'}</p>
+                  <p><span className="font-semibold text-slate-600">Kepala Sekolah:</span> {schoolProfile.namaKepalaSekolah || '-'}</p>
+                </>
               ) : (
-                <p><span className="font-semibold text-slate-600">Wali Kelas:</span> {currentClass?.waliKelasName || schoolProfile.namaWaliKelas}</p>
+                <>
+                  <p><span className="font-semibold text-slate-600">Kelas / Fase:</span> {activeClassName} / {activeFase}</p>
+                  {attendanceType === 'SUBJECT' ? (
+                    <p><span className="font-semibold text-slate-600">Mata Pelajaran:</span> <strong className="text-blue-900">{subjectName || 'Mata Pelajaran Khusus'}</strong></p>
+                  ) : (
+                    <p><span className="font-semibold text-slate-600">Wali Kelas:</span> {currentClass?.waliKelasName || schoolProfile.namaWaliKelas}</p>
+                  )}
+                </>
               )}
             </div>
             <div>
-              {reportType === 'Laporan Harian' ? (
+              {isKepalaSekolahReport ? (
+                <>
+                  <p><span className="font-semibold text-slate-600">Periode Rekap:</span> {kepsekPeriodInfo.periodLabel}</p>
+                  <p><span className="font-semibold text-slate-600">Total Rombel / Kelas:</span> {kepsekClassRows.length} Rombel</p>
+                  <p><span className="font-semibold text-slate-600">Total Siswa Sekolah:</span> {kepsekSchoolTotals.totalStudents} Siswa (L: {kepsekSchoolTotals.totalMale}, P: {kepsekSchoolTotals.totalFemale})</p>
+                  <p><span className="font-semibold text-slate-600">Hari Efektif Periode:</span> {kepsekPeriodInfo.totalEffectiveDays} Hari</p>
+                </>
+              ) : reportType === 'Laporan Harian' ? (
                 <>
                   <p><span className="font-semibold text-slate-600">Tanggal Presensi:</span> {formatReportDateIndo(selectedDate)}</p>
                   <p><span className="font-semibold text-slate-600">Total Siswa:</span> {targetStudents.length} Siswa</p>
@@ -725,6 +922,92 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
           {/* ========================================================================= */}
           {/* TABEL SESUAI JENIS LAPORAN */}
           {/* ========================================================================= */}
+
+          {/* TYPE: LAPORAN KEPALA SEKOLAH (SELURUH ROMBEL KELAS) */}
+          {isKepalaSekolahReport && (
+            <div className="overflow-x-auto mb-6 sm:mb-8">
+              <table className="w-full text-left border-collapse border border-slate-400 text-xs font-sans min-w-[700px]">
+                <thead>
+                  <tr className="bg-slate-100 border-b border-slate-400 text-center font-bold">
+                    <th className="border border-slate-400 p-2 w-8" rowSpan={2}>NO</th>
+                    <th className="border border-slate-400 p-2 text-left w-36" rowSpan={2}>ROMBEL / KELAS</th>
+                    <th className="border border-slate-400 p-2 text-left" rowSpan={2}>WALI KELAS</th>
+                    <th className="border border-slate-400 p-1 text-center" colSpan={3}>SISWA</th>
+                    <th className="border border-slate-400 p-1 text-center" colSpan={4}>REKAPITULASI (HARI)</th>
+                    <th className="border border-slate-400 p-1 text-center" colSpan={4}>PERSENTASE (%)</th>
+                    <th className="border border-slate-400 p-2 text-center w-24" rowSpan={2}>PREDIKAT</th>
+                  </tr>
+                  <tr className="bg-slate-100 border-b border-slate-400 text-center text-[10px] font-bold">
+                    <th className="border border-slate-400 p-1 w-8">L</th>
+                    <th className="border border-slate-400 p-1 w-8">P</th>
+                    <th className="border border-slate-400 p-1 w-9">TOT</th>
+                    <th className="border border-slate-400 p-1 w-9 bg-emerald-50 text-emerald-900">H</th>
+                    <th className="border border-slate-400 p-1 w-9 bg-sky-50 text-sky-900">S</th>
+                    <th className="border border-slate-400 p-1 w-9 bg-amber-50 text-amber-900">I</th>
+                    <th className="border border-slate-400 p-1 w-9 bg-rose-50 text-rose-900">A</th>
+                    <th className="border border-slate-400 p-1 w-11 bg-emerald-50 text-emerald-900">%H</th>
+                    <th className="border border-slate-400 p-1 w-11 bg-sky-50 text-sky-900">%S</th>
+                    <th className="border border-slate-400 p-1 w-11 bg-amber-50 text-amber-900">%I</th>
+                    <th className="border border-slate-400 p-1 w-11 bg-rose-50 text-rose-900">%A</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {kepsekClassRows.map((cls, idx) => (
+                    <tr key={cls.classId} className="border-b border-slate-300 hover:bg-slate-50/60">
+                      <td className="border border-slate-300 p-1.5 text-center font-semibold">{idx + 1}</td>
+                      <td className="border border-slate-300 p-1.5 font-bold text-slate-900">
+                        {cls.className}
+                        <span className="block text-[9px] text-slate-500 font-normal">{cls.fase}</span>
+                      </td>
+                      <td className="border border-slate-300 p-1.5 text-slate-700 font-medium">{cls.waliKelasName}</td>
+                      <td className="border border-slate-300 p-1 text-center text-slate-600">{cls.maleCount}</td>
+                      <td className="border border-slate-300 p-1 text-center text-slate-600">{cls.femaleCount}</td>
+                      <td className="border border-slate-300 p-1 text-center font-bold text-slate-900 bg-slate-50">{cls.totalStudents}</td>
+                      <td className="border border-slate-300 p-1 text-center font-semibold text-emerald-800 bg-emerald-50/40">{cls.hadir}</td>
+                      <td className="border border-slate-300 p-1 text-center text-sky-800 bg-sky-50/40">{cls.sakit}</td>
+                      <td className="border border-slate-300 p-1 text-center text-amber-800 bg-amber-50/40">{cls.izin}</td>
+                      <td className="border border-slate-300 p-1 text-center text-rose-800 bg-rose-50/40">{cls.alfa}</td>
+                      <td className="border border-slate-300 p-1 text-center font-bold text-emerald-700 bg-emerald-50/60">{cls.pctHadir}%</td>
+                      <td className="border border-slate-300 p-1 text-center text-sky-700">{cls.pctSakit}%</td>
+                      <td className="border border-slate-300 p-1 text-center text-amber-700">{cls.pctIzin}%</td>
+                      <td className="border border-slate-300 p-1 text-center text-rose-700">{cls.pctAlfa}%</td>
+                      <td className="border border-slate-300 p-1 text-center text-[10px] font-bold">
+                        <span className={`px-1.5 py-0.5 rounded ${
+                          cls.pctHadirNum >= 95 ? 'bg-emerald-100 text-emerald-800' :
+                          cls.pctHadirNum >= 85 ? 'bg-blue-100 text-blue-800' :
+                          cls.pctHadirNum >= 75 ? 'bg-amber-100 text-amber-800' :
+                          'bg-rose-100 text-rose-800'
+                        }`}>
+                          {cls.predicate}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-slate-200 border-t-2 border-slate-500 font-bold text-slate-900 text-center">
+                    <td colSpan={3} className="border border-slate-400 p-2 text-left uppercase font-black">
+                      TOTAL KESELURUHAN SEKOLAH
+                    </td>
+                    <td className="border border-slate-400 p-1.5">{kepsekSchoolTotals.totalMale}</td>
+                    <td className="border border-slate-400 p-1.5">{kepsekSchoolTotals.totalFemale}</td>
+                    <td className="border border-slate-400 p-1.5 bg-slate-300 font-black">{kepsekSchoolTotals.totalStudents}</td>
+                    <td className="border border-slate-400 p-1.5 text-emerald-900 bg-emerald-100">{kepsekSchoolTotals.totalHadir}</td>
+                    <td className="border border-slate-400 p-1.5 text-sky-900 bg-sky-100">{kepsekSchoolTotals.totalSakit}</td>
+                    <td className="border border-slate-400 p-1.5 text-amber-900 bg-amber-100">{kepsekSchoolTotals.totalIzin}</td>
+                    <td className="border border-slate-400 p-1.5 text-rose-900 bg-rose-100">{kepsekSchoolTotals.totalAlfa}</td>
+                    <td className="border border-slate-400 p-1.5 text-emerald-950 bg-emerald-200 font-black">{kepsekSchoolTotals.pctHadir}%</td>
+                    <td className="border border-slate-400 p-1.5 text-sky-950 bg-sky-100">{kepsekSchoolTotals.pctSakit}%</td>
+                    <td className="border border-slate-400 p-1.5 text-amber-950 bg-amber-100">{kepsekSchoolTotals.pctIzin}%</td>
+                    <td className="border border-slate-400 p-1.5 text-rose-950 bg-rose-100">{kepsekSchoolTotals.pctAlfa}%</td>
+                    <td className="border border-slate-400 p-1.5 text-slate-900 font-black text-[10px] bg-slate-300">
+                      {kepsekSchoolTotals.predicate}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
 
           {/* TYPE 1: LAPORAN HARIAN */}
           {reportType === 'Laporan Harian' && (
@@ -1014,10 +1297,15 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
             <h4 className="font-bold text-slate-900 uppercase text-[11px] sm:text-xs mb-2 border-b border-slate-300 pb-1 flex items-center justify-between">
               <span>KESIMPULAN & RINGKASAN REKAPITULASI KEHADIRAN</span>
               <span className="text-[10px] text-slate-500 font-normal">
-                {reportType === 'Laporan Harian' && `Tanggal: ${formatReportDateIndo(selectedDate)}`}
-                {reportType === 'Laporan Mingguan' && `${selectedWeek} • ${weekWorkingDays.length} Hari`}
-                {reportType === 'Laporan Bulanan' && `Bulan: ${month} ${year} • ${effectiveDays} Hari Efektif`}
-                {reportType === 'Laporan Semester' && `Semester: ${schoolProfile.semester}`}
+                {isKepalaSekolahReport
+                  ? `${kepsekPeriodInfo.periodLabel} • ${kepsekClassRows.length} Rombel • ${kepsekPeriodInfo.totalEffectiveDays} Hari Efektif`
+                  : reportType === 'Laporan Harian'
+                  ? `Tanggal: ${formatReportDateIndo(selectedDate)}`
+                  : reportType === 'Laporan Mingguan'
+                  ? `${selectedWeek} • ${weekWorkingDays.length} Hari`
+                  : reportType === 'Laporan Bulanan'
+                  ? `Bulan: ${month} ${year} • ${effectiveDays} Hari Efektif`
+                  : `Semester: ${schoolProfile.semester}`}
               </span>
             </h4>
 
@@ -1026,32 +1314,36 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
               <div className="p-2.5 bg-emerald-50/90 border border-emerald-300 rounded-lg text-emerald-950">
                 <span className="text-[10px] block font-bold uppercase text-emerald-700">Hadir (H)</span>
                 <span className="text-lg sm:text-xl font-black text-emerald-800 tracking-tight">
-                  {formatPct(
-                    reportType === 'Laporan Harian'
-                      ? dailyPctHadir
-                      : reportType === 'Laporan Mingguan'
-                      ? weeklyPctHadir
-                      : reportType === 'Laporan Semester'
-                      ? semesterPctHadir
-                      : monthlyPctHadir
-                  )}%
+                  {isKepalaSekolahReport
+                    ? kepsekSchoolTotals.pctHadir
+                    : formatPct(
+                        reportType === 'Laporan Harian'
+                          ? dailyPctHadir
+                          : reportType === 'Laporan Mingguan'
+                          ? weeklyPctHadir
+                          : reportType === 'Laporan Semester'
+                          ? semesterPctHadir
+                          : monthlyPctHadir
+                      )}%
                 </span>
                 <span className="block text-[9px] font-semibold text-emerald-600 uppercase">
-                  Persentase Kehadiran
+                  {isKepalaSekolahReport ? 'Rata-rata Sekolah' : 'Persentase Kehadiran'}
                 </span>
               </div>
               <div className="p-2.5 bg-sky-50/90 border border-sky-300 rounded-lg text-sky-950">
                 <span className="text-[10px] block font-bold uppercase text-sky-700">Sakit (S)</span>
                 <span className="text-lg sm:text-xl font-black text-sky-800 tracking-tight">
-                  {formatPct(
-                    reportType === 'Laporan Harian'
-                      ? dailyPctSakit
-                      : reportType === 'Laporan Mingguan'
-                      ? weeklyPctSakit
-                      : reportType === 'Laporan Semester'
-                      ? semesterPctSakit
-                      : monthlyPctSakit
-                  )}%
+                  {isKepalaSekolahReport
+                    ? kepsekSchoolTotals.pctSakit
+                    : formatPct(
+                        reportType === 'Laporan Harian'
+                          ? dailyPctSakit
+                          : reportType === 'Laporan Mingguan'
+                          ? weeklyPctSakit
+                          : reportType === 'Laporan Semester'
+                          ? semesterPctSakit
+                          : monthlyPctSakit
+                      )}%
                 </span>
                 <span className="block text-[9px] font-semibold text-sky-600 uppercase">
                   Persentase Sakit
@@ -1060,15 +1352,17 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
               <div className="p-2.5 bg-amber-50/90 border border-amber-300 rounded-lg text-amber-950">
                 <span className="text-[10px] block font-bold uppercase text-amber-700">Izin (I)</span>
                 <span className="text-lg sm:text-xl font-black text-amber-800 tracking-tight">
-                  {formatPct(
-                    reportType === 'Laporan Harian'
-                      ? dailyPctIzin
-                      : reportType === 'Laporan Mingguan'
-                      ? weeklyPctIzin
-                      : reportType === 'Laporan Semester'
-                      ? semesterPctIzin
-                      : monthlyPctIzin
-                  )}%
+                  {isKepalaSekolahReport
+                    ? kepsekSchoolTotals.pctIzin
+                    : formatPct(
+                        reportType === 'Laporan Harian'
+                          ? dailyPctIzin
+                          : reportType === 'Laporan Mingguan'
+                          ? weeklyPctIzin
+                          : reportType === 'Laporan Semester'
+                          ? semesterPctIzin
+                          : monthlyPctIzin
+                      )}%
                 </span>
                 <span className="block text-[9px] font-semibold text-amber-600 uppercase">
                   Persentase Izin
@@ -1077,15 +1371,17 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
               <div className="p-2.5 bg-rose-50/90 border border-rose-300 rounded-lg text-rose-950">
                 <span className="text-[10px] block font-bold uppercase text-rose-700">Alfa (A)</span>
                 <span className="text-lg sm:text-xl font-black text-rose-800 tracking-tight">
-                  {formatPct(
-                    reportType === 'Laporan Harian'
-                      ? dailyPctAlfa
-                      : reportType === 'Laporan Mingguan'
-                      ? weeklyPctAlfa
-                      : reportType === 'Laporan Semester'
-                      ? semesterPctAlfa
-                      : monthlyPctAlfa
-                  )}%
+                  {isKepalaSekolahReport
+                    ? kepsekSchoolTotals.pctAlfa
+                    : formatPct(
+                        reportType === 'Laporan Harian'
+                          ? dailyPctAlfa
+                          : reportType === 'Laporan Mingguan'
+                          ? weeklyPctAlfa
+                          : reportType === 'Laporan Semester'
+                          ? semesterPctAlfa
+                          : monthlyPctAlfa
+                      )}%
                 </span>
                 <span className="block text-[9px] font-semibold text-rose-600 uppercase">
                   Persentase Tanpa Keterangan
@@ -1096,7 +1392,15 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
             <div className="text-[11px] text-slate-700 pt-1.5 border-t border-slate-200 leading-relaxed">
               <p>
                 <strong>Catatan Evaluasi:</strong>{' '}
-                {reportType === 'Laporan Harian' ? (
+                {isKepalaSekolahReport ? (
+                  <>
+                    Rata-rata persentase kehadiran siswa tingkat sekolah ({schoolProfile.namaSekolah || 'Sekolah'}) pada periode {kepsekPeriodInfo.periodLabel} tercatat sebesar{' '}
+                    <span className="font-extrabold text-blue-900 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                      {kepsekSchoolTotals.pctHadir}% ({kepsekSchoolTotals.predicate})
+                    </span>{' '}
+                    dengan total ketidakhadiran: Sakit {kepsekSchoolTotals.totalSakit} hari ({kepsekSchoolTotals.pctSakit}%), Izin {kepsekSchoolTotals.totalIzin} hari ({kepsekSchoolTotals.pctIzin}%), dan Alfa {kepsekSchoolTotals.totalAlfa} hari ({kepsekSchoolTotals.pctAlfa}%). Dokumen ini disusun sebagai laporan manajerial dan pertanggungjawaban resmi kepada Pengawas Sekolah Pembina.
+                  </>
+                ) : reportType === 'Laporan Harian' ? (
                   <>
                     Tingkat kehadiran siswa {activeClassName} pada tanggal {formatReportDateIndo(selectedDate)} tercatat sebesar{' '}
                     <span className="font-extrabold text-blue-900 bg-blue-50 px-1 py-0.5 rounded border border-blue-200">
@@ -1130,33 +1434,53 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
           </div>
 
           {/* Official Signature Block */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-8 text-xs font-sans pt-4 break-inside-avoid">
-            {/* Left: Kepala Sekolah */}
-            <div className="text-center">
-              <p>Mengetahui,</p>
-              <p className="font-bold">Kepala {schoolProfile.namaSekolah || 'Sekolah'}</p>
-              <div className="h-14 sm:h-20" />
-              <p className="font-bold underline text-sm">{schoolProfile.namaKepalaSekolah}</p>
-              <p className="text-slate-600 font-mono">NIP. {schoolProfile.nipKepalaSekolah}</p>
-            </div>
+          {isKepalaSekolahReport ? (
+            /* Signature Block: Pengawas Pembina on Left & Kepala Sekolah on Right */
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-8 text-xs font-sans pt-4 break-inside-avoid">
+              <div className="text-center">
+                <p>Mengesahkan,</p>
+                <p className="font-bold">Pengawas Pembina Sekolah Dasar</p>
+                <div className="h-16 sm:h-20" />
+                <p className="font-bold underline text-sm">( .................................................... )</p>
+                <p className="text-slate-600 font-mono">NIP. ...............................................</p>
+              </div>
 
-            {/* Right: Wali Kelas / Guru Mapel with system place & date */}
-            <div className="text-center">
-              <p>{systemConfig.reportPlace || 'Jakarta'}, {formatReportDateIndo(systemConfig.reportDate || '2026-06-27')}</p>
-              <p className="font-bold">
-                {attendanceType === 'SUBJECT'
-                  ? formatSubjectTeacherTitle(subjectName)
-                  : formatHomeroomTeacherTitle(activeClassName)}
-              </p>
-              <div className="h-14 sm:h-20" />
-              <p className="font-bold underline text-sm">
-                {resolvedTeacherInfo.name}
-              </p>
-              <p className="text-slate-600 font-mono">
-                {resolvedTeacherInfo.nip && resolvedTeacherInfo.nip !== '-' ? `NIP. ${resolvedTeacherInfo.nip}` : 'NIP. -'}
-              </p>
+              <div className="text-center">
+                <p>{systemConfig.reportPlace || 'Jakarta'}, {formatReportDateIndo(systemConfig.reportDate || '2026-06-27')}</p>
+                <p className="font-bold">Kepala {schoolProfile.namaSekolah || 'Sekolah Dasar'}</p>
+                <div className="h-16 sm:h-20" />
+                <p className="font-bold underline text-sm">{schoolProfile.namaKepalaSekolah || 'Nama Kepala Sekolah'}</p>
+                <p className="text-slate-600 font-mono">NIP. {schoolProfile.nipKepalaSekolah || '-'}</p>
+              </div>
             </div>
-          </div>
+          ) : (
+            /* Standard Signature Block: Kepala Sekolah on Left & Guru/Wali on Right */
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-8 text-xs font-sans pt-4 break-inside-avoid">
+              <div className="text-center">
+                <p>Mengetahui,</p>
+                <p className="font-bold">Kepala {schoolProfile.namaSekolah || 'Sekolah'}</p>
+                <div className="h-14 sm:h-20" />
+                <p className="font-bold underline text-sm">{schoolProfile.namaKepalaSekolah}</p>
+                <p className="text-slate-600 font-mono">NIP. {schoolProfile.nipKepalaSekolah}</p>
+              </div>
+
+              <div className="text-center">
+                <p>{systemConfig.reportPlace || 'Jakarta'}, {formatReportDateIndo(systemConfig.reportDate || '2026-06-27')}</p>
+                <p className="font-bold">
+                  {attendanceType === 'SUBJECT'
+                    ? formatSubjectTeacherTitle(subjectName)
+                    : formatHomeroomTeacherTitle(activeClassName)}
+                </p>
+                <div className="h-14 sm:h-20" />
+                <p className="font-bold underline text-sm">
+                  {resolvedTeacherInfo.name}
+                </p>
+                <p className="text-slate-600 font-mono">
+                  {resolvedTeacherInfo.nip && resolvedTeacherInfo.nip !== '-' ? `NIP. ${resolvedTeacherInfo.nip}` : 'NIP. -'}
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
