@@ -169,7 +169,7 @@ export const DataGuruView: React.FC = () => {
     
     // Cari apakah guru ini ditugaskan di salah satu Data Kelas
     const matchedClass = classes.find(
-      (c) => c.waliKelasId === t.id || (c.waliKelasName && c.waliKelasName.trim().toLowerCase() === t.nama.trim().toLowerCase())
+      (c) => c.waliKelasTeacherId === t.id || (c.waliKelasName && c.waliKelasName.trim().toLowerCase() === t.nama.trim().toLowerCase())
     );
 
     const isWali = (t.jabatan || '').toLowerCase().includes('wali') || !!matchedClass;

@@ -367,7 +367,7 @@ export function validateTeacherRoleAssignment(
         existingClasses: Array<{
           id: string;
           name: string;
-          waliKelasId?: string | null;
+          waliKelasTeacherId?: string | null;
           waliKelasName?: string | null;
           academicYear?: string | null;
         }>;
@@ -465,7 +465,7 @@ export function validateTeacherRoleAssignment(
   if (roleClean === 'GURU MAPEL') {
     const homeroomClass = existingClasses.find((cls) => {
       if (academicYear && cls.academicYear && cls.academicYear !== academicYear) return false;
-      if (tId && cls.waliKelasId && cls.waliKelasId === tId) return true;
+      if (tId && cls.waliKelasTeacherId && cls.waliKelasTeacherId === tId) return true;
       if (tName && cls.waliKelasName && cls.waliKelasName.trim().toLowerCase() === tName) return true;
       return false;
     });

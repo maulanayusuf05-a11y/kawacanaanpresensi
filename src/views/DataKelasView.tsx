@@ -78,7 +78,7 @@ export const DataKelasView: React.FC = () => {
       currentUser.classIds.forEach((id) => ids.add(id));
     }
     classes.forEach((c) => {
-      if (c.waliKelasId && currentUser?.teacherId && c.waliKelasId === currentUser.teacherId) {
+      if (c.waliKelasTeacherId && currentUser?.teacherId && c.waliKelasTeacherId === currentUser.teacherId) {
         ids.add(c.id);
       }
       if (
@@ -126,7 +126,7 @@ export const DataKelasView: React.FC = () => {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [grade, setGrade] = useState(1);
-  const [waliKelasId, setWaliKelasId] = useState('');
+  const [waliKelasTeacherId, setWaliKelasTeacherId] = useState('');
 
   // Quick Wali Kelas Assignment Modal
   const [assignWaliModal, setAssignWaliModal] = useState<SchoolClass | null>(null);
@@ -175,7 +175,7 @@ export const DataKelasView: React.FC = () => {
 
       // Cek apakah guru ini sudah ditugaskan sebagai wali kelas di kelas manapun
       const assignedClass = classes.find((c) => {
-        if (c.waliKelasId === t.id) return true;
+        if (c.waliKelasTeacherId === t.id) return true;
         if (c.waliKelasName && c.waliKelasName.trim().toLowerCase() === teacherName.toLowerCase()) return true;
         return false;
       });
@@ -241,7 +241,7 @@ export const DataKelasView: React.FC = () => {
     setName('');
     setGrade(1);
     // Jika Wali Kelas, otomatis arahkan akun mereka sendiri
-    setWaliKelasId(isWaliKelas && currentUser?.id ? currentUser.id : '');
+    setWaliKelasTeacherId(isWaliKelas && currentUser?.teacherId ? currentUser.teacherId : '');
     setOpen(true);
   };
 
@@ -249,7 +249,7 @@ export const DataKelasView: React.FC = () => {
     setEditing(c);
     setName(c.name);
     setGrade(c.grade);
-    setWaliKelasId(c.waliKelasId || '');
+    setWaliKelasTeacherId(c.waliKelasTeacherId || '');
     setOpen(true);
   };
 
@@ -262,9 +262,9 @@ export const DataKelasView: React.FC = () => {
       return;
     }
 
-    if (waliKelasId) {
+    if (waliKelasTeacherId) {
       const validation = validateTeacherRoleAssignment(
-        waliKelasId,
+        waliKelasTeacherId,
         'wali_kelas',
         classes.filter((c) => (editing ? c.id !== editing.id : true)),
         subjects,
@@ -281,7 +281,7 @@ export const DataKelasView: React.FC = () => {
     const autoGrade = matchNumber ? parseInt(matchNumber[0], 10) : 1;
 
     // Cari nama wali kelas dari waliCandidates
-    const selectedCandidate = waliCandidates.find((w) => w.id === waliKelasId);
+    const selectedCandidate = waliCandidates.find((w) => w.id === waliKelasTeacherId);
     const resolvedWaliName = selectedCandidate ? selectedCandidate.name : null;
 
     if (editing) {
@@ -289,7 +289,7 @@ export const DataKelasView: React.FC = () => {
         name: name.trim(),
         grade: grade || autoGrade,
         academicYear: schoolProfile?.tahunPelajaran || editing.academicYear,
-        waliKelasId: waliKelasId || null,
+        waliKelasTeacherId: waliKelasTeacherId || null,
         waliKelasName: resolvedWaliName || editing.waliKelasName || null,
       });
       showToast('Data rombongan belajar berhasil diperbarui', 'success');
@@ -298,7 +298,7 @@ export const DataKelasView: React.FC = () => {
         name: name.trim(),
         grade: grade || autoGrade,
         academicYear: schoolProfile?.tahunPelajaran || '2025/2026',
-        waliKelasId: waliKelasId || null,
+        waliKelasTeacherId: waliKelasTeacherId || null,
         waliKelasName: resolvedWaliName || null,
       });
       showToast('Rombongan belajar baru berhasil ditambahkan', 'success');
@@ -308,7 +308,7 @@ export const DataKelasView: React.FC = () => {
 
   const openQuickWaliModal = (c: SchoolClass) => {
     setAssignWaliModal(c);
-    setQuickWaliId(c.waliKelasId || '');
+    setQuickWaliId(c.waliKelasTeacherId || '');
   };
 
   const saveQuickWali = async (e: React.FormEvent) => {
@@ -334,7 +334,7 @@ export const DataKelasView: React.FC = () => {
 
     await updateClass(assignWaliModal.id, {
       ...assignWaliModal,
-      waliKelasId: quickWaliId || null,
+      waliKelasTeacherId: quickWaliId || null,
       waliKelasName: resolvedWaliName,
     });
     showToast(`Wali kelas untuk ${assignWaliModal.name} berhasil diperbarui`, 'success');
@@ -624,15 +624,10 @@ export const DataKelasView: React.FC = () => {
                   const countP = classStudentList.filter((s) => s.gender === 'P' || s.gender === 'Perempuan').length;
                   const totalCount = classStudentList.length;
                   const matchedTeacher = teachers.find(
-                    (t) => t.id === c.waliKelasId || (c.waliKelasName && t.nama.trim().toLowerCase() === c.waliKelasName.trim().toLowerCase())
-                  );
-                  const matchedUser = users.find(
-                    (u) => u.id === c.waliKelasId || (c.waliKelasName && u.name.trim().toLowerCase() === c.waliKelasName.trim().toLowerCase())
+                    (t) => t.id === c.waliKelasTeacherId || (c.waliKelasName && t.nama.trim().toLowerCase() === c.waliKelasName.trim().toLowerCase())
                   );
                   const effectiveWaliName = matchedTeacher
                     ? matchedTeacher.nama
-                    : matchedUser
-                    ? matchedUser.name
                     : isPersonalWorkspace
                     ? currentUser?.name || 'Pendidik Mandiri'
                     : c.waliKelasName || 'Belum Ditugaskan';
@@ -1056,8 +1051,8 @@ export const DataKelasView: React.FC = () => {
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Wali Kelas Penanggung Jawab</label>
                   <select
-                    value={waliKelasId}
-                    onChange={(e) => setWaliKelasId(e.target.value)}
+                    value={waliKelasTeacherId}
+                    onChange={(e) => setWaliKelasTeacherId(e.target.value)}
                     className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:border-blue-600 outline-none cursor-pointer"
                   >
                     <option value="">-- Belum Ditugaskan --</option>

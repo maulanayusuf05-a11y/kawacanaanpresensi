@@ -148,8 +148,8 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
     } else {
       // DAILY / Wali Kelas
       // 1. Try from currentClass
-      if (currentClass?.waliKelasId) {
-        const tMatch = teachers.find((t) => t.id === currentClass.waliKelasId);
+      if (currentClass?.waliKelasTeacherId) {
+        const tMatch = teachers.find((t) => t.id === currentClass.waliKelasTeacherId);
         if (tMatch) {
           teacherName = tMatch.nama;
           teacherNip = tMatch.nip || '';
@@ -560,8 +560,8 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
       else if (pctHadir < 95) predicate = 'Baik';
 
       let waliName = cls.waliKelasName || '';
-      if (!waliName && cls.waliKelasId) {
-        const t = teachers.find((tc) => tc.id === cls.waliKelasId);
+      if (!waliName && cls.waliKelasTeacherId) {
+        const t = teachers.find((tc) => tc.id === cls.waliKelasTeacherId);
         if (t) waliName = t.nama;
       }
 

@@ -566,13 +566,13 @@ export default async function handler(req: any, res: any) {
           name: className,
           grade: grade,
           academic_year: '2026/2027',
-          wali_kelas_id: role === 'WALI KELAS' ? linkedTeacher.id : null,
+          wali_kelas_teacher_id: role === 'WALI KELAS' ? linkedTeacher.id : null,
         }).select('id').single();
 
         if (newCls) targetClassId = newCls.id;
       } else if (targetClassId && role === 'WALI KELAS') {
         await db.from('classes').update({
-          wali_kelas_id: linkedTeacher?.id || null,
+          wali_kelas_teacher_id: linkedTeacher?.id || null,
         }).eq('id', targetClassId);
       }
 
@@ -857,7 +857,7 @@ export default async function handler(req: any, res: any) {
             name: clsName,
             grade: clsGrade,
             academic_year: '2026/2027',
-            wali_kelas_id: role === 'WALI KELAS' ? createdTeacher.id : null,
+            wali_kelas_teacher_id: role === 'WALI KELAS' ? createdTeacher.id : null,
           }).select('id').single();
 
           if (newCls && createdTeacher) {
@@ -985,7 +985,7 @@ export default async function handler(req: any, res: any) {
             name: clsName,
             grade: clsGrade,
             academic_year: '2026/2027',
-            wali_kelas_id: linkedTeacher.id,
+            wali_kelas_teacher_id: linkedTeacher.id,
           }).select('id').single();
 
           if (newCls) {
@@ -1008,13 +1008,13 @@ export default async function handler(req: any, res: any) {
             name: clsName,
             grade: clsGrade,
             academic_year: '2026/2027',
-            wali_kelas_id: linkedTeacher.id,
+            wali_kelas_teacher_id: linkedTeacher.id,
           }).select('id').single();
 
           if (newCls) targetClassId = newCls.id;
         } else {
           await db.from('classes').update({
-            wali_kelas_id: linkedTeacher.id,
+            wali_kelas_teacher_id: linkedTeacher.id,
           }).eq('id', targetClassId);
         }
 
@@ -1296,7 +1296,7 @@ export default async function handler(req: any, res: any) {
 
       // 2. Hapus penugasan di classes
       if (teacherId) {
-        await db.from('classes').update({ wali_kelas_id: null }).eq('wali_kelas_id', teacherId);
+        await db.from('classes').update({ wali_kelas_teacher_id: null }).eq('wali_kelas_teacher_id', teacherId);
       }
       if (schoolId && teacherName) {
         await db.from('school_profile').update({ nama_wali_kelas: '', nip_wali_kelas: '' }).eq('school_id', schoolId).eq('nama_wali_kelas', teacherName);

@@ -348,8 +348,8 @@ export const LaporanView: React.FC = () => {
       else if (pctHadir < 95) predicate = 'Baik';
 
       let waliName = cls.waliKelasName || '';
-      if (!waliName && cls.waliKelasId) {
-        const t = teachers.find((tc) => tc.id === cls.waliKelasId);
+      if (!waliName && cls.waliKelasTeacherId) {
+        const t = teachers.find((tc) => tc.id === cls.waliKelasTeacherId);
         if (t) waliName = t.nama;
       }
 

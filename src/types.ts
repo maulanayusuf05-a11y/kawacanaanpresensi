@@ -71,7 +71,7 @@ export interface SchoolClass {
   name: string;
   grade: number;
   academicYear?: string;
-  waliKelasId?: string | null;
+  waliKelasTeacherId?: string | null;
   waliKelasName?: string | null;
 }
 

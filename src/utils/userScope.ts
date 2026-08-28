@@ -74,12 +74,12 @@ export function getUserRoleScope(
   // 2. Identify Wali Kelas assignment
   let assignedWaliClass: SchoolClass | null = null;
 
-  // Check 1: class where waliKelasId matches user id or teacher id
+  // Check 1: class where waliKelasTeacherId matches user id or teacher id
   if (currentUser.teacherId) {
-    assignedWaliClass = classes.find((c) => c.waliKelasId === currentUser.teacherId) || null;
+    assignedWaliClass = classes.find((c) => c.waliKelasTeacherId === currentUser.teacherId) || null;
   }
   if (!assignedWaliClass && matchedTeacher?.id) {
-    assignedWaliClass = classes.find((c) => c.waliKelasId === matchedTeacher.id) || null;
+    assignedWaliClass = classes.find((c) => c.waliKelasTeacherId === matchedTeacher.id) || null;
   }
 
   // Check 2: classIds stored on currentUser account

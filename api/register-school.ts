@@ -339,7 +339,7 @@ export default async function handler(req: any, res: any) {
           });
 
           if (teacherType === 'WALI_KELAS') {
-            await admin.from('classes').update({ wali_kelas_id: teacherRow.id }).eq('id', primaryClass.id);
+            await admin.from('classes').update({ wali_kelas_teacher_id: teacherRow.id }).eq('id', primaryClass.id);
           }
         }
       } catch (linkErr) {

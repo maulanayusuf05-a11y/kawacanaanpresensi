@@ -67,7 +67,7 @@ export const DataSiswaView: React.FC = () => {
       currentUser.classIds.forEach((id) => ids.add(id));
     }
     classes.forEach((c) => {
-      if (c.waliKelasId && (c.waliKelasId === currentUser?.teacherId || c.waliKelasId === currentUser?.username)) {
+      if (c.waliKelasTeacherId && (c.waliKelasTeacherId === currentUser?.teacherId)) {
         ids.add(c.id);
       }
       if (
@@ -513,7 +513,7 @@ export const DataSiswaView: React.FC = () => {
                 name: inputClean,
                 grade: autoGrade,
                 academicYear: schoolProfile?.tahunPelajaran || '2026/2027',
-                waliKelasId: null,
+                waliKelasTeacherId: null,
                 waliKelasName: null,
               });
               const newlyAdded = classes.find((c) => c.name.trim().toLowerCase() === inputClean.toLowerCase());
