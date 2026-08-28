@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 const json = (res: any, status: number, body: unknown) =>
   res.status(status).setHeader('Content-Type', 'application/json').end(JSON.stringify(body));
 
-const ALLOWED_ROLES = ['ADMIN', 'KEPALA SEKOLAH', 'GURU MAPEL', 'GURU', 'WALI KELAS', 'SISWA'] as const;
+const ALLOWED_ROLES = ['ADMIN', 'KEPALA SEKOLAH', 'WALI KELAS', 'GURU MAPEL', 'SISWA'] as const;
 const USERNAME_RE = /^[a-z0-9][a-z0-9._-]{2,63}$/i;
 const PASSWORD_MIN = 8;
 
@@ -73,7 +73,7 @@ export default async function handler(req: any, res: any) {
         return json(res, 400, { error: 'studentId hanya boleh digunakan untuk akun SISWA.' });
       }
 
-      if (classIds.length && !['GURU', 'GURU MAPEL', 'WALI KELAS'].includes(role)) return json(res, 400, { error: 'Penugasan kelas hanya untuk GURU/WALI KELAS.' });
+      if (classIds.length && !['WALI KELAS', 'GURU MAPEL'].includes(role)) return json(res, 400, { error: 'Penugasan kelas hanya untuk WALI KELAS/GURU MAPEL.' });
       if (classIds.length) {
         const { data: classes } = await admin.from('classes').select('id').eq('school_id', schoolId).in('id', classIds);
         if ((classes || []).length !== classIds.length) return json(res, 400, { error: 'Ada kelas yang bukan milik sekolah pengguna.' });
@@ -136,7 +136,7 @@ export default async function handler(req: any, res: any) {
       const requestedSchool = body.schoolId || body.school_id || profile.school_id;
       if (profile.role !== 'SUPER_ADMIN' && requestedSchool !== profile.school_id) return json(res, 403, { error: 'Akses sekolah tidak sesuai.' });
       let query = admin.from('profiles').select('id,school_id,name,username,email,role,student_id,is_active,must_change_password,created_at').eq('school_id', requestedSchool);
-      if (action === 'list_admins') query = query.in('role', ['ADMIN','KEPALA SEKOLAH','GURU','GURU MAPEL','WALI KELAS']);
+      if (action === 'list_admins') query = query.in('role', ['ADMIN','KEPALA SEKOLAH','GURU MAPEL','WALI KELAS']);
       if (body.role) query = query.eq('role', body.role);
       const { data, error } = await query.order('created_at', { ascending: false });
       if (error) return json(res, 400, { error: error.message });
@@ -169,7 +169,7 @@ export default async function handler(req: any, res: any) {
       if (error) return json(res, 400, { error: error.message });
 
       await admin.from('teacher_class_assignments').delete().eq('teacher_id', userId);
-      if ((role === 'GURU' || role === 'GURU MAPEL' || role === 'WALI KELAS') && classIds.length) {
+      if ((role === 'GURU MAPEL' || role === 'WALI KELAS') && classIds.length) {
         await admin.from('teacher_class_assignments').insert(classIds.map((classId: string) => ({ school_id: target?.school_id, teacher_id: userId, class_id: classId })));
       }
       return json(res, 200, { ok: true });

@@ -57,7 +57,7 @@ export const DataKelasView: React.FC = () => {
 
   const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN';
   const isWaliKelas = currentUser?.role === 'WALI KELAS';
-  const isGuru = currentUser?.role === 'GURU' || currentUser?.role === 'GURU MAPEL';
+  const isGuru = currentUser?.role === 'GURU MAPEL';
   const isPersonalWorkspace =
     activeWorkspace?.workspaceType === 'personal' ||
     activeWorkspace?.workspaceType === 'individu' ||
@@ -164,7 +164,7 @@ export const DataKelasView: React.FC = () => {
       // Cari user profile yang cocok jika ada
       const matchedUser = users.find(
         (u) =>
-          (u.role === 'GURU' || u.role === 'WALI KELAS' || u.role === 'GURU MAPEL' || u.role === 'ADMIN') &&
+          (u.role === 'WALI KELAS' || u.role === 'GURU MAPEL' || u.role === 'ADMIN') &&
           ((teacherNip && teacherNip !== '-' && u.username.toLowerCase() === teacherNip.toLowerCase()) ||
             u.name.trim().toLowerCase() === teacherName.toLowerCase())
       );
@@ -193,7 +193,7 @@ export const DataKelasView: React.FC = () => {
     // 2. Tambahkan akun pengguna khusus jika di Ruang Kerja Sekolah
     if (!isPersonalWorkspace) {
       users
-        .filter((u) => u.role === 'GURU' || u.role === 'WALI KELAS' || u.role === 'GURU MAPEL' || u.role === 'ADMIN')
+        .filter((u) => u.role === 'WALI KELAS' || u.role === 'GURU MAPEL' || u.role === 'ADMIN')
         .forEach((u) => {
           const uName = (u.name || u.username).trim().toLowerCase();
           const alreadyInList = list.some(

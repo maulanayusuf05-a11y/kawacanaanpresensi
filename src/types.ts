@@ -1,4 +1,4 @@
-export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'KEPALA SEKOLAH' | 'GURU' | 'WALI KELAS' | 'GURU MAPEL' | 'SISWA';
+export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'KEPALA SEKOLAH' | 'WALI KELAS' | 'GURU MAPEL' | 'SISWA';
 
 export type WorkspaceType = 'personal' | 'school' | 'individu' | 'sekolah';
 export type WorkspaceRoleKey = 'super_admin' | 'school_admin' | 'homeroom_teacher' | 'subject_teacher' | 'student';
@@ -38,7 +38,7 @@ export interface WorkspaceMembership {
   workspaceId: string;
   workspaceName: string;
   workspaceType: WorkspaceType;
-  role: UserRole; // 'WALI KELAS' | 'GURU' | 'ADMIN' | 'SISWA' | 'SUPER_ADMIN'
+  role: UserRole; // 'WALI KELAS' | 'GURU MAPEL' | 'ADMIN' | 'SISWA' | 'SUPER_ADMIN'
   roleKey?: WorkspaceRoleKey;
   roleLabel?: string; // e.g. "Wali Kelas", "Guru Mata Pelajaran", "Siswa", "Admin Sekolah"
   subjectId?: string | null;

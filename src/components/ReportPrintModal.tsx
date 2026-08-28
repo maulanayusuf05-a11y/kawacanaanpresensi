@@ -95,7 +95,7 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
       const activeSubjectObj = subjects.find((s) => s.id === subjectId) || subjects.find((s) => s.name === subjectName);
 
       // 1. Check if currentUser is the subject teacher
-      if (currentUser?.role === 'GURU MAPEL' || currentUser?.role === 'GURU') {
+      if (currentUser?.role === 'GURU MAPEL') {
         if (!subjectId || currentUser.subjectId === subjectId || (currentUser.subjectName && subjectName && currentUser.subjectName.toLowerCase() === subjectName.toLowerCase())) {
           teacherName = currentUser.name;
           teacherNip = currentUser.nip || '';
@@ -165,7 +165,7 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
       }
 
       // 2. If currentUser is Wali Kelas and assigned
-      if (!teacherName && (currentUser?.role === 'WALI KELAS' || currentUser?.role === 'GURU')) {
+      if (!teacherName && (currentUser?.role === 'WALI KELAS')) {
         if (!classId || (currentUser.classIds && currentUser.classIds.includes(classId))) {
           teacherName = currentUser.name;
           teacherNip = currentUser.nip || '';

@@ -67,7 +67,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
       case 'WALI KELAS':
         return { label: 'Wali Kelas', bg: 'bg-blue-100 text-blue-900 border-blue-300' };
       case 'GURU MAPEL':
-      case 'GURU':
+      case 'GURU MAPEL':
         return { label: 'Guru Mata Pelajaran', bg: 'bg-indigo-100 text-indigo-900 border-indigo-300' };
       case 'SISWA':
       default:
@@ -83,7 +83,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     ? students.find(s => s.id === currentUser.studentId)
     : null;
 
-  const myTeacher = (currentUser.role === 'GURU' || currentUser.role === 'WALI KELAS' || currentUser.role === 'GURU MAPEL')
+  const myTeacher = (currentUser.role === 'WALI KELAS' || currentUser.role === 'GURU MAPEL')
     ? teachers.find(t => t.nama.toLowerCase() === currentUser.name.toLowerCase() || t.nip === currentUser.username)
     : null;
 
@@ -98,7 +98,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   // Workspace Switching Permission Check:
   // Allowed ONLY for Wali Kelas and Guru Mapel. Admin and Kepala Sekolah are strictly forbidden.
   const canSwitchWorkspace =
-    (currentUser.role === 'WALI KELAS' || currentUser.role === 'GURU MAPEL' || currentUser.role === 'GURU') &&
+    (currentUser.role === 'WALI KELAS' || currentUser.role === 'GURU MAPEL') &&
     currentUser.role !== 'ADMIN' &&
     currentUser.role !== 'KEPALA SEKOLAH' &&
     currentUser.role !== 'SUPER_ADMIN' &&
@@ -286,7 +286,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
           )}
 
           {/* Section: Khusus Wali Kelas / Guru Mapel */}
-          {(currentUser.role === 'GURU' || currentUser.role === 'WALI KELAS' || currentUser.role === 'GURU MAPEL') && (
+          {(currentUser.role === 'WALI KELAS' || currentUser.role === 'GURU MAPEL') && (
             <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3">
               <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
                 <BookOpen size={14} className="text-blue-600" />

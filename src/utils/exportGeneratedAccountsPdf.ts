@@ -139,7 +139,7 @@ export const exportGeneratedAccountsPdf = async ({
 
   // 3. STATISTIK RINGKASAN
   const totalAdmin = accounts.filter((a) => a.category === 'ADMIN' || a.role === 'ADMIN').length;
-  const totalGuru = accounts.filter((a) => a.category === 'GURU' || a.role === 'GURU' || a.role === 'WALI KELAS' || a.role === 'GURU MAPEL').length;
+  const totalGuru = accounts.filter((a) => a.category === 'GURU' || a.role === 'GURU MAPEL' || a.role === 'WALI KELAS' || a.role === 'GURU MAPEL').length;
   const totalSiswa = accounts.filter((a) => a.category === 'SISWA' || a.role === 'SISWA').length;
   const totalKepsek = accounts.filter((a) => a.category === 'KEPALA SEKOLAH' || a.role === 'KEPALA SEKOLAH').length;
 
@@ -160,7 +160,6 @@ export const exportGeneratedAccountsPdf = async ({
     let roleLabel = acc.role || acc.category || '-';
     if (roleLabel === 'WALI KELAS') roleLabel = 'Wali Kelas';
     else if (roleLabel === 'GURU MAPEL') roleLabel = 'Guru Mapel';
-    else if (roleLabel === 'GURU') roleLabel = 'Guru';
     else if (roleLabel === 'ADMIN') roleLabel = 'Administrator';
     else if (roleLabel === 'SISWA') roleLabel = 'Siswa';
     else if (roleLabel === 'KEPALA SEKOLAH') roleLabel = 'Kepala Sekolah';

@@ -22,7 +22,7 @@ export const WorkspaceSelectorView: React.FC<WorkspaceSelectorViewProps> = () =>
 
   const getWorkspaceIcon = (membership: WorkspaceMembership) => {
     if (membership.workspaceType === 'personal') {
-      return membership.role === 'GURU' ? <BookOpen size={24} className="text-emerald-600" /> : <UserCheck size={24} className="text-indigo-600" />;
+      return membership.role === 'GURU MAPEL' ? <BookOpen size={24} className="text-emerald-600" /> : <UserCheck size={24} className="text-indigo-600" />;
     }
     if (membership.role === 'SUPER_ADMIN') {
       return <Shield size={24} className="text-purple-600" />;
@@ -41,7 +41,7 @@ export const WorkspaceSelectorView: React.FC<WorkspaceSelectorViewProps> = () =>
         return <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-800 text-[10px] font-black uppercase tracking-wider">Admin Sekolah</span>;
       case 'WALI KELAS':
         return <span className="px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-800 text-[10px] font-black uppercase tracking-wider">Wali Kelas</span>;
-      case 'GURU':
+      case 'GURU MAPEL':
         return <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase tracking-wider">Guru Mata Pelajaran</span>;
       case 'SISWA':
         return <span className="px-2.5 py-1 rounded-full bg-blue-100 text-blue-800 text-[10px] font-black uppercase tracking-wider">Siswa</span>;

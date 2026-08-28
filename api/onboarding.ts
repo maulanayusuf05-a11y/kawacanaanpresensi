@@ -809,7 +809,7 @@ export default async function handler(req: any, res: any) {
         student_id: body.studentId || null,
       });
 
-      if (role === 'WALI KELAS' || role === 'GURU' || role === 'GURU MAPEL') {
+      if (role === 'WALI KELAS' || role === 'GURU MAPEL') {
         await db.from('teachers').insert({
           id: newUserId,
           school_id: finalSchoolId,

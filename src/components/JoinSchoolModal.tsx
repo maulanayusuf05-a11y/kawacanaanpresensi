@@ -44,7 +44,7 @@ export const JoinSchoolModal: React.FC<JoinSchoolModalProps> = ({ isOpen, onClos
     if (currentUser) {
       setTeacherName(currentUser.name || currentUser.username || '');
       setTeacherNip(currentUser.nip || '');
-      if (currentUser.role === 'GURU MAPEL' || currentUser.role === 'GURU') {
+      if (currentUser.role === 'GURU MAPEL') {
         setRole('GURU MAPEL');
       } else {
         setRole('WALI KELAS');

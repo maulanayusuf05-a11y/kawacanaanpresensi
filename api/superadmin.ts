@@ -264,11 +264,11 @@ export default async function handler(req:any,res:any){
         if(pr.school_id) {
           if (pr.role === 'KEPALA SEKOLAH') {
             headmasterCounts[pr.school_id] = (headmasterCounts[pr.school_id] || 0) + 1;
-          } else if (pr.role === 'WALI KELAS' || pr.role === 'GURU MAPEL' || pr.role === 'GURU') {
+          } else if (pr.role === 'WALI KELAS' || pr.role === 'GURU MAPEL') {
             teacherCounts[pr.school_id] = (teacherCounts[pr.school_id] || 0) + 1;
           }
 
-          if (pr.role === 'ADMIN' || pr.role === 'WALI KELAS' || pr.role === 'GURU MAPEL' || pr.role === 'GURU' || pr.role === 'KEPALA SEKOLAH') {
+          if (pr.role === 'ADMIN' || pr.role === 'WALI KELAS' || pr.role === 'GURU MAPEL' || pr.role === 'KEPALA SEKOLAH') {
             teacherAdminCounts[pr.school_id] = (teacherAdminCounts[pr.school_id] || 0) + 1;
           }
         }
@@ -360,7 +360,7 @@ export default async function handler(req:any,res:any){
         totals:{
           schools:rows.length,
           active:rows.filter((s:any)=>s.status==='active').length,
-          teachers:(users||[]).filter((u:any)=>['ADMIN','WALI KELAS','GURU','KEPALA SEKOLAH'].includes(u.role)).length,
+          teachers:(users||[]).filter((u:any)=>['ADMIN','WALI KELAS','GURU MAPEL','KEPALA SEKOLAH'].includes(u.role)).length,
           students:students?.length||0,
           classes:classes?.length||0,
           users:users?.length||0,
@@ -572,7 +572,7 @@ export default async function handler(req:any,res:any){
       if(schoolId && schoolId !== 'all') {
         q=q.eq('school_id',schoolId);
       }
-      if(action==='list_admins') q=q.in('role',['ADMIN','KEPALA SEKOLAH','GURU','WALI KELAS']);
+      if(action==='list_admins') q=q.in('role',['ADMIN','KEPALA SEKOLAH','WALI KELAS','GURU MAPEL']);
       const [{data,error},{data:schoolProfiles}]=await Promise.all([
         q.order('created_at',{ascending:false}),
         admin.from('school_profile').select('school_id, nama_sekolah, npsn'),

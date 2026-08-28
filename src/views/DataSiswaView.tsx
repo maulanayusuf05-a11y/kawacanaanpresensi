@@ -56,7 +56,7 @@ export const DataSiswaView: React.FC = () => {
     !currentUser?.schoolId;
 
   const isWaliKelas = currentUser?.role === 'WALI KELAS';
-  const isGuru = currentUser?.role === 'GURU' || currentUser?.role === 'GURU MAPEL';
+  const isGuru = currentUser?.role === 'GURU MAPEL';
   const isKepalaSekolah = currentUser?.role === 'KEPALA SEKOLAH';
 
   // Kelas yang diampu oleh Wali Kelas / Guru

@@ -53,7 +53,7 @@ export const DataMapelView: React.FC = () => {
 
   const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN';
   const isWaliKelas = userScope.isWaliKelas;
-  const isGuruMapel = userScope.isGuruMapel || currentUser?.role === 'GURU MAPEL' || currentUser?.role === 'GURU';
+  const isGuruMapel = userScope.isGuruMapel || currentUser?.role === 'GURU MAPEL';
   const assignedWaliClass = userScope.assignedWaliClass;
 
   // Find teacher record linked to currentUser

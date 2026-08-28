@@ -175,7 +175,7 @@ export const AdminsTab: React.FC<{
   }, [schools, selectedSchoolId]);
 
   const roleCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: users.length, ADMIN: 0, 'KEPALA SEKOLAH': 0, GURU: 0, 'WALI KELAS': 0, SISWA: 0 };
+    const counts: Record<string, number> = { all: users.length, ADMIN: 0, 'KEPALA SEKOLAH': 0, 'WALI KELAS': 0, 'GURU MAPEL': 0, SISWA: 0 };
     users.forEach((u) => {
       const r = u.role || 'ADMIN';
       counts[r] = (counts[r] || 0) + 1;
@@ -201,7 +201,7 @@ export const AdminsTab: React.FC<{
         return 'bg-amber-50 text-amber-800 border-amber-200';
       case 'WALI KELAS':
         return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-      case 'GURU':
+      case 'GURU MAPEL':
         return 'bg-blue-50 text-blue-700 border-blue-200';
       case 'SISWA':
         return 'bg-slate-100 text-slate-700 border-slate-200';
@@ -274,7 +274,7 @@ export const AdminsTab: React.FC<{
             { id: 'ADMIN', label: 'Admin Sekolah', count: roleCounts.ADMIN },
             { id: 'KEPALA SEKOLAH', label: 'Kepala Sekolah', count: roleCounts['KEPALA SEKOLAH'] },
             { id: 'WALI KELAS', label: 'Wali Kelas', count: roleCounts['WALI KELAS'] },
-            { id: 'GURU', label: 'Guru Mapel', count: roleCounts.GURU },
+            { id: 'GURU MAPEL', label: 'Guru Mapel', count: roleCounts['GURU MAPEL'] },
             { id: 'SISWA', label: 'Siswa', count: roleCounts.SISWA },
           ].map((tab) => (
             <button
@@ -473,7 +473,7 @@ export const AdminsTab: React.FC<{
                   <option value="ADMIN">ADMIN SEKOLAH (Akses Penuh Manajemen)</option>
                   <option value="KEPALA SEKOLAH">KEPALA SEKOLAH (Monitoring & Cetak Laporan)</option>
                   <option value="WALI KELAS">WALI KELAS (Presensi Harian Kelas & Rekap)</option>
-                  <option value="GURU">GURU MATA PELAJARAN (Presensi Per Mapel)</option>
+                  <option value="GURU MAPEL">GURU MATA PELAJARAN (Presensi Per Mapel)</option>
                 </select>
               </div>
 

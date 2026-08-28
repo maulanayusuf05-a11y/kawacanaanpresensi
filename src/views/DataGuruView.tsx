@@ -115,7 +115,7 @@ export const DataGuruView: React.FC = () => {
   };
 
   const defaultPersonalRole =
-    currentUser?.role === 'GURU MAPEL' || currentUser?.role === 'GURU_MAPEL' ? 'Guru Mapel' : 'Wali Kelas';
+    currentUser?.role === 'GURU MAPEL' ? 'Guru Mapel' : 'Wali Kelas';
 
   const resetForm = () => {
     setNama('');

@@ -91,7 +91,7 @@ export const DataPenggunaView: React.FC = () => {
 
   const filteredUsers = useMemo(() => {
     return users.filter((u) => {
-      const isTeacherRole = u.role === 'GURU' || u.role === 'WALI KELAS' || u.role === 'GURU MAPEL' || u.role === 'KEPALA SEKOLAH';
+      const isTeacherRole = u.role === 'WALI KELAS' || u.role === 'GURU MAPEL' || u.role === 'KEPALA SEKOLAH';
       const matchesTab =
         activeTab === 'siswa' ? u.role === 'SISWA' : activeTab === 'administrator' ? u.role === 'ADMIN' : isTeacherRole;
       const q = searchTerm.toLowerCase();
@@ -103,7 +103,7 @@ export const DataPenggunaView: React.FC = () => {
   const startIndex = (currentPage - 1) * pageSize;
   const currentUsers = filteredUsers.slice(startIndex, startIndex + pageSize);
 
-  const isTeacherRole = (role: UserRole) => role === 'GURU' || role === 'WALI KELAS' || role === 'GURU MAPEL';
+  const isTeacherRole = (role: UserRole) => role === 'WALI KELAS' || role === 'GURU MAPEL';
 
   const getRoleBadge = (u: UserAccount) => {
     switch (u.role) {
@@ -119,63 +119,18 @@ export const DataPenggunaView: React.FC = () => {
             KEPALA SEKOLAH
           </span>
         );
-      case 'GURU':
-      case 'GURU MAPEL':
-      case 'WALI KELAS': {
-        const uNameClean = (u.name || '').trim().toLowerCase();
-        const uUsernameClean = (u.username || '').trim().toLowerCase();
-        const matchedTeacher = teachers.find(
-          (t) =>
-            (t.nip && t.nip !== '-' && t.nip.trim().toLowerCase() === uUsernameClean) ||
-            (t.nama && t.nama.trim().toLowerCase() === uNameClean)
-        );
-
-        // Explicit check for Guru Mapel
-        const isExplicitMapel =
-          u.role === 'GURU MAPEL' ||
-          (u.classIds && u.classIds.length > 1) ||
-          (matchedTeacher && (
-            matchedTeacher.jabatan?.toLowerCase().includes('mapel') ||
-            matchedTeacher.jenisPTK?.toLowerCase().includes('mapel') ||
-            matchedTeacher.mataPelajaran?.toLowerCase() === 'guru mapel'
-          )) ||
-          subjects.some(
-            (s) =>
-              s.teacherId === u.id ||
-              (matchedTeacher && s.teacherId === matchedTeacher.id) ||
-              (s.teacherName && s.teacherName.trim().toLowerCase() === uNameClean)
-          );
-
-        // Check if explicitly assigned as Wali Kelas
-        const isAssignedWali =
-          u.role === 'WALI KELAS' ||
-          (u.classIds && u.classIds.length === 1) ||
-          classes.some(
-            (c) =>
-              c.waliKelasId === u.id ||
-              (matchedTeacher && c.waliKelasId === matchedTeacher.id) ||
-              (c.waliKelasName && c.waliKelasName.trim().toLowerCase() === uNameClean)
-          ) ||
-          (matchedTeacher && (
-            matchedTeacher.jabatan?.toLowerCase().includes('wali') ||
-            matchedTeacher.jenisPTK?.toLowerCase().includes('wali') ||
-            matchedTeacher.mataPelajaran?.toLowerCase() === 'wali kelas'
-          ));
-
-        if (isAssignedWali && !isExplicitMapel) {
-          return (
-            <span className="px-3 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-blue-50 text-blue-700 border border-blue-200">
-              GURU (WALI KELAS)
-            </span>
-          );
-        }
-
+      case 'WALI KELAS':
         return (
-          <span className="px-3 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">
-            GURU (MAPEL)
+          <span className="px-3 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-blue-50 text-blue-700 border border-blue-200">
+            WALI KELAS
           </span>
         );
-      }
+      case 'GURU MAPEL':
+        return (
+          <span className="px-3 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">
+            GURU MAPEL
+          </span>
+        );
       case 'SISWA':
       default:
         return (
@@ -191,7 +146,7 @@ export const DataPenggunaView: React.FC = () => {
     setEditName(u.name);
     setEditEmail(u.email || '');
     setEditUsername(u.username);
-    setEditRole(u.role === 'WALI KELAS' ? 'GURU' : u.role);
+    setEditRole(u.role);
     setEditStudentId(u.studentId || '');
 
     const existingClassIds = u.classIds || [];
@@ -281,7 +236,7 @@ export const DataPenggunaView: React.FC = () => {
         }
       } else if (u.role === 'KEPALA SEKOLAH') {
         category = 'KEPALA SEKOLAH';
-      } else if (u.role === 'GURU' || u.role === 'WALI KELAS' || u.role === 'GURU MAPEL') {
+      } else if (u.role === 'WALI KELAS' || u.role === 'GURU MAPEL') {
         category = 'GURU';
         if (u.classIds && u.classIds.length > 0) {
           className = u.classIds
@@ -331,9 +286,8 @@ export const DataPenggunaView: React.FC = () => {
           (r) =>
             r.category === 'GURU' ||
             r.category === 'KEPALA SEKOLAH' ||
-            r.role === 'GURU' ||
-            r.role === 'WALI KELAS' ||
             r.role === 'GURU MAPEL' ||
+            r.role === 'WALI KELAS' ||
             r.role === 'KEPALA SEKOLAH'
         );
         filterCategory = 'GURU';
@@ -702,8 +656,9 @@ export const DataPenggunaView: React.FC = () => {
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-bold text-slate-900 focus:border-blue-600 focus:bg-white outline-none cursor-pointer"
                 >
                   <option value="ADMIN">ADMINISTRATOR</option>
-                  <option value="GURU">GURU (Wali Kelas / Guru Mapel)</option>
                   <option value="KEPALA SEKOLAH">KEPALA SEKOLAH</option>
+                  <option value="WALI KELAS">WALI KELAS</option>
+                  <option value="GURU MAPEL">GURU MAPEL</option>
                   <option value="SISWA">SISWA</option>
                 </select>
               </div>
@@ -1127,7 +1082,7 @@ export const DataPenggunaView: React.FC = () => {
                               Export PDF Guru
                             </div>
                             <div className="text-[10px] text-slate-500 font-medium">
-                              Cetak Akun Guru & Tendik ({generatedResults?.filter(r => r.category === 'GURU' || r.category === 'KEPALA SEKOLAH' || r.role === 'GURU' || r.role === 'WALI KELAS' || r.role === 'GURU MAPEL' || r.role === 'KEPALA SEKOLAH').length || 0} akun)
+                              Cetak Akun Guru & Tendik ({generatedResults?.filter(r => r.category === 'GURU' || r.category === 'KEPALA SEKOLAH' || r.role === 'GURU MAPEL' || r.role === 'WALI KELAS' || r.role === 'KEPALA SEKOLAH').length || 0} akun)
                             </div>
                           </div>
                         </button>

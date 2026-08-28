@@ -281,7 +281,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ onCompleted }) =
         }
       }
 
-      const roleStr = selectedRole === 'homeroom' ? 'WALI KELAS' : selectedRole === 'subject' ? 'GURU' : 'SISWA';
+      const roleStr = selectedRole === 'homeroom' ? 'WALI KELAS' : selectedRole === 'subject' ? 'GURU MAPEL' : 'SISWA';
 
       // 3. Eksekusi Flow: Registrasi Akun Baru vs Akun Google SSO yang Sudah Login
       if (!hasGoogleSession) {

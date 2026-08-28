@@ -127,8 +127,8 @@ export function getUserRoleScope(
     }
   }
 
-  // If role is GURU or GURU MAPEL and still no subject matched, check teacher's mataPelajaran or provide specialized subjects
-  const isGuruMapelRole = role === 'GURU MAPEL' || role === 'GURU';
+  // If role is GURU MAPEL and still no subject matched, check teacher's mataPelajaran or provide specialized subjects
+  const isGuruMapelRole = role === 'GURU MAPEL';
   const isWaliRole = role === 'WALI KELAS';
   const isTeacherRole = isWaliRole || isGuruMapelRole;
 
@@ -158,15 +158,6 @@ export function getUserRoleScope(
     } else if (role === 'GURU MAPEL') {
       isGuruMapel = true;
       isWaliKelas = false;
-    } else if (role === 'GURU') {
-      // If user has role GURU but is assigned as a Wali Kelas and has no specific mapel assigned
-      if (assignedWaliClass && assignedSubjects.length === 0) {
-        isWaliKelas = true;
-        isGuruMapel = false;
-      } else {
-        isGuruMapel = true;
-        isWaliKelas = false;
-      }
     }
   }
 

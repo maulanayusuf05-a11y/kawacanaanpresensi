@@ -28,15 +28,15 @@ import type { ActiveView, UserRole } from './types';
 // `activeView` di-set lewat state, meski tautan menunya sudah disembunyikan.
 const VIEW_ACCESS: Record<ActiveView, UserRole[] | 'all'> = {
   login: 'all',
-  dashboard: ['ADMIN', 'KEPALA SEKOLAH', 'GURU', 'WALI KELAS', 'GURU MAPEL'],
+  dashboard: ['ADMIN', 'KEPALA SEKOLAH', 'WALI KELAS', 'GURU MAPEL'],
   superadmin: ['SUPER_ADMIN'],
-  'data-referensi': ['ADMIN', 'KEPALA SEKOLAH', 'GURU', 'WALI KELAS', 'GURU MAPEL'],
+  'data-referensi': ['ADMIN', 'KEPALA SEKOLAH', 'WALI KELAS', 'GURU MAPEL'],
   'data-pengguna': ['ADMIN'],
-  'kalender-akademik': ['ADMIN', 'KEPALA SEKOLAH', 'GURU', 'WALI KELAS', 'GURU MAPEL'],
-  absensi: ['ADMIN', 'GURU', 'WALI KELAS', 'GURU MAPEL'],
-  rekapitulasi: ['ADMIN', 'KEPALA SEKOLAH', 'GURU', 'WALI KELAS', 'GURU MAPEL'],
-  laporan: ['ADMIN', 'KEPALA SEKOLAH', 'GURU', 'WALI KELAS', 'GURU MAPEL'],
-  pengaturan: ['ADMIN', 'KEPALA SEKOLAH', 'GURU', 'GURU MAPEL'],
+  'kalender-akademik': ['ADMIN', 'KEPALA SEKOLAH', 'WALI KELAS', 'GURU MAPEL'],
+  absensi: ['ADMIN', 'WALI KELAS', 'GURU MAPEL'],
+  rekapitulasi: ['ADMIN', 'KEPALA SEKOLAH', 'WALI KELAS', 'GURU MAPEL'],
+  laporan: ['ADMIN', 'KEPALA SEKOLAH', 'WALI KELAS', 'GURU MAPEL'],
+  pengaturan: ['ADMIN', 'KEPALA SEKOLAH', 'WALI KELAS', 'GURU MAPEL'],
   'portal-siswa': ['SISWA'],
 };
 

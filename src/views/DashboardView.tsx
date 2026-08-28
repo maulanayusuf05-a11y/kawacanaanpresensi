@@ -229,9 +229,8 @@ export const DashboardView: React.FC = () => {
         classesCount: classes.length,
         guruKsCount: users.filter(
           (u) =>
-            u.role === 'GURU' ||
-            u.role === 'WALI KELAS' ||
             u.role === 'GURU MAPEL' ||
+            u.role === 'WALI KELAS' ||
             u.role === 'KEPALA SEKOLAH'
         ).length,
         hadirCount,
@@ -365,7 +364,7 @@ export const DashboardView: React.FC = () => {
         ].includes(item.id);
       }
       if (
-        currentUser.role === 'GURU' ||
+        currentUser.role === 'GURU MAPEL' ||
         currentUser.role === 'GURU MAPEL'
       ) {
         return [
@@ -413,7 +412,7 @@ export const DashboardView: React.FC = () => {
   const guruKsCountDisplay =
     users.filter(
       (u) =>
-        u.role === 'GURU' ||
+        u.role === 'GURU MAPEL' ||
         u.role === 'WALI KELAS' ||
         u.role === 'GURU MAPEL' ||
         u.role === 'KEPALA SEKOLAH'

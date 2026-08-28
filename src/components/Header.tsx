@@ -61,7 +61,7 @@ export const Header: React.FC = () => {
 
   const canSwitchWorkspace =
     currentUser &&
-    (currentUser.role === 'WALI KELAS' || currentUser.role === 'GURU MAPEL' || currentUser.role === 'GURU') &&
+    (currentUser.role === 'WALI KELAS' || currentUser.role === 'GURU MAPEL') &&
     currentUser.role !== 'ADMIN' &&
     currentUser.role !== 'KEPALA SEKOLAH' &&
     currentUser.role !== 'SUPER_ADMIN' &&
