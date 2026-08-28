@@ -369,19 +369,15 @@ export const AbsensiView: React.FC = () => {
               <h1 className="text-lg sm:text-xl lg:text-2xl font-black text-slate-900">
                 Pencatatan Presensi & Kehadiran
               </h1>
-              <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${dateStatus.badgeColor}`}>
-                {dateStatus.label}
-              </span>
+              {dateStatus.label !== 'Hari Efektif Belajar' && (
+                <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${dateStatus.badgeColor}`}>
+                  {dateStatus.label}
+                </span>
+              )}
               {isNonEffectiveDay && (
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-rose-100 text-rose-800 border border-rose-300">
                   <Lock size={11} />
                   <span>Presensi Dikunci</span>
-                </span>
-              )}
-              {userScope.isWaliKelas && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                  <Lock size={11} />
-                  <span>Wali {userScope.assignedWaliClassName || 'Kelas'}</span>
                 </span>
               )}
               {userScope.isGuruMapel && (

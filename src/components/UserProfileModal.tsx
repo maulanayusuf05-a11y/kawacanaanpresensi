@@ -144,14 +144,12 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
               <p className="text-xs text-sky-100 italic truncate mt-0.5">
                 {displayEmail}
               </p>
-              <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+              <div className="mt-2 flex items-center gap-2 flex-wrap">
                 <span className={`inline-block px-2.5 py-0.5 text-[10px] font-extrabold uppercase rounded-full border shadow-2xs ${roleInfo.bg}`}>
                   {roleInfo.label}
                 </span>
                 {canSwitchWorkspace && (
-                  <span className={`inline-block px-2.5 py-0.5 text-[10px] font-black uppercase rounded-full border shadow-2xs ${
-                    isCurrentlyPersonal ? 'bg-emerald-100 text-emerald-900 border-emerald-300' : 'bg-indigo-100 text-indigo-900 border-indigo-300'
-                  }`}>
+                  <span className="text-white text-xs font-semibold">
                     {isCurrentlyPersonal ? 'Ruang Kerja Individu' : 'Ruang Kerja Sekolah'}
                   </span>
                 )}
@@ -170,17 +168,12 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                   <Layers size={15} className="text-blue-600" />
                   <span>Ruang Kerja Pendidik</span>
                 </div>
-                <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-black">
-                  2 Ruang Kerja
-                </span>
               </div>
 
               <div className="p-3 bg-white rounded-xl border border-slate-200/90 text-xs space-y-1.5">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] uppercase font-bold text-slate-400">Ruang Aktif Saat Ini:</span>
-                  <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold ${
-                    isCurrentlyPersonal ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                  }`}>
+                  <span className="text-xs font-bold text-slate-800">
                     {isCurrentlyPersonal ? 'Ruang Kerja Individu' : 'Ruang Kerja Sekolah'}
                   </span>
                 </div>
