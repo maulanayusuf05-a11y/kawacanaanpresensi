@@ -231,6 +231,53 @@ const dbConfig=(c:any):SystemConfig=>({appTitle:c.app_title||INITIAL_SYSTEM_CONF
 
 const CACHE_USER_SESSION_KEY = 'kawacanaan_cached_user_session';
 const CACHE_LAST_VIEW_KEY = 'kawacanaan_last_active_view';
+const SESSION_LOGIN_TIME_KEY = 'kawacanaan_session_login_time';
+const SESSION_LAST_ACTIVE_KEY = 'kawacanaan_session_last_active';
+
+// Timeout keamanan sesi: Idle Timeout 10 menit, Absolute Timeout 8 jam
+export const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 menit
+export const ABSOLUTE_TIMEOUT_MS = 8 * 60 * 60 * 1000; // 8 jam
+
+export const checkSessionTimeouts = (): { expired: boolean; reason?: 'idle' | 'absolute' } => {
+  if (typeof window === 'undefined' || !window.localStorage) return { expired: false };
+  try {
+    const loginTimeRaw = localStorage.getItem(SESSION_LOGIN_TIME_KEY);
+    const lastActiveRaw = localStorage.getItem(SESSION_LAST_ACTIVE_KEY);
+    if (!loginTimeRaw || !lastActiveRaw) {
+      return { expired: false };
+    }
+    const loginTime = parseInt(loginTimeRaw, 10);
+    const lastActive = parseInt(lastActiveRaw, 10);
+    const now = Date.now();
+
+    if (now - loginTime > ABSOLUTE_TIMEOUT_MS) {
+      return { expired: true, reason: 'absolute' };
+    }
+    if (now - lastActive > IDLE_TIMEOUT_MS) {
+      return { expired: true, reason: 'idle' };
+    }
+  } catch (_) {}
+  return { expired: false };
+};
+
+export const recordSessionActivity = () => {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    const now = Date.now();
+    if (!localStorage.getItem(SESSION_LOGIN_TIME_KEY)) {
+      localStorage.setItem(SESSION_LOGIN_TIME_KEY, String(now));
+    }
+    localStorage.setItem(SESSION_LAST_ACTIVE_KEY, String(now));
+  } catch (_) {}
+};
+
+export const clearSessionTimers = () => {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    localStorage.removeItem(SESSION_LOGIN_TIME_KEY);
+    localStorage.removeItem(SESSION_LAST_ACTIVE_KEY);
+  } catch (_) {}
+};
 
 export const VIEW_ROLE_PERMISSIONS: Record<ActiveView, UserRole[] | 'all'> = {
   login: 'all',
@@ -265,6 +312,12 @@ export const resolveInitialViewForRole = (role: UserRole, targetView?: ActiveVie
 export const hasPersistedAuthToken = (): boolean => {
   if (typeof window === 'undefined' || !window.localStorage) return false;
   try {
+    const timeoutStatus = checkSessionTimeouts();
+    if (timeoutStatus.expired) {
+      clearSessionTimers();
+      try { localStorage.removeItem(CACHE_USER_SESSION_KEY); localStorage.removeItem(CACHE_LAST_VIEW_KEY); } catch (_) {}
+      return false;
+    }
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (key && key.startsWith('sb-') && key.endsWith('-auth-token')) {
@@ -291,6 +344,12 @@ const getSavedActiveView = (): ActiveView | null => {
 const getCachedUserSession = (): UserAccount | null => {
   if (typeof window === 'undefined' || !window.localStorage) return null;
   try {
+    const timeoutStatus = checkSessionTimeouts();
+    if (timeoutStatus.expired) {
+      clearSessionTimers();
+      try { localStorage.removeItem(CACHE_USER_SESSION_KEY); localStorage.removeItem(CACHE_LAST_VIEW_KEY); } catch (_) {}
+      return null;
+    }
     const hasToken = hasPersistedAuthToken();
     if (!hasToken) return null;
     const raw = localStorage.getItem(CACHE_USER_SESSION_KEY);
@@ -391,6 +450,7 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
  
  const logout=async()=>{
     try {
+      clearSessionTimers();
       localStorage.removeItem(CACHE_USER_SESSION_KEY);
       localStorage.removeItem(CACHE_LAST_VIEW_KEY);
     } catch (_) {}
@@ -918,6 +978,22 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
 
    supabase.auth.getSession().then(({data})=>{
      if(!mounted) return;
+     const timeoutStatus = checkSessionTimeouts();
+     if (timeoutStatus.expired) {
+       clearSessionTimers();
+       try { localStorage.removeItem(CACHE_USER_SESSION_KEY); localStorage.removeItem(CACHE_LAST_VIEW_KEY); } catch (_) {}
+       void supabase.auth.signOut();
+       setCurrentUser(null);
+       setActiveView('login');
+       setIsAuthChecking(false);
+       if (timeoutStatus.reason === 'idle') {
+         showToast('Sesi Anda berakhir otomatis karena tidak ada aktivitas selama 10 menit. Silakan login kembali.', 'info');
+       } else if (timeoutStatus.reason === 'absolute') {
+         showToast('Sesi login Anda telah mencapai batas maksimal (8 jam). Silakan login kembali demi keamanan akses.', 'info');
+       }
+       return;
+     }
+
      // Jika user membuka /reset-password tanpa event recovery (misalnya
      // refresh setelah link diproses), tetap tampilkan form selama ada session.
      if(window.location.pathname==='/reset-password' && data.session){
@@ -937,6 +1013,64 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
    const {data:sub}=supabase.auth.onAuthStateChange(handleAuthEvent);
    return()=>{mounted=false;sub.subscription.unsubscribe()};
  },[]);
+
+ // Keamanan Akses: Idle Timeout (10 menit tanpa aktivitas) & Absolute Timeout (maksimal 8 jam sesi login)
+ useEffect(() => {
+   if (!currentUser?.id) return;
+
+   // Inisialisasi timer sesi jika belum ada
+   recordSessionActivity();
+
+   let lastThrottledUpdate = Date.now();
+
+   const handleUserActivity = () => {
+     const currentNow = Date.now();
+     // Throttle update localStorage setiap 5 detik agar tetap ringan
+     if (currentNow - lastThrottledUpdate > 5000) {
+       lastThrottledUpdate = currentNow;
+       try {
+         localStorage.setItem(SESSION_LAST_ACTIVE_KEY, String(currentNow));
+       } catch (_) {}
+     }
+   };
+
+   const activityEvents: (keyof WindowEventMap)[] = ['mousedown', 'mousemove', 'keydown', 'touchstart', 'scroll', 'click'];
+   activityEvents.forEach((evt) => {
+     window.addEventListener(evt, handleUserActivity, { passive: true });
+   });
+
+   const checkTimeout = () => {
+     const timeoutStatus = checkSessionTimeouts();
+     if (timeoutStatus.expired) {
+       void logout();
+       if (timeoutStatus.reason === 'idle') {
+         showToast('Sesi Anda berakhir otomatis karena tidak ada aktivitas selama 10 menit. Silakan login kembali.', 'info');
+       } else if (timeoutStatus.reason === 'absolute') {
+         showToast('Sesi login Anda telah mencapai batas maksimal (8 jam). Silakan login kembali demi keamanan akses.', 'info');
+       }
+     }
+   };
+
+   // Periksa setiap 10 detik
+   const timerInterval = window.setInterval(checkTimeout, 10000);
+
+   const handleVisibilityChange = () => {
+     if (document.visibilityState === 'visible') {
+       checkTimeout();
+     }
+   };
+   document.addEventListener('visibilitychange', handleVisibilityChange);
+   window.addEventListener('focus', checkTimeout);
+
+   return () => {
+     activityEvents.forEach((evt) => {
+       window.removeEventListener(evt, handleUserActivity);
+     });
+     window.clearInterval(timerInterval);
+     document.removeEventListener('visibilitychange', handleVisibilityChange);
+     window.removeEventListener('focus', checkTimeout);
+   };
+ }, [currentUser?.id]);
 
  // Presensi sesi ringan: menandai akun ini "sedang aktif" agar terlihat di
  // Monitoring Real-Time Super Admin (lihat public.touch_presence() & tabel

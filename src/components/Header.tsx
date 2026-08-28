@@ -525,7 +525,7 @@ export const Header: React.FC = () => {
                                 )}
                                 <div className="text-left min-w-0">
                                   <div className="font-semibold truncate">
-                                    {isCurrentlyPersonal ? 'Ganti ke Ruang Kerja Sekolah' : 'Ganti ke Ruang Kerja Individu'}
+                                    {isCurrentlyPersonal ? 'Ruang Kerja Sekolah' : 'Ruang Kerja Individu'}
                                   </div>
                                   <div className="text-[10px] text-slate-500 font-normal truncate">
                                     {isCurrentlyPersonal 

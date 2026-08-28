@@ -204,7 +204,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                       <Building2 size={16} />
                     </div>
                     <div className="text-left min-w-0">
-                      <div className="text-xs font-black uppercase tracking-tight">Ganti ke Ruang Kerja Sekolah</div>
+                      <div className="text-xs font-black uppercase tracking-tight">Ruang Kerja Sekolah</div>
                       <div className="text-[10px] text-blue-100 font-normal truncate">
                         {existingSchoolWs ? `Ke ${existingSchoolWs.workspaceName}` : 'Masukkan kode sekolah untuk terhubung'}
                       </div>
@@ -226,7 +226,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                       <UserCheck size={16} />
                     </div>
                     <div className="text-left min-w-0">
-                      <div className="text-xs font-black uppercase tracking-tight">Ganti ke Ruang Kerja Individu</div>
+                      <div className="text-xs font-black uppercase tracking-tight">Ruang Kerja Individu</div>
                       <div className="text-[10px] text-emerald-100 font-normal truncate">
                         {existingPersonalWs ? 'Kembali ke ruang kerja mandiri' : 'Buka ruang kerja mandiri (fresh workspace)'}
                       </div>
