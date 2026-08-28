@@ -507,7 +507,7 @@ export const LaporanView: React.FC = () => {
                   </span>
                 </div>
                 <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-                  Rekapitulasi otomatis kehadiran dari absensi seluruh Wali Kelas untuk administrasi resmi Pengawas.
+                  Rekapitulasi otomatis kehadiran dari absensi seluruh Wali Kelas untuk administrasi resmi sekolah.
                 </p>
               </div>
             </div>
@@ -837,8 +837,8 @@ export const LaporanView: React.FC = () => {
               <FileText size={16} />
             </div>
             <div className="pt-0.5">
-              <span className="font-bold">Format Cetak Laporan Kepala Sekolah:</span> Dokumen dirancang khusus memenuhi standar administrasi pengawasan sekolah, lengkap dengan Kop Surat Sekolah, tabel komparasi seluruh rombel, akumulasi tingkat sekolah, kolom evaluasi manajerial, serta lembar pengesahan resmi oleh{' '}
-              <strong className="underline">Pengawas Pembina Sekolah Dasar</strong> dan <strong className="underline">Kepala Sekolah</strong>.
+              <span className="font-bold">Format Cetak Laporan Kepala Sekolah:</span> Dokumen dirancang khusus memenuhi standar administrasi sekolah, lengkap dengan Kop Surat Sekolah, tabel komparasi seluruh rombel, akumulasi tingkat sekolah, kolom evaluasi manajerial, serta lembar pengesahan resmi oleh{' '}
+              <strong className="underline">Kepala Sekolah</strong>.
             </div>
           </div>
         </div>

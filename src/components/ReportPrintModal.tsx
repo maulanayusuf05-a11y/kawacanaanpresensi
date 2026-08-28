@@ -1398,7 +1398,7 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
                     <span className="font-extrabold text-blue-900 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
                       {kepsekSchoolTotals.pctHadir}% ({kepsekSchoolTotals.predicate})
                     </span>{' '}
-                    dengan total ketidakhadiran: Sakit {kepsekSchoolTotals.totalSakit} hari ({kepsekSchoolTotals.pctSakit}%), Izin {kepsekSchoolTotals.totalIzin} hari ({kepsekSchoolTotals.pctIzin}%), dan Alfa {kepsekSchoolTotals.totalAlfa} hari ({kepsekSchoolTotals.pctAlfa}%). Dokumen ini disusun sebagai laporan manajerial dan pertanggungjawaban resmi kepada Pengawas Sekolah Pembina.
+                    dengan total ketidakhadiran: Sakit {kepsekSchoolTotals.totalSakit} hari ({kepsekSchoolTotals.pctSakit}%), Izin {kepsekSchoolTotals.totalIzin} hari ({kepsekSchoolTotals.pctIzin}%), dan Alfa {kepsekSchoolTotals.totalAlfa} hari ({kepsekSchoolTotals.pctAlfa}%). Dokumen ini disusun sebagai laporan manajerial dan pertanggungjawaban resmi kehadiran siswa tingkat sekolah.
                   </>
                 ) : reportType === 'Laporan Harian' ? (
                   <>
@@ -1435,17 +1435,9 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
 
           {/* Official Signature Block */}
           {isKepalaSekolahReport ? (
-            /* Signature Block: Pengawas Pembina on Left & Kepala Sekolah on Right */
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-8 text-xs font-sans pt-4 break-inside-avoid">
-              <div className="text-center">
-                <p>Mengesahkan,</p>
-                <p className="font-bold">Pengawas Pembina Sekolah Dasar</p>
-                <div className="h-16 sm:h-20" />
-                <p className="font-bold underline text-sm">( .................................................... )</p>
-                <p className="text-slate-600 font-mono">NIP. ...............................................</p>
-              </div>
-
-              <div className="text-center">
+            /* Signature Block: Kepala Sekolah only (Right-aligned) */
+            <div className="flex justify-end text-xs font-sans pt-4 break-inside-avoid">
+              <div className="text-center min-w-[240px]">
                 <p>{systemConfig.reportPlace || 'Jakarta'}, {formatReportDateIndo(systemConfig.reportDate || '2026-06-27')}</p>
                 <p className="font-bold">Kepala {schoolProfile.namaSekolah || 'Sekolah Dasar'}</p>
                 <div className="h-16 sm:h-20" />
