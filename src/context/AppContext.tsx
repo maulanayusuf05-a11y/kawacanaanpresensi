@@ -636,10 +636,15 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
 
     let currentMemberships = [...userWorkspaces];
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token || '';
       const res = await fetch('/api/onboarding', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'get_user_workspaces', user_id: currentUser.id })
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ action: 'get_user_workspaces' })
       });
       const json = await res.json();
       if (json.success && Array.isArray(json.workspaces)) {
@@ -669,10 +674,15 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
 
     let currentMemberships = [...userWorkspaces];
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token || '';
       const res = await fetch('/api/onboarding', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'get_user_workspaces', user_id: currentUser.id })
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ action: 'get_user_workspaces' })
       });
       const json = await res.json();
       if (json.success && Array.isArray(json.workspaces)) {
@@ -690,15 +700,18 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
       showToast('Beralih ke Ruang Kerja Individu.', 'success');
     } else {
       try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token || '';
         const res = await fetch('/api/onboarding', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          },
           body: JSON.stringify({
             action: 'create_personal_workspace',
-            user_id: currentUser.id,
             fullName: currentUser.name || currentUser.username,
             nip: currentUser.nip,
-            role: currentUser.role,
           }),
         });
         const json = await res.json();
@@ -757,11 +770,18 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
    let baseProfile: any = null;
    try {
      const [onboardingRes, profileRes] = await Promise.all([
-       fetch('/api/onboarding', {
-         method: 'POST',
-         headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify({ action: 'get_user_workspaces', user_id: userId })
-       }).then(r => r.json()).catch(() => null),
+       (async () => {
+         const { data: sessionData } = await supabase.auth.getSession();
+         const token = sessionData.session?.access_token || '';
+         return fetch('/api/onboarding', {
+           method: 'POST',
+           headers: {
+             'Content-Type': 'application/json',
+             ...(token ? { Authorization: `Bearer ${token}` } : {})
+           },
+           body: JSON.stringify({ action: 'get_user_workspaces' })
+         }).then(r => r.json());
+       })(),
        supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
      ]);
      if (onboardingRes?.success && Array.isArray(onboardingRes.workspaces)) {

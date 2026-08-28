@@ -326,10 +326,15 @@ export default async function handler(req: any, res: any) {
     // 3. GET USER WORKSPACES
     // -------------------------------------------------------------
     if (action === 'get_user_workspaces') {
-      const userId = String(body.user_id || body.userId || '').trim();
-      if (!userId) {
-        return json(res, 400, { error: 'User ID wajib disertakan.' });
+      const workspaceToken = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+      if (!workspaceToken) {
+        return json(res, 401, { error: 'Sesi login diperlukan untuk membaca ruang kerja.' });
       }
+      const { data: workspaceAuth, error: workspaceAuthError } = await db.auth.getUser(workspaceToken);
+      if (workspaceAuthError || !workspaceAuth.user) {
+        return json(res, 401, { error: 'Sesi login tidak valid atau telah kedaluwarsa.' });
+      }
+      const userId = workspaceAuth.user.id;
 
       const { data: profile } = await db.from('profiles').select('*').eq('id', userId).maybeSingle();
       
@@ -346,7 +351,7 @@ export default async function handler(req: any, res: any) {
       // 2. Ambil penugasan guru di tabel teachers
       const { data: teacherRecords } = await db
         .from('teachers')
-        .select('school_id, jabatan, jenis_ptk, mata_pelajaran')
+        .select('id, school_id, jabatan, jenis_ptk, mata_pelajaran')
         .eq('id', profile?.teacher_id || '00000000-0000-0000-0000-000000000000');
 
       // Kumpulkan kandidat school ID
@@ -382,7 +387,33 @@ export default async function handler(req: any, res: any) {
           school?.plan === 'teacher' ||
           school?.plan === 'guru';
 
-        const userRole = (sId === profile?.school_id ? profile?.role : (teacherRecords?.find(t => t.school_id === sId)?.jabatan === 'Guru Mapel' ? 'GURU MAPEL' : 'WALI KELAS')) || profile?.role || 'WALI KELAS';
+        const teacherForSchool = (teacherRecords || []).find((t: any) => t.school_id === sId);
+        const teacherRole = teacherForSchool ? normalizeTeacherRole(teacherForSchool.jabatan) : 'OTHER';
+        const profileRole = sId === profile?.school_id ? normalizeTeacherRole(profile?.role) : 'OTHER';
+        const userRole = profileRole !== 'OTHER' ? profile?.role : (teacherRole !== 'OTHER' ? teacherRole : null);
+
+        // Role tidak boleh ditebak. Untuk workspace sekolah, role guru harus
+        // mempunyai penugasan nyata. Workspace personal tetap boleh memakai
+        // role yang telah ditetapkan pada onboarding sebelumnya.
+        if (!userRole) continue;
+        if (!isPersonal && teacherForSchool && teacherRole === 'WALI KELAS') {
+          const { data: waliAssignments } = await db
+            .from('classes')
+            .select('id')
+            .eq('school_id', sId)
+            .eq('wali_kelas_teacher_id', teacherForSchool.id)
+            .limit(1);
+          if (!waliAssignments?.length) continue;
+        }
+        if (!isPersonal && teacherForSchool && teacherRole === 'GURU MAPEL') {
+          const { data: subjectAssignments } = await db
+            .from('subject_teacher_assignments')
+            .select('subject_id')
+            .eq('school_id', sId)
+            .eq('teacher_id', teacherForSchool.id)
+            .limit(1);
+          if (!subjectAssignments?.length) continue;
+        }
 
         workspaces.push({
           id: `ws-mem-${userId}-${sId}`,
@@ -406,14 +437,28 @@ export default async function handler(req: any, res: any) {
     // 3.1. CREATE FRESH PERSONAL WORKSPACE
     // -------------------------------------------------------------
     if (action === 'create_personal_workspace') {
-      const userId = String(body.user_id || body.userId || '').trim();
+      const personalToken = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+      if (!personalToken) {
+        return json(res, 401, { error: 'Sesi login diperlukan untuk membuat ruang kerja individu.' });
+      }
+      const { data: personalAuth, error: personalAuthError } = await db.auth.getUser(personalToken);
+      if (personalAuthError || !personalAuth.user) {
+        return json(res, 401, { error: 'Sesi login tidak valid atau telah kedaluwarsa.' });
+      }
+      const userId = personalAuth.user.id;
       const fullName = String(body.fullName || body.name || '').trim() || 'Pendidik';
       const nip = String(body.nip || '-').trim();
-      const role = String(body.role || 'WALI KELAS').toUpperCase();
       let linkedTeacher: any = null;
 
-      if (!userId) {
-        return json(res, 400, { error: 'User ID wajib disertakan.' });
+      const { data: currentProfile, error: currentProfileError } = await db
+        .from('profiles')
+        .select('role, teacher_id')
+        .eq('id', userId)
+        .maybeSingle();
+      if (currentProfileError) throw currentProfileError;
+      const role = normalizeTeacherRole(currentProfile?.role);
+      if (!['WALI KELAS', 'GURU MAPEL'].includes(role)) {
+        return json(res, 403, { error: 'Ruang kerja individu guru hanya dapat dibuat setelah role guru ditetapkan melalui onboarding/assignment yang valid.' });
       }
 
       // Periksa apakah user sudah memiliki ruang kerja individu
@@ -540,7 +585,7 @@ export default async function handler(req: any, res: any) {
       }
       const rawCode = String(body.code || body.schoolCode || body.schoolId || '').trim();
       const effectiveUserId = authenticatedUserId;
-      const role = String(body.role || 'WALI KELAS').toUpperCase();
+      const role = String(body.role || '').toUpperCase();
       const teacherName = String(body.teacherName || body.name || '').trim();
       const nip = String(body.nip || '-').trim();
       const classId = body.classId || null;
@@ -818,7 +863,7 @@ export default async function handler(req: any, res: any) {
       const username = String(body.username || '').trim().toLowerCase();
       const password = String(body.password || '');
       const email = String(body.email || '').trim().toLowerCase();
-      const role = String(body.role || 'WALI KELAS').toUpperCase();
+      const role = String(body.role || '').toUpperCase();
       const mode = String(body.mode || 'school');
       const schoolId = body.schoolId || null;
       const nip = String(body.nip || '-').trim();
@@ -847,7 +892,7 @@ export default async function handler(req: any, res: any) {
         email: authEmail,
         password,
         email_confirm: true,
-        user_metadata: { name: fullName, username, role },
+        user_metadata: { name: fullName, username },
       });
 
       if (authErr || !authData.user) {
