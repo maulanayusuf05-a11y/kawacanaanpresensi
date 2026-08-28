@@ -330,6 +330,32 @@ export default async function handler(req: any, res: any) {
         if (teacherError || !teacherRow) throw teacherError || new Error('Gagal membuat data guru.');
         await admin.from('profiles').update({ teacher_id: teacherRow.id }).eq('id', authData.user.id);
 
+        if (teacherType === 'GURU_MAPEL' && teacherSubject) {
+          const { data: subjectRow } = await admin.from('subjects')
+            .select('id')
+            .eq('school_id', school.id)
+            .or(`code.ilike.${String(teacherSubject).trim().toUpperCase()},name.ilike.${String(teacherSubject).trim()}`)
+            .limit(1)
+            .maybeSingle();
+          let subjectId = subjectRow?.id || null;
+          if (!subjectId) {
+            const { data: createdSubject } = await admin.from('subjects').insert({
+              school_id: school.id,
+              name: String(teacherSubject).trim(),
+              code: String(teacherSubject).trim().slice(0, 4).toUpperCase(),
+              is_specialized: true,
+            }).select('id').single();
+            subjectId = createdSubject?.id || null;
+          }
+          if (subjectId) {
+            await admin.from('subject_teacher_assignments').upsert({
+              school_id: school.id,
+              subject_id: subjectId,
+              teacher_id: teacherRow.id,
+            }, { onConflict: 'school_id,subject_id,teacher_id' });
+          }
+        }
+
         if (createdClassRows.length > 0) {
           const primaryClass = createdClassRows[0];
           await admin.from('teacher_class_assignments').insert({

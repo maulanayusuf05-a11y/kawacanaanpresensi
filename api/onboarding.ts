@@ -1196,12 +1196,23 @@ export default async function handler(req: any, res: any) {
       // Upsert teacher record
       // Upsert subject record
       const { data: existingSub } = await db.from('subjects').select('id').eq('school_id', targetSchoolId).ilike('name', subjectName).maybeSingle();
-      if (!existingSub) {
-        await db.from('subjects').insert({
+      let subjectRow = existingSub;
+      if (!subjectRow) {
+        const { data: createdSubject, error: subjectCreateError } = await db.from('subjects').insert({
           school_id: targetSchoolId,
           name: subjectName,
+          code: String(subjectName || '').slice(0, 4).toUpperCase(),
           is_specialized: true,
-        });
+        }).select('id').single();
+        if (subjectCreateError) throw subjectCreateError;
+        subjectRow = createdSubject;
+      }
+      if (linkedTeacher?.id && subjectRow?.id) {
+        await db.from('subject_teacher_assignments').upsert({
+          school_id: targetSchoolId,
+          subject_id: subjectRow.id,
+          teacher_id: linkedTeacher.id,
+        }, { onConflict: 'school_id,subject_id,teacher_id' });
       }
 
       return json(res, 200, {

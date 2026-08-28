@@ -131,42 +131,25 @@ const dbTeacher=(t:any):Teacher=>{
   };
 };
 
-const dbSubject=(x:any):Subject=>{
-  let extra:any = {};
-  let cleanCode = x.code || '';
-  if (cleanCode && cleanCode.includes('__META:')) {
-    const parts = cleanCode.split('__META:');
-    cleanCode = parts[0];
-    try {
-      extra = JSON.parse(parts[1]);
-    } catch (_) {}
-  }
+const dbSubject=(x:any, teacherMap?:Map<string, any>, classMap?:Map<string, any>, scheduleMap?:Map<string, any[]>):Subject=>{
+  const teacher = x.teacher_id ? teacherMap?.get(x.teacher_id) : null;
+  const targetClassIds = Array.isArray(x._targetClassIds) ? x._targetClassIds : [];
+  const targetClassNames = targetClassIds.map((id:string) => classMap?.get(id)?.name || '').filter(Boolean);
+  const scheduleRows = scheduleMap?.get(x.id) || [];
   return {
     id: x.id,
     name: x.name,
-    code: cleanCode || undefined,
+    code: x.code || undefined,
     isSpecialized: !!x.is_specialized,
-    teacherId: extra.teacherId || x.teacher_id || null,
-    teacherName: extra.teacherName || x.teacher_name || null,
-    targetClassIds: extra.targetClassIds || [],
-    targetClassNames: extra.targetClassNames || [],
-    scheduleDays: extra.scheduleDays || [],
-    lessonPeriod: extra.lessonPeriod || '',
+    teacherId: x.teacher_id || null,
+    teacherName: teacher?.nama || null,
+    targetClassIds,
+    targetClassNames,
+    scheduleDays: scheduleRows.map((r:any) => r.day_of_week).filter(Boolean),
+    lessonPeriod: scheduleRows.find((r:any) => r.lesson_period)?.lesson_period || '',
   };
 };
 
-const packSubjectCode=(s:Omit<Subject, 'id'>):string=>{
-  const baseCode = (s.code || s.name.slice(0, 4)).toUpperCase().trim();
-  const meta = {
-    teacherId: s.teacherId || null,
-    teacherName: s.teacherName || null,
-    targetClassIds: s.targetClassIds || [],
-    targetClassNames: s.targetClassNames || [],
-    scheduleDays: s.scheduleDays || [],
-    lessonPeriod: s.lessonPeriod || '',
-  };
-  return `${baseCode}__META:${JSON.stringify(meta)}`;
-};
 const dbAttendance=(r:any, students:Student[]):AttendanceRecord=>({id:r.id,date:r.date,studentId:r.student_id,studentName:students.find(s=>s.id===r.student_id)?.nama||'',status:r.status,checkInTime:r.check_in_time?String(r.check_in_time).slice(0,5):'-',checkOutTime:r.check_out_time?String(r.check_out_time).slice(0,5):'-',notes:r.notes||'',type:r.type||'DAILY',subjectId:r.subject_id||null,subjectName:r.subject_name||null,classId:r.class_id||students.find(s=>s.id===r.student_id)?.classId||null,teacherId:r.updated_by||null});
 const dbEvent=(e:any):AcademicEvent=>({id:e.id,date:e.date,dateDisplay:e.date_display||e.date,title:e.title,isEffective:e.is_effective,notes:e.notes||''});
 const formatFullAlamat=(p:{jalan?:string;desaKelurahan?:string;kecamatan?:string;kabupatenKota?:string;provinsi?:string;kodePos?:string}):string=>{const parts=[p.jalan,p.desaKelurahan?`Desa/Kel. ${p.desaKelurahan}`:'',p.kecamatan?`Kec. ${p.kecamatan}`:'',p.kabupatenKota,p.provinsi,p.kodePos?`Kode Pos ${p.kodePos}`:''].filter(Boolean);return parts.join(', ');};
@@ -611,8 +594,19 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
    (effective.data||[]).forEach((x:any)=>ed[x.month_key]=x.days);
    setEffectiveDaysConfig(ed);
    setAttendanceRecords((attendance.data||[]).map((r:any)=>dbAttendance(r,ss))); 
-   const {data:subjectRows}=await supabase.from('subjects').select('*').eq('school_id',schoolId).order('name'); 
-   setSubjects((subjectRows||[]).map(dbSubject));
+   const { data: subjectRows } = await supabase.from('subjects').select('*').eq('school_id',schoolId).order('name');
+   const { data: subjectTeacherRows } = await supabase.from('subject_teacher_assignments').select('subject_id, teacher_id').eq('school_id', schoolId);
+   const { data: subjectClassRows } = await supabase.from('subject_class_assignments').select('subject_id, class_id').eq('school_id', schoolId);
+   const { data: subjectScheduleRows } = await supabase.from('subject_schedule_days').select('subject_id, day_of_week, lesson_period').eq('school_id', schoolId);
+   const teacherMap = new Map((baseTeachers || []).map((t:any) => [t.id, t]));
+   const classMap = new Map((classList || []).map((c:any) => [c.id, c]));
+   const teacherBySubject = new Map<string, string>();
+   (subjectTeacherRows || []).forEach((r:any) => teacherBySubject.set(r.subject_id, r.teacher_id));
+   const classesBySubject = new Map<string, string[]>();
+   (subjectClassRows || []).forEach((r:any) => { const arr = classesBySubject.get(r.subject_id) || []; arr.push(r.class_id); classesBySubject.set(r.subject_id, arr); });
+   const schedulesBySubject = new Map<string, any[]>();
+   (subjectScheduleRows || []).forEach((r:any) => { const arr = schedulesBySubject.get(r.subject_id) || []; arr.push(r); schedulesBySubject.set(r.subject_id, arr); });
+   setSubjects((subjectRows || []).map((row:any) => dbSubject({ ...row, teacher_id: teacherBySubject.get(row.id) || null, _targetClassIds: classesBySubject.get(row.id) || [] }, teacherMap, classMap, schedulesBySubject)));
  };
 
  const selectWorkspace = async (ws: WorkspaceMembership) => {
@@ -1693,27 +1687,90 @@ const deleteUser=async(id:string)=>{try{await apiUser('delete',{userId:id});setU
    return Math.max(0,base-holidays);
  };
  const getDateStatus=(date:string)=>{const [y,m,d]=date.split('-').map(Number);const day=new Date(y,m-1,d).getDay();const isStudyDay=activeStudyDays.includes(day);const ev=academicEvents.find(e=>e.date===date);if(ev&&!ev.isEffective)return{isStudyDay,isHoliday:true,isEffective:false,label:`Libur: ${ev.title}`,badgeColor:'bg-rose-50 text-rose-700 border-rose-200',eventTitle:ev.title};if(ev&&ev.isEffective)return{isStudyDay:true,isHoliday:false,isEffective:true,label:`Agenda Efektif: ${ev.title}`,badgeColor:'bg-blue-50 text-blue-700 border-blue-200',eventTitle:ev.title};if(!isStudyDay)return{isStudyDay:false,isHoliday:false,isEffective:false,label:'Libur Rutin (Bukan Hari Belajar)',badgeColor:'bg-slate-100 text-slate-600 border-slate-200'};return{isStudyDay:true,isHoliday:false,isEffective:true,label:'Hari Efektif Belajar',badgeColor:'bg-emerald-50 text-emerald-700 border-emerald-200'}};
+  const reloadSubjects = async () => {
+    const schoolId = currentUser?.schoolId;
+    if (!schoolId) return;
+    const [{ data: rows }, { data: assignments }, { data: classAssignments }, { data: schedules }, { data: teacherRows }, { data: classRows }] = await Promise.all([
+      supabase.from('subjects').select('*').eq('school_id', schoolId).order('name'),
+      supabase.from('subject_teacher_assignments').select('subject_id, teacher_id').eq('school_id', schoolId),
+      supabase.from('subject_class_assignments').select('subject_id, class_id').eq('school_id', schoolId),
+      supabase.from('subject_schedule_days').select('subject_id, day_of_week, lesson_period').eq('school_id', schoolId),
+      supabase.from('teachers').select('id,nama').eq('school_id', schoolId),
+      supabase.from('classes').select('id,name').eq('school_id', schoolId),
+    ]);
+    const teacherMap = new Map((teacherRows || []).map((t:any) => [t.id, t]));
+    const classMap = new Map((classRows || []).map((c:any) => [c.id, c]));
+    const teacherBySubject = new Map<string,string>();
+    (assignments || []).forEach((r:any) => teacherBySubject.set(r.subject_id, r.teacher_id));
+    const classesBySubject = new Map<string,string[]>();
+    (classAssignments || []).forEach((r:any) => { const a=classesBySubject.get(r.subject_id)||[]; a.push(r.class_id); classesBySubject.set(r.subject_id,a); });
+    const schedulesBySubject = new Map<string,any[]>();
+    (schedules || []).forEach((r:any) => { const a=schedulesBySubject.get(r.subject_id)||[]; a.push(r); schedulesBySubject.set(r.subject_id,a); });
+    setSubjects((rows || []).map((row:any) => dbSubject({ ...row, teacher_id: teacherBySubject.get(row.id)||null, _targetClassIds: classesBySubject.get(row.id)||[] }, teacherMap, classMap, schedulesBySubject)));
+  };
+
   const addSubject = async (s: Omit<Subject, "id">) => {
     try {
-      const packedCode = packSubjectCode(s);
-      const { data, error } = await supabase.from('subjects').insert({ school_id: currentUser?.schoolId, name: s.name.trim(), code: packedCode, is_specialized: !!s.isSpecialized }).select().single();
+      const schoolId = currentUser?.schoolId;
+      if (!schoolId) throw new Error('Sekolah aktif tidak ditemukan.');
+      const { data, error } = await supabase.from('subjects').insert({
+        school_id: schoolId,
+        name: s.name.trim(),
+        code: (s.code || s.name.slice(0,4)).toUpperCase().trim(),
+        is_specialized: !!s.isSpecialized,
+      }).select().single();
       if (error) throw error;
-      setSubjects((p) => [...p, dbSubject(data)]);
+      if (s.teacherId) {
+        const { error: e } = await supabase.from('subject_teacher_assignments').insert({ school_id: schoolId, subject_id: data.id, teacher_id: s.teacherId });
+        if (e) throw e;
+      }
+      if ((s.targetClassIds || []).length) {
+        const { error: e } = await supabase.from('subject_class_assignments').insert((s.targetClassIds || []).map(classId => ({ school_id: schoolId, subject_id: data.id, class_id: classId })));
+        if (e) throw e;
+      }
+      if ((s.scheduleDays || []).length) {
+        const { error: e } = await supabase.from('subject_schedule_days').insert((s.scheduleDays || []).map(day => ({ school_id: schoolId, subject_id: data.id, day_of_week: day, lesson_period: s.lessonPeriod || null })));
+        if (e) throw e;
+      }
+      await reloadSubjects();
       showToast("Mata pelajaran " + s.name + " berhasil ditambahkan!");
     } catch (e:any) { showToast(e.message || 'Gagal menyimpan mata pelajaran.', 'error'); }
   };
+
   const updateSubject = async (id: string, s: Omit<Subject, "id">) => {
     try {
-      const packedCode = packSubjectCode(s);
-      const { data, error } = await supabase.from('subjects').update({ name:s.name.trim(), code: packedCode, is_specialized:!!s.isSpecialized }).eq('id',id).select().single();
+      const schoolId = currentUser?.schoolId;
+      if (!schoolId) throw new Error('Sekolah aktif tidak ditemukan.');
+      const { error } = await supabase.from('subjects').update({ name:s.name.trim(), code:(s.code || s.name.slice(0,4)).toUpperCase().trim(), is_specialized:!!s.isSpecialized }).eq('id',id).eq('school_id',schoolId);
       if (error) throw error;
-      setSubjects((p) => p.map((sub) => sub.id === id ? dbSubject(data) : sub));
+      for (const table of ['subject_teacher_assignments','subject_class_assignments','subject_schedule_days']) {
+        const { error: delError } = await supabase.from(table).delete().eq('subject_id', id).eq('school_id', schoolId);
+        if (delError) throw delError;
+      }
+      if (s.teacherId) {
+        const { error: e } = await supabase.from('subject_teacher_assignments').insert({ school_id: schoolId, subject_id:id, teacher_id:s.teacherId });
+        if (e) throw e;
+      }
+      if ((s.targetClassIds || []).length) {
+        const { error: e } = await supabase.from('subject_class_assignments').insert((s.targetClassIds || []).map(classId => ({ school_id: schoolId, subject_id:id, class_id:classId })));
+        if (e) throw e;
+      }
+      if ((s.scheduleDays || []).length) {
+        const { error: e } = await supabase.from('subject_schedule_days').insert((s.scheduleDays || []).map(day => ({ school_id: schoolId, subject_id:id, day_of_week:day, lesson_period:s.lessonPeriod || null })));
+        if (e) throw e;
+      }
+      await reloadSubjects();
       showToast("Mata pelajaran " + s.name + " berhasil diperbarui");
     } catch (e:any) { showToast(e.message || 'Gagal memperbarui mata pelajaran.', 'error'); }
   };
+
   const deleteSubject = async (id: string) => {
-    try { const {error}=await supabase.from('subjects').delete().eq('id',id); if(error) throw error; setSubjects((p) => p.filter((s) => s.id !== id)); showToast("Mata pelajaran berhasil dihapus", "info"); }
-    catch(e:any){ showToast(e.message || 'Gagal menghapus mata pelajaran.', 'error'); }
+    try {
+      const { error } = await supabase.from('subjects').delete().eq('id',id).eq('school_id', currentUser?.schoolId || '');
+      if(error) throw error;
+      setSubjects((p) => p.filter((s) => s.id !== id));
+      showToast("Mata pelajaran berhasil dihapus", "info");
+    } catch(e:any){ showToast(e.message || 'Gagal menghapus mata pelajaran.', 'error'); }
   };
   const getAttendanceForDate = (
     date: string,
