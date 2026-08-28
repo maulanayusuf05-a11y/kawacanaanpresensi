@@ -69,6 +69,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ onCompleted }) =
   const [searchedSchools, setSearchedSchools] = useState<any[]>([]);
   const [selectedSchool, setSelectedSchool] = useState<any | null>(null);
   const [selectedClassId, setSelectedClassId] = useState<string>('');
+  const [selectedSubjectClassIds, setSelectedSubjectClassIds] = useState<string[]>([]);
   const [schoolJoinClassMode, setSchoolJoinClassMode] = useState<'select' | 'new'>('select');
   const [schoolNewGrade, setSchoolNewGrade] = useState<number>(5);
   const [schoolNewClassName, setSchoolNewClassName] = useState<string>('Kelas 5');
@@ -182,6 +183,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ onCompleted }) =
       setSelectedSchool(school);
       if (school.classes?.length > 0) {
         setSelectedClassId(school.classes[0].id);
+        setSelectedSubjectClassIds([]);
         setSchoolJoinClassMode('select');
       } else {
         setSelectedClassId('__NEW_CLASS__');
@@ -272,6 +274,9 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ onCompleted }) =
         if (selectedPath === 'school' && !selectedSchool) {
           throw new Error('Silakan cari dan pilih sekolah tempat Anda bertugas terlebih dahulu.');
         }
+        if (selectedRole === 'subject' && selectedPath === 'school' && selectedSubjectClassIds.length === 0) {
+          throw new Error('Silakan pilih minimal satu kelas yang Anda ajar.');
+        }
       } else if (selectedRole === 'student') {
         if (!selectedSchool) {
           throw new Error('Silakan cari melalui NPSN atau nama sekolah dan pilih sekolah tempat Anda belajar.');
@@ -342,6 +347,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ onCompleted }) =
                   : undefined
                 : undefined,
             subjectName: subjectName || 'Pendidikan Jasmani / Agama',
+            classIds: selectedRole === 'subject' && selectedPath === 'school' ? selectedSubjectClassIds : [],
             workspaceName:
               customWorkspaceName ||
               (selectedRole === 'homeroom'
@@ -441,6 +447,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ onCompleted }) =
               phone: teacherPhone || '-',
               employmentStatus: teacherEmploymentStatus,
               subjectName: subjectName || 'Pendidikan Jasmani / Agama',
+              classIds: selectedSubjectClassIds,
             };
           } else {
             payload = {
@@ -979,6 +986,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ onCompleted }) =
                               onClick={() => {
                                 setSelectedSchool(null);
                                 setSelectedClassId('');
+                                setSelectedSubjectClassIds([]);
                                 setSchoolQuery('');
                               }}
                               className="px-2.5 py-1 text-[11px] font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg transition cursor-pointer shrink-0"
@@ -1146,6 +1154,44 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ onCompleted }) =
                                   </button>
                                 ))}
                               </div>
+                            </div>
+                          )}
+
+
+                          {/* Kelas yang Diajar Guru Mapel — setelah memilih mata pelajaran */}
+                          {selectedRole === 'subject' && (
+                            <div className="pt-3 border-t border-slate-100 space-y-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                                  Kelas yang Diajar: <span className="text-rose-500">*</span>
+                                </label>
+                                <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full">
+                                  {selectedSubjectClassIds.length} kelas dipilih
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {(selectedSchool.classes || []).map((c: any) => {
+                                  const checked = selectedSubjectClassIds.includes(c.id);
+                                  return (
+                                    <label key={c.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${checked ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 bg-slate-50 hover:border-slate-300'}`}>
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => setSelectedSubjectClassIds((prev) => checked ? prev.filter((id) => id !== c.id) : [...prev, c.id])}
+                                        className="w-4 h-4 accent-indigo-600"
+                                      />
+                                      <div>
+                                        <div className="text-sm font-bold text-slate-900">{c.name}</div>
+                                        <div className="text-[10px] text-slate-500">Kelas {c.grade ?? '-'}</div>
+                                      </div>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                              {(!selectedSchool.classes || selectedSchool.classes.length === 0) && (
+                                <p className="text-xs text-rose-600 font-semibold">Belum ada kelas di sekolah ini. Guru Mapel tidak dapat menyelesaikan onboarding sebelum kelas tersedia.</p>
+                              )}
+                              <p className="text-[11px] text-slate-500">Pilih semua rombel yang Anda ajar untuk mata pelajaran ini.</p>
                             </div>
                           )}
                         </div>

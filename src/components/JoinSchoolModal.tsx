@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { supabase } from '../lib/supabaseClient';
 import {
   Building2,
   KeyRound,
@@ -31,6 +32,7 @@ export const JoinSchoolModal: React.FC<JoinSchoolModalProps> = ({ isOpen, onClos
   // Role in School
   const [role, setRole] = useState<'WALI KELAS' | 'GURU MAPEL'>('WALI KELAS');
   const [selectedClassId, setSelectedClassId] = useState<string>('');
+  const [selectedSubjectClassIds, setSelectedSubjectClassIds] = useState<string[]>([]);
   const [classMode, setClassMode] = useState<'select' | 'new'>('select');
   const [newGrade, setNewGrade] = useState<number>(5);
   const [newClassName, setNewClassName] = useState<string>('Kelas 5');
@@ -78,6 +80,7 @@ export const JoinSchoolModal: React.FC<JoinSchoolModalProps> = ({ isOpen, onClos
         setVerifiedSchool(found);
         if (found.classes && found.classes.length > 0) {
           setSelectedClassId(found.classes[0].id);
+          setSelectedSubjectClassIds([]);
           setClassMode('select');
         } else {
           setClassMode('new');
@@ -104,6 +107,11 @@ export const JoinSchoolModal: React.FC<JoinSchoolModalProps> = ({ isOpen, onClos
       return;
     }
 
+    if (role === 'GURU MAPEL' && selectedSubjectClassIds.length === 0) {
+      showToast('Pilih minimal satu kelas yang diajar.', 'error');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const payload: any = {
@@ -117,6 +125,7 @@ export const JoinSchoolModal: React.FC<JoinSchoolModalProps> = ({ isOpen, onClos
         name: teacherName.trim(),
         nip: teacherNip.trim() || null,
         subjectName: role === 'GURU MAPEL' ? subjectName : '',
+        classIds: role === 'GURU MAPEL' ? selectedSubjectClassIds : [],
       };
 
       if (role === 'WALI KELAS') {
@@ -128,9 +137,13 @@ export const JoinSchoolModal: React.FC<JoinSchoolModalProps> = ({ isOpen, onClos
         }
       }
 
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error('Sesi login telah berakhir. Silakan login kembali.');
+
       const res = await fetch('/api/onboarding', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(payload),
       });
 
@@ -299,43 +312,14 @@ export const JoinSchoolModal: React.FC<JoinSchoolModalProps> = ({ isOpen, onClos
                 </div>
               </div>
 
-              {/* Role Selection */}
-              <div>
-                <label className="block font-bold text-slate-700 mb-1 uppercase text-[10px] tracking-wider">
-                  Penugasan di Sekolah *
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setRole('WALI KELAS')}
-                    className={`p-3 rounded-xl border text-left flex items-center gap-2.5 transition-all cursor-pointer ${
-                      role === 'WALI KELAS'
-                        ? 'border-blue-600 bg-blue-50/70 text-blue-900 shadow-2xs'
-                        : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700'
-                    }`}
-                  >
-                    <UserCheck size={18} className={role === 'WALI KELAS' ? 'text-blue-600' : 'text-slate-400'} />
-                    <div>
-                      <div className="font-extrabold text-xs">Wali Kelas</div>
-                      <div className="text-[10px] text-slate-500">Kelola 1 Rombel</div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setRole('GURU MAPEL')}
-                    className={`p-3 rounded-xl border text-left flex items-center gap-2.5 transition-all cursor-pointer ${
-                      role === 'GURU MAPEL'
-                        ? 'border-indigo-600 bg-indigo-50/70 text-indigo-900 shadow-2xs'
-                        : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700'
-                    }`}
-                  >
-                    <BookOpen size={18} className={role === 'GURU MAPEL' ? 'text-indigo-600' : 'text-slate-400'} />
-                    <div>
-                      <div className="font-extrabold text-xs">Guru Mapel</div>
-                      <div className="text-[10px] text-slate-500">Mata Pelajaran</div>
-                    </div>
-                  </button>
+              {/* Role dikunci mengikuti role akun; tidak ada perpindahan silang. */}
+              <div className="p-3 rounded-xl border border-indigo-100 bg-indigo-50/60">
+                <div className="flex items-start gap-2.5">
+                  {role === 'WALI KELAS' ? <UserCheck size={18} className="text-blue-600 shrink-0" /> : <BookOpen size={18} className="text-indigo-600 shrink-0" />}
+                  <div>
+                    <div className="font-extrabold text-xs text-slate-900">Penugasan di Sekolah</div>
+                    <div className="text-[11px] text-slate-600 mt-0.5">Role akun Anda dikunci sebagai <strong>{role === 'WALI KELAS' ? 'Wali Kelas' : 'Guru Mapel'}</strong>. Role tidak dapat diubah saat bergabung ke sekolah.</div>
+                  </div>
                 </div>
               </div>
 
@@ -406,6 +390,28 @@ export const JoinSchoolModal: React.FC<JoinSchoolModalProps> = ({ isOpen, onClos
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* If Guru Mapel: Classes */}
+              {role === 'GURU MAPEL' && (
+                <div className="space-y-2 p-3 bg-slate-50 rounded-xl border border-slate-200/80">
+                  <div className="flex items-center justify-between">
+                    <label className="block font-bold text-slate-700 text-[11px]">Kelas yang Diajar *</label>
+                    <span className="text-[10px] font-bold text-indigo-600">{selectedSubjectClassIds.length} dipilih</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {(verifiedSchool.classes || []).map((c: any) => {
+                      const checked = selectedSubjectClassIds.includes(c.id);
+                      return (
+                        <label key={c.id} className={`flex items-center gap-2.5 p-2.5 rounded-xl border cursor-pointer ${checked ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 bg-white'}`}>
+                          <input type="checkbox" checked={checked} onChange={() => setSelectedSubjectClassIds((prev) => checked ? prev.filter((id) => id !== c.id) : [...prev, c.id])} className="w-4 h-4 accent-indigo-600" />
+                          <span className="text-xs font-semibold text-slate-800">{c.name}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[10px] text-slate-500">Pilih semua kelas yang Anda ajar untuk mata pelajaran ini.</p>
                 </div>
               )}
 
