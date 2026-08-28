@@ -150,7 +150,7 @@ const dbSubject=(x:any, teacherMap?:Map<string, any>, classMap?:Map<string, any>
   };
 };
 
-const dbAttendance=(r:any, students:Student[]):AttendanceRecord=>({id:r.id,date:r.date,studentId:r.student_id,studentName:students.find(s=>s.id===r.student_id)?.nama||'',status:r.status,checkInTime:r.check_in_time?String(r.check_in_time).slice(0,5):'-',checkOutTime:r.check_out_time?String(r.check_out_time).slice(0,5):'-',notes:r.notes||'',type:r.type||'DAILY',subjectId:r.subject_id||null,subjectName:r.subject_name||null,classId:r.class_id||students.find(s=>s.id===r.student_id)?.classId||null,teacherId:r.updated_by||null});
+const dbAttendance=(r:any, students:Student[]):AttendanceRecord=>({id:r.id,date:r.date,studentId:r.student_id,studentName:students.find(s=>s.id===r.student_id)?.nama||'',status:r.status,checkInTime:r.check_in_time?String(r.check_in_time).slice(0,5):'-',checkOutTime:r.check_out_time?String(r.check_out_time).slice(0,5):'-',notes:r.notes||'',type:r.type||'DAILY',subjectId:r.subject_id||null,subjectName:r.subject_name||null,classId:r.class_id||students.find(s=>s.id===r.student_id)?.classId||null,teacherId:r.teacher_id||null});
 const dbEvent=(e:any):AcademicEvent=>({id:e.id,date:e.date,dateDisplay:e.date_display||e.date,title:e.title,isEffective:e.is_effective,notes:e.notes||''});
 const formatFullAlamat=(p:{jalan?:string;desaKelurahan?:string;kecamatan?:string;kabupatenKota?:string;provinsi?:string;kodePos?:string}):string=>{const parts=[p.jalan,p.desaKelurahan?`Desa/Kel. ${p.desaKelurahan}`:'',p.kecamatan?`Kec. ${p.kecamatan}`:'',p.kabupatenKota,p.provinsi,p.kodePos?`Kode Pos ${p.kodePos}`:''].filter(Boolean);return parts.join(', ');};
 
@@ -1831,6 +1831,50 @@ const deleteUser=async(id:string)=>{try{await apiUser('delete',{userId:id});setU
       };
     });
   };
+  // Resolve the teacher identity strictly from database IDs.
+  // Names and updated_by are never used as the source of truth.
+  const resolveAttendanceTeacherId = async (
+    type: AttendanceType,
+    classId: string | null,
+    subjectId: string | null
+  ): Promise<string | null> => {
+    const schoolId = currentUser?.schoolId || null;
+    if (!schoolId || !classId) return null;
+
+    if (type === "DAILY") {
+      const { data, error } = await supabase
+        .from("classes")
+        .select("wali_kelas_teacher_id")
+        .eq("id", classId)
+        .eq("school_id", schoolId)
+        .maybeSingle();
+      if (error) throw error;
+      return data?.wali_kelas_teacher_id || null;
+    }
+
+    if (!subjectId || !currentUser?.teacherId) return null;
+
+    const { data: classAssignment, error: classError } = await supabase
+      .from("subject_class_assignments")
+      .select("id")
+      .eq("school_id", schoolId)
+      .eq("class_id", classId)
+      .eq("subject_id", subjectId)
+      .maybeSingle();
+    if (classError) throw classError;
+    if (!classAssignment) return null;
+
+    const { data: teacherAssignment, error: teacherError } = await supabase
+      .from("subject_teacher_assignments")
+      .select("teacher_id")
+      .eq("school_id", schoolId)
+      .eq("subject_id", subjectId)
+      .eq("teacher_id", currentUser.teacherId)
+      .maybeSingle();
+    if (teacherError) throw teacherError;
+    return teacherAssignment?.teacher_id || null;
+  };
+
   const saveDailyAttendance = async (
     date: string,
     records: AttendanceRecord[],
@@ -1846,6 +1890,14 @@ const deleteUser=async(id:string)=>{try{await apiUser('delete',{userId:id});setU
       const targetSubjectId = options?.subjectId ?? records[0]?.subjectId ?? null;
       const targetSubjectName = options?.subjectName ?? records[0]?.subjectName ?? null;
       const targetClassId = options?.classId ?? records[0]?.classId ?? null;
+      const targetTeacherId = await resolveAttendanceTeacherId(targetType, targetClassId, targetSubjectId);
+      if (!targetTeacherId) {
+        throw new Error(
+          targetType === "DAILY"
+            ? "Guru wali kelas untuk kelas ini belum terhubung melalui ID guru."
+            : "Guru mapel tidak memiliki assignment ID yang valid untuk kelas dan mapel ini."
+        );
+      }
 
       const targetStudentIds = records.map((r) => r.studentId).filter(Boolean);
 
@@ -1877,6 +1929,7 @@ const deleteUser=async(id:string)=>{try{await apiUser('delete',{userId:id});setU
           class_id: r.classId || students.find((s) => s.id === r.studentId)?.classId || null,
           type: targetType,
           subject_id: targetSubjectId || null,
+          teacher_id: targetTeacherId,
           status: r.status,
           check_in_time: r.checkInTime && r.checkInTime !== '-' ? r.checkInTime : null,
           check_out_time: r.checkOutTime && r.checkOutTime !== '-' ? r.checkOutTime : null,
@@ -1897,7 +1950,7 @@ const deleteUser=async(id:string)=>{try{await apiUser('delete',{userId:id});setU
           subjectId: targetSubjectId,
           subjectName: targetSubjectName,
           classId: targetClassId || r.classId,
-          teacherId: currentUser?.teacherId || null,
+          teacherId: targetTeacherId,
           teacherName: currentUser?.name,
         }));
 
@@ -2012,6 +2065,14 @@ const deleteUser=async(id:string)=>{try{await apiUser('delete',{userId:id});setU
           (r) => r.date === target && r.studentId === studentId && (!r.type || r.type === 'DAILY')
         );
         const studentObj = students.find((s) => s.id === studentId);
+        const selfTeacherId = await resolveAttendanceTeacherId(
+          'DAILY',
+          studentObj?.classId || null,
+          null
+        );
+        if (!selfTeacherId) {
+          throw new Error('Guru wali kelas siswa belum terhubung melalui ID guru.');
+        }
 
         const updatePayload: any = {
           school_id: currentUser.schoolId || null,
@@ -2019,6 +2080,7 @@ const deleteUser=async(id:string)=>{try{await apiUser('delete',{userId:id});setU
           class_id: studentObj?.classId || null,
           date: target,
           type: 'DAILY',
+          teacher_id: selfTeacherId,
           updated_by: currentUser.id,
         };
 
