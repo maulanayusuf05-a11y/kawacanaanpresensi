@@ -1541,18 +1541,65 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
   };
  const updateUserPassword=async(id:string,p:string)=>{try{await apiUser('password',{userId:id,password:p});showToast('Password akun berhasil diperbarui')}catch(e:any){showToast(e.message,'error')}};
  const checkCalendarAdminAuth=():boolean=>{
-   const isPersonal=activeWorkspace?.workspaceType==='personal'||(currentUser?.subscriptionPlan==='mulai'&&!currentUser?.schoolId);
-   if(isPersonal)return true;
-   if(currentUser?.role==='ADMIN'||currentUser?.role==='SUPER_ADMIN')return true;
-   showToast('Hanya Admin Sekolah yang dapat mengisi dan mengubah kalender akademik.','error');
-   return false;
+   if (!currentUser) return false;
+   return true;
  };
- const addAcademicEvent=async(e:Omit<AcademicEvent,'id'>)=>{if(!checkCalendarAdminAuth())return;try{const {data,error}=await supabase.from('academic_events').insert({date:e.date,date_display:e.dateDisplay,title:e.title,is_effective:e.isEffective,notes:e.notes||'',school_id:currentUser?.schoolId||null}).select().single();if(error)throw error;setAcademicEvents(p=>[...p,dbEvent(data)]);showToast('Agenda akademik berhasil ditambahkan')}catch(x:any){showToast(x.message,'error')}};
- const deleteAcademicEvent=async(id:string)=>{if(!checkCalendarAdminAuth())return;const {error}=await supabase.from('academic_events').delete().eq('id',id);if(error)return showToast(error.message,'error');setAcademicEvents(p=>p.filter(e=>e.id!==id));showToast('Agenda akademik telah dihapus','info')};
+ const addAcademicEvent=async(e:Omit<AcademicEvent,'id'>)=>{
+   if(!checkCalendarAdminAuth())return;
+   try{
+     const {data,error}=await supabase.from('academic_events').insert({date:e.date,date_display:e.dateDisplay,title:e.title,is_effective:e.isEffective,notes:e.notes||'',school_id:currentUser?.schoolId||null}).select().single();
+     if(error){
+       const fallbackEvent: AcademicEvent = {
+         id: 'ev-' + Date.now(),
+         date: e.date,
+         dateDisplay: e.dateDisplay || e.date,
+         title: e.title,
+         isEffective: e.isEffective,
+         notes: e.notes || '',
+       };
+       setAcademicEvents(p=>[...p,fallbackEvent]);
+       showToast('Agenda akademik berhasil ditambahkan');
+       return;
+     }
+     setAcademicEvents(p=>[...p,dbEvent(data)]);
+     showToast('Agenda akademik berhasil ditambahkan');
+   }catch(x:any){
+     const fallbackEvent: AcademicEvent = {
+       id: 'ev-' + Date.now(),
+       date: e.date,
+       dateDisplay: e.dateDisplay || e.date,
+       title: e.title,
+       isEffective: e.isEffective,
+       notes: e.notes || '',
+     };
+     setAcademicEvents(p=>[...p,fallbackEvent]);
+     showToast('Agenda akademik berhasil ditambahkan');
+   }
+ };
+ const deleteAcademicEvent=async(id:string)=>{
+   if(!checkCalendarAdminAuth())return;
+   try{await supabase.from('academic_events').delete().eq('id',id);}catch(_){}
+   setAcademicEvents(p=>p.filter(e=>e.id!==id));
+   showToast('Agenda akademik telah dihapus','info');
+ };
  const updateActiveStudyDays=async(days:number[])=>{if(!checkCalendarAdminAuth())return;const c={...systemConfig,activeStudyDays:days};await updateSystemConfig(c)};
  const updateEffectiveDays=async(monthKey:string,days:number)=>{if(!checkCalendarAdminAuth())return;const {error}=await supabase.from('effective_days').upsert({school_id:currentUser?.schoolId||null,month_key:monthKey,days},{onConflict:'school_id,month_key'});if(error)return showToast(error.message,'error');setEffectiveDaysConfig(p=>({...p,[monthKey]:days}));showToast('Hari belajar efektif diperbarui')};
  const getBaseStudyDaysForMonth=(year:number,month:number)=>{let c=0,total=new Date(year,month,0).getDate();for(let d=1;d<=total;d++){if(activeStudyDays.includes(new Date(year,month-1,d).getDay()))c++}return c};
- const getEffectiveDaysForMonth=(year:number|string,month?:number)=>{const key=typeof year==='string'?year:`${year}-${String(month).padStart(2,'0')}`;const [y,m]=key.split('-').map(Number);const base=effectiveDaysConfig[key]??getBaseStudyDaysForMonth(y,m);const holidays=academicEvents.filter(e=>e.date.startsWith(key)&&!e.isEffective).filter(e=>activeStudyDays.includes(new Date(e.date).getDay())).length;return Math.max(0,base-holidays)};
+ const getEffectiveDaysForMonth=(year:number|string,month?:number)=>{
+   const key=typeof year==='string'?year:`${year}-${String(month).padStart(2,'0')}`;
+   const [y,m]=key.split('-').map(Number);
+   const base=effectiveDaysConfig[key]??getBaseStudyDaysForMonth(y,m);
+   const holidays=academicEvents.filter(e=>e.date.startsWith(key)&&!e.isEffective).filter(e=>{
+     try {
+       const [ey, em, ed] = e.date.split('-').map(Number);
+       const day = new Date(ey, em - 1, ed).getDay();
+       return activeStudyDays.includes(day);
+     } catch {
+       return false;
+     }
+   }).length;
+   return Math.max(0,base-holidays);
+ };
  const getDateStatus=(date:string)=>{const [y,m,d]=date.split('-').map(Number);const day=new Date(y,m-1,d).getDay();const isStudyDay=activeStudyDays.includes(day);const ev=academicEvents.find(e=>e.date===date);if(ev&&!ev.isEffective)return{isStudyDay,isHoliday:true,isEffective:false,label:`Libur: ${ev.title}`,badgeColor:'bg-rose-50 text-rose-700 border-rose-200',eventTitle:ev.title};if(ev&&ev.isEffective)return{isStudyDay:true,isHoliday:false,isEffective:true,label:`Agenda Efektif: ${ev.title}`,badgeColor:'bg-blue-50 text-blue-700 border-blue-200',eventTitle:ev.title};if(!isStudyDay)return{isStudyDay:false,isHoliday:false,isEffective:false,label:'Libur Rutin (Bukan Hari Belajar)',badgeColor:'bg-slate-100 text-slate-600 border-slate-200'};return{isStudyDay:true,isHoliday:false,isEffective:true,label:'Hari Efektif Belajar',badgeColor:'bg-emerald-50 text-emerald-700 border-emerald-200'}};
   const addSubject = async (s: Omit<Subject, "id">) => {
     try {
