@@ -418,8 +418,11 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
    let tenantSchool: any = null;
    {
      const res = await supabase.from('schools').select('name,npsn,code,plan,status,subscription_expires_at,max_teachers,max_students,max_classes,workspace_type,is_personal').eq('id',schoolId).maybeSingle();
-     if (res.error) throw res.error;
-     tenantSchool = res.data;
+     if (res.error) {
+       console.warn('[loadData] schools read failed:', res.error.message);
+     } else {
+       tenantSchool = res.data;
+     }
    }
    let authoritativeSchoolCode = tenantSchool?.code ? String(tenantSchool.code).replace(/^SCH-?/i, '').trim().toUpperCase() : '';
    const hydratedBase={...baseProfile,school_id:schoolId,school_code:authoritativeSchoolCode || null,role:targetRole,subscription_plan:tenantSchool?.plan || 'teacher',subscription_status:tenantSchool?.status || 'active',subscription_expires_at:tenantSchool?.subscription_expires_at,max_teachers:tenantSchool?.max_teachers,max_students:tenantSchool?.max_students,max_classes:tenantSchool?.max_classes};
@@ -437,9 +440,16 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
     supabase.from('teachers').select('*').eq('school_id',schoolId).order('nama')
    ]);
 
-   const criticalResponses = [stu, school, config, events, effective, attendance, allProfiles, classRows, teacherRows];
-   const firstCriticalError = criticalResponses.find((r:any) => r?.error);
-   if (firstCriticalError?.error) throw firstCriticalError.error;
+   // Master-data reads are intentionally independent. A failure in an
+   // auxiliary table (for example attendance/events/profile due to RLS)
+   // must NOT prevent Guru/Kelas/Siswa from rendering.
+   const readErrors = [
+     ['students', stu], ['school_profile', school], ['system_config', config],
+     ['academic_events', events], ['effective_days', effective],
+     ['attendance_records', attendance], ['profiles', allProfiles],
+     ['classes', classRows], ['teachers', teacherRows]
+   ].filter(([, r]: any) => r?.error);
+   if (readErrors.length) console.warn('[loadData] partial read errors:', readErrors.map(([name, r]: any) => `${name}: ${r.error.message}`).join(' | '));
 
    const baseTeachers = (teacherRows.data || []).map(dbTeacher);
    setTeachers(baseTeachers); 
@@ -469,8 +479,8 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
      supabase.from('subject_teacher_assignments').select('subject_id,teacher_id,academic_year').eq('school_id', schoolId).eq('academic_year', activeAcademicYear),
      supabase.from('subject_class_assignments').select('subject_id,class_id,academic_year').eq('school_id', schoolId).eq('academic_year', activeAcademicYear),
    ]);
-   if (scopeTeacherRows.error) throw scopeTeacherRows.error;
-   if (scopeClassRows.error) throw scopeClassRows.error;
+   if (scopeTeacherRows.error) console.warn('[loadData] subject_teacher_assignments read failed:', scopeTeacherRows.error.message);
+   if (scopeClassRows.error) console.warn('[loadData] subject_class_assignments read failed:', scopeClassRows.error.message);
    (scopeTeacherRows.data || []).forEach((a:any) => {
      const ids = subjectTeacherScope.get(a.teacher_id) || [];
      ids.push(a.subject_id);
@@ -584,13 +594,13 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
    setEffectiveDaysConfig(ed);
    setAttendanceRecords((attendance.data||[]).map((r:any)=>dbAttendance(r,ss))); 
    const { data: subjectRows, error: subjectRowsError } = await supabase.from('subjects').select('*').eq('school_id',schoolId).order('name');
-   const { data: subjectTeacherRows, error: subjectTeacherRowsError } = await supabase.from('subject_teacher_assignments').select('subject_id, teacher_id, academic_year').eq('school_id', schoolId).eq('academic_year', schoolProfile.tahunPelajaran || '2026/2027');
-   const { data: subjectClassRows, error: subjectClassRowsError } = await supabase.from('subject_class_assignments').select('subject_id, class_id, academic_year').eq('school_id', schoolId).eq('academic_year', schoolProfile.tahunPelajaran || '2026/2027');
+   const { data: subjectTeacherRows, error: subjectTeacherRowsError } = await supabase.from('subject_teacher_assignments').select('subject_id, teacher_id, academic_year').eq('school_id', schoolId).eq('academic_year', activeAcademicYear);
+   const { data: subjectClassRows, error: subjectClassRowsError } = await supabase.from('subject_class_assignments').select('subject_id, class_id, academic_year').eq('school_id', schoolId).eq('academic_year', activeAcademicYear);
    const { data: subjectScheduleRows, error: subjectScheduleRowsError } = await supabase.from('subject_schedule_days').select('subject_id, day_of_week, lesson_period').eq('school_id', schoolId);
-   if (subjectRowsError) throw subjectRowsError;
-   if (subjectTeacherRowsError) throw subjectTeacherRowsError;
-   if (subjectClassRowsError) throw subjectClassRowsError;
-   if (subjectScheduleRowsError) throw subjectScheduleRowsError;
+   if (subjectRowsError) console.warn('[loadData] subjects read failed:', subjectRowsError.message);
+   if (subjectTeacherRowsError) console.warn('[loadData] subject_teacher_assignments read failed:', subjectTeacherRowsError.message);
+   if (subjectClassRowsError) console.warn('[loadData] subject_class_assignments read failed:', subjectClassRowsError.message);
+   if (subjectScheduleRowsError) console.warn('[loadData] subject_schedule_days read failed:', subjectScheduleRowsError.message);
    const teacherMap = new Map<string, any>((authoritativeTeachers || baseTeachers || []).map((t:any) => [t.id, t]));
    const classMap = new Map<string, any>((classList || []).map((c:any) => [c.id, c]));
    const teacherBySubject = new Map<string, string>();
@@ -600,6 +610,7 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
    const schedulesBySubject = new Map<string, any[]>();
    (subjectScheduleRows || []).forEach((r:any) => { const arr = schedulesBySubject.get(r.subject_id) || []; arr.push(r); schedulesBySubject.set(r.subject_id, arr); });
    setSubjects((subjectRows || []).map((row:any) => dbSubject({ ...row, teacher_id: teacherBySubject.get(row.id) || null, _targetClassIds: classesBySubject.get(row.id) || [] }, teacherMap, classMap, schedulesBySubject)));
+   setIsDataLoading(false);
  };
 
  const selectWorkspace = async (ws: WorkspaceMembership) => {
