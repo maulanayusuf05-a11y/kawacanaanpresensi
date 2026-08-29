@@ -37,6 +37,11 @@ export default async function handler(req: any, res: any) {
   const role = body.role as Role | undefined;
   const schoolId = profile.role === 'SUPER_ADMIN' ? (body.schoolId || body.school_id || null) : profile.school_id;
 
+  const getAcademicYear = async (id: string) => {
+    const { data } = await admin.from('school_profile').select('tahun_pelajaran').eq('school_id', id).maybeSingle();
+    return String(data?.tahun_pelajaran || '2026/2027').trim() || '2026/2027';
+  };
+
   const targetSchool = async (id: string | null) => {
     if (!id) return null;
     const { data } = await admin.from('schools').select('id').eq('id', id).maybeSingle();
@@ -56,7 +61,9 @@ export default async function handler(req: any, res: any) {
       const password = String(body.password || '');
       const email = String(body.email || '').trim().toLowerCase();
       const studentId = body.studentId || null;
-      const classIds = Array.isArray(body.classIds) ? body.classIds : [];
+      const classIds = [...new Set((Array.isArray(body.classIds) ? body.classIds : []).map((v: any) => String(v)).filter(Boolean))];
+      const subjectId = body.subjectId ? String(body.subjectId) : null;
+      const subjectName = body.subjectName ? String(body.subjectName).trim() : null;
 
       if (!name || !username || !password || !role) return json(res, 400, { error: 'Nama, username, password, dan role wajib diisi.' });
       if (!ALLOWED_ROLES.includes(role)) return json(res, 400, { error: 'Role pengguna tidak valid.' });
@@ -74,8 +81,10 @@ export default async function handler(req: any, res: any) {
       }
 
       if (classIds.length && !['WALI KELAS', 'GURU MAPEL'].includes(role)) return json(res, 400, { error: 'Penugasan kelas hanya untuk WALI KELAS/GURU MAPEL.' });
+      if (role === 'WALI KELAS' && classIds.length > 1) return json(res, 400, { error: 'Wali Kelas hanya boleh memiliki 1 kelas.' });
       if (classIds.length) {
-        const { data: classes } = await admin.from('classes').select('id').eq('school_id', schoolId).in('id', classIds);
+        const { data: classes, error: classErr } = await admin.from('classes').select('id').eq('school_id', schoolId).in('id', classIds);
+        if (classErr) return json(res, 400, { error: classErr.message });
         if ((classes || []).length !== classIds.length) return json(res, 400, { error: 'Ada kelas yang bukan milik sekolah pengguna.' });
       }
 
@@ -113,19 +122,27 @@ export default async function handler(req: any, res: any) {
         let teacher: any = null;
         if (normalizedNip !== '-') {
           const { data: existingTeacher, error: lookupError } = await admin.from('teachers')
-            .select('id').eq('school_id', schoolId).eq('nip', normalizedNip).maybeSingle();
+            .select('id,jabatan,jenis_ptk').eq('school_id', schoolId).eq('nip', normalizedNip).maybeSingle();
           if (lookupError) {
             await admin.from('profiles').delete().eq('id', authData.user.id);
             await admin.auth.admin.deleteUser(authData.user.id);
             return json(res, 400, { error: lookupError.message });
           }
           teacher = existingTeacher;
+          if (teacher) {
+            const teacherRole = String((teacher as any).jabatan || (teacher as any).jenis_ptk || '').toUpperCase();
+            if ((role === 'WALI KELAS' && teacherRole.includes('MAPEL')) || (role === 'GURU MAPEL' && teacherRole.includes('WALI'))) {
+              await admin.from('profiles').delete().eq('id', authData.user.id);
+              await admin.auth.admin.deleteUser(authData.user.id);
+              return json(res, 409, { error: `Guru tersebut sudah berstatus ${teacherRole.includes('MAPEL') ? 'Guru Mapel' : 'Wali Kelas'} dan tidak dapat diberi role ${role}.` });
+            }
+          }
         }
         if (!teacher) {
           const { data: insertedTeacher, error: teacherError } = await admin.from('teachers').insert({
             school_id: schoolId, nama: name, nip: normalizedNip || null, jenis_kelamin: 'L',
-            jabatan: role === 'WALI KELAS' ? 'Wali Kelas' : 'Guru Mapel',
-            jenis_ptk: role === 'WALI KELAS' ? 'Wali Kelas' : 'Guru Mapel',
+            jabatan: null,
+            jenis_ptk: null,
           }).select('id').single();
           if (teacherError || !insertedTeacher) {
             await admin.from('profiles').delete().eq('id', authData.user.id);
@@ -143,14 +160,29 @@ export default async function handler(req: any, res: any) {
         }
       }
 
-      if (classIds.length) {
-        const { error: assignError } = await admin.from('teacher_class_assignments').insert(
-          classIds.map((classId: string) => ({ school_id: schoolId, teacher_id: teacherId, class_id: classId }))
-        );
+      if (teacherId && role === 'WALI KELAS') {
+        const year = await getAcademicYear(schoolId);
+        const { error: assignError } = await admin.rpc('assign_homeroom_teacher',{p_school_id:schoolId,p_teacher_id:teacherId,p_class_id:classIds[0]||null,p_academic_year:year,p_actor_user_id:caller.user.id});
         if (assignError) {
           await admin.from('profiles').delete().eq('id', authData.user.id);
           await admin.auth.admin.deleteUser(authData.user.id);
-          return json(res, 400, { error: assignError.message });
+          return json(res,400,{error:assignError.message});
+        }
+      }
+      if (teacherId && role === 'GURU MAPEL' && (classIds.length || subjectId)) {
+        const year = await getAcademicYear(schoolId);
+        let effectiveSubjectIds: string[] = subjectId ? [subjectId] : [];
+        if (!effectiveSubjectIds.length) {
+          const { data: existingSubjects, error: subjectErr } = await admin.from('subject_teacher_assignments').select('subject_id').eq('school_id',schoolId).eq('teacher_id',teacherId).eq('academic_year',year);
+          if (subjectErr) return json(res,400,{error:subjectErr.message});
+          effectiveSubjectIds=(existingSubjects||[]).map((x:any)=>x.subject_id);
+        }
+        if (!effectiveSubjectIds.length) return json(res,400,{error:'Guru Mapel belum memiliki Mata Pelajaran. Tetapkan guru pada Data Mapel terlebih dahulu.'});
+        for(const effectiveSubjectId of effectiveSubjectIds){
+          const { data: subjectRow, error: subjectErr } = await admin.from('subjects').select('id').eq('id',effectiveSubjectId).eq('school_id',schoolId).maybeSingle();
+          if(subjectErr||!subjectRow) return json(res,400,{error:subjectErr?.message||'Mata Pelajaran tidak ditemukan pada sekolah pengguna.'});
+          const { error: assignError } = await admin.rpc('replace_subject_assignment',{p_school_id:schoolId,p_subject_id:effectiveSubjectId,p_teacher_id:teacherId,p_class_ids:classIds,p_academic_year:year,p_actor_user_id:caller.user.id});
+          if(assignError) return json(res,400,{error:assignError.message});
         }
       }
 
@@ -185,7 +217,9 @@ export default async function handler(req: any, res: any) {
       const username = String(body.username || '').trim().toLowerCase();
       const email = String(body.email || '').trim().toLowerCase();
       const studentId = body.studentId || null;
-      const classIds = Array.isArray(body.classIds) ? body.classIds : [];
+      const classIds = [...new Set((Array.isArray(body.classIds) ? body.classIds : []).map((v: any) => String(v)).filter(Boolean))];
+      const subjectId = body.subjectId ? String(body.subjectId) : null;
+      if (role === 'WALI KELAS' && classIds.length > 1) return json(res, 400, { error: 'Wali Kelas hanya boleh memiliki 1 kelas.' });
       if (!userId || !name || !username || !role || !ALLOWED_ROLES.includes(role)) return json(res, 400, { error: 'Data akun tidak lengkap atau role tidak valid.' });
       if (!(await ensureSameSchool(userId))) return json(res, 403, { error: 'Akun tersebut bukan bagian dari sekolah Anda.' });
       if (role === 'SISWA' && !studentId) return json(res, 400, { error: 'Akun SISWA wajib terhubung ke data siswa.' });
@@ -194,51 +228,83 @@ export default async function handler(req: any, res: any) {
       const { data: duplicate } = await admin.from('profiles').select('id').eq('username', username).neq('id', userId).maybeSingle();
       if (duplicate) return json(res, 409, { error: 'Username sudah digunakan pengguna lain.' });
 
-      const { error: authError } = await admin.auth.admin.updateUserById(userId, {
-        email: authEmail,
-        user_metadata: { name, username, role },
-      });
-      if (authError) return json(res, 400, { error: authError.message });
+      const { data: target, error: targetErr } = await admin.from('profiles').select('school_id,teacher_id,name,username,email,role,student_id').eq('id', userId).single();
+      if (targetErr || !target) return json(res, 404, { error: targetErr?.message || 'Profil pengguna tidak ditemukan.' });
 
-      const { data: target } = await admin.from('profiles').select('school_id,teacher_id,name').eq('id', userId).single();
-      const { error } = await admin.from('profiles').update({ name, username, email: authEmail, role, student_id: role === 'SISWA' ? studentId : null }).eq('id', userId);
-      if (error) return json(res, 400, { error: error.message });
-
-      let teacherId: string | null = target?.teacher_id || null;
+      let teacherId: string | null = target.teacher_id || null;
       if (role === 'GURU MAPEL' || role === 'WALI KELAS') {
         if (teacherId) {
-          await admin.from('teachers').update({ nama: name, nip: (username || '').trim() || null, jabatan: role === 'WALI KELAS' ? 'Wali Kelas' : 'Guru Mapel', jenis_ptk: role === 'WALI KELAS' ? 'Wali Kelas' : 'Guru Mapel' }).eq('id', teacherId);
+          const { error: teacherUpdateErr } = await admin.from('teachers').update({ nama: name, nip: (username || '').trim() || null, jabatan: null, jenis_ptk: null }).eq('id', teacherId).eq('school_id', target.school_id);
+          if (teacherUpdateErr) return json(res, 400, { error: teacherUpdateErr.message });
         } else {
           let teacher: any = null;
           const normalizedNip = (username || '').trim();
           if (normalizedNip !== '-') {
             const { data: existingTeacher, error: lookupError } = await admin.from('teachers')
-              .select('id').eq('school_id', target?.school_id).eq('nip', normalizedNip).maybeSingle();
+              .select('id,jabatan,jenis_ptk').eq('school_id', target?.school_id).eq('nip', normalizedNip).maybeSingle();
             if (lookupError) return json(res, 400, { error: lookupError.message });
             teacher = existingTeacher;
+            if (teacher) {
+              const teacherRole = String((teacher as any).jabatan || (teacher as any).jenis_ptk || '').toUpperCase();
+              if ((role === 'WALI KELAS' && teacherRole.includes('MAPEL')) || (role === 'GURU MAPEL' && teacherRole.includes('WALI'))) {
+                return json(res, 409, { error: `Guru tersebut sudah berstatus ${teacherRole.includes('MAPEL') ? 'Guru Mapel' : 'Wali Kelas'} dan tidak dapat diberi role ${role}.` });
+              }
+            }
           }
           if (!teacher) {
             const { data: insertedTeacher, error: teacherError } = await admin.from('teachers').insert({
               school_id: target?.school_id, nama: name, nip: normalizedNip || null, jenis_kelamin: 'L',
-              jabatan: role === 'WALI KELAS' ? 'Wali Kelas' : 'Guru Mapel',
-              jenis_ptk: role === 'WALI KELAS' ? 'Wali Kelas' : 'Guru Mapel'
+              jabatan: null,
+              jenis_ptk: null
             }).select('id').single();
             if (teacherError || !insertedTeacher) return json(res, 400, { error: teacherError?.message || 'Gagal membuat data guru.' });
             teacher = insertedTeacher;
           }
           teacherId = teacher.id;
-          await admin.from('profiles').update({ teacher_id: teacherId }).eq('id', userId);
+          const { error: linkErr } = await admin.from('profiles').update({ teacher_id: teacherId }).eq('id', userId);
+          if (linkErr) return json(res, 400, { error: linkErr.message });
         }
       }
 
-      if (teacherId) await admin.from('teacher_class_assignments').delete().eq('teacher_id', teacherId);
-      if (teacherId && (role === 'GURU MAPEL' || role === 'WALI KELAS') && classIds.length) {
-        await admin.from('teacher_class_assignments').insert(classIds.map((classId: string) => ({ school_id: target?.school_id, teacher_id: teacherId, class_id: classId })));
+      if (teacherId && role === 'WALI KELAS') {
+        const year = await getAcademicYear(target.school_id);
+        const { error: assignErr } = await admin.rpc('assign_homeroom_teacher',{p_school_id:target.school_id,p_teacher_id:teacherId,p_class_id:classIds[0]||null,p_academic_year:year,p_actor_user_id:caller.user.id});
+        if (assignErr) return json(res,400,{error:assignErr.message});
+      }
+      if (teacherId && role === 'GURU MAPEL' && classIds.length) {
+        const year = await getAcademicYear(target.school_id);
+        const { data: existingSubjects, error: existingSubjectsErr } = await admin.from('subject_teacher_assignments').select('subject_id').eq('school_id', target.school_id).eq('teacher_id', teacherId).eq('academic_year', year);
+        if (existingSubjectsErr) return json(res,400,{error:existingSubjectsErr.message});
+        const effectiveSubjectIds = subjectId ? [subjectId] : (existingSubjects || []).map((x:any)=>x.subject_id);
+        if (!effectiveSubjectIds.length) return json(res,400,{error:'Guru Mapel belum memiliki Mata Pelajaran. Tetapkan guru pada Data Mapel terlebih dahulu.'});
+        for (const effectiveSubjectId of effectiveSubjectIds) {
+          const { data: subjectRow, error: subjectErr } = await admin.from('subjects').select('id').eq('id',effectiveSubjectId).eq('school_id',target.school_id).maybeSingle();
+          if (subjectErr || !subjectRow) return json(res,400,{error:subjectErr?.message || 'Mata Pelajaran tidak ditemukan pada sekolah pengguna.'});
+          const { error: assignErr } = await admin.rpc('replace_subject_assignment',{p_school_id:target.school_id,p_subject_id:effectiveSubjectId,p_teacher_id:teacherId,p_class_ids:classIds,p_academic_year:year,p_actor_user_id:caller.user.id});
+          if (assignErr) return json(res,400,{error:assignErr.message});
+        }
       }
       if (role !== 'GURU MAPEL' && role !== 'WALI KELAS') {
-        await admin.from('profiles').update({ teacher_id: null }).eq('id', userId);
+        const { error: unlinkTeacherErr } = await admin.from('profiles').update({ teacher_id: null }).eq('id', userId);
+        if (unlinkTeacherErr) return json(res, 400, { error: unlinkTeacherErr.message });
         teacherId = null;
       }
+      const { error: profileUpdateErr } = await admin.from('profiles').update({
+        name, username, email: authEmail, role, student_id: role === 'SISWA' ? studentId : null, teacher_id: teacherId
+      }).eq('id', userId);
+      if (profileUpdateErr) return json(res, 400, { error: profileUpdateErr.message });
+
+      const { error: authError } = await admin.auth.admin.updateUserById(userId, {
+        email: authEmail, user_metadata: { name, username, role }
+      });
+      if (authError) {
+        await admin.from('profiles').update({
+          name: target.name, username: target.username, email: target.email, role: target.role,
+          student_id: target.student_id, teacher_id: target.teacher_id
+        }).eq('id', userId);
+        return json(res, 400, { error: `Perubahan database berhasil dibatalkan karena sinkronisasi Auth gagal: ${authError.message}` });
+      }
+
       return json(res, 200, { ok: true, teacherId });
     }
 

@@ -126,6 +126,7 @@ export default async function handler(req: any, res: any) {
   const admin = createClient(url, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+  const getAcademicYear = async (schoolId: string) => { const { data } = await admin.from('school_profile').select('tahun_pelajaran').eq('school_id',schoolId).maybeSingle(); return String(data?.tahun_pelajaran || '2026/2027').trim() || '2026/2027'; };
 
   try {
     // 1. Cek apakah NPSN sudah terdaftar di sistem
@@ -254,13 +255,8 @@ export default async function handler(req: any, res: any) {
       initialClasses = generateInitialClasses(school.id, planLimits.defaultClasses);
     }
 
-    let createdClassRows: any[] = [];
-    try {
-      const { data: insertedClasses } = await admin.from('classes').insert(initialClasses).select();
-      if (insertedClasses) createdClassRows = insertedClasses;
-    } catch (classErr) {
-      console.warn('Inisialisasi rombel kelas otomatis mengalami peringatan:', classErr);
-    }
+    const { data: createdClassRows, error: classInsertError } = await admin.from('classes').insert(initialClasses).select();
+    if (classInsertError) throw classInsertError;
 
     // 8. Inisialisasi Mata Pelajaran Dasar SD
     const defaultSubjects = [
@@ -269,9 +265,8 @@ export default async function handler(req: any, res: any) {
       { school_id: school.id, name: 'Pendidikan Agama & Budi Pekerti (PABP)', code: 'PABP', is_specialized: true },
       { school_id: school.id, name: 'Bahasa Daerah / Muatan Lokal (MULOK)', code: 'MULOK', is_specialized: true },
     ];
-    try {
-      await admin.from('subjects').insert(defaultSubjects);
-    } catch (_) {}
+    const { error: defaultSubjectError } = await admin.from('subjects').insert(defaultSubjects);
+    if (defaultSubjectError && defaultSubjectError.code !== '23505') throw defaultSubjectError;
 
     // 9. Buat Akun Auth Supabase untuk Pengguna (Guru / Admin)
     const userAuthEmail = adminEmail || `${effectiveUsername}@login.edushift.local`;
@@ -348,28 +343,31 @@ export default async function handler(req: any, res: any) {
             subjectId = createdSubject?.id || null;
           }
           if (subjectId) {
-            await admin.from('subject_teacher_assignments').upsert({
-              school_id: school.id,
-              subject_id: subjectId,
-              teacher_id: teacherRow.id,
-            }, { onConflict: 'school_id,subject_id,teacher_id' });
+            const year = await getAcademicYear(school.id);
+            const { error: assignErr } = await admin.rpc('replace_subject_assignment',{p_school_id:school.id,p_subject_id:subjectId,p_teacher_id:teacherRow.id,p_class_ids:[],p_academic_year:year,p_actor_user_id:authData.user.id});
+            if (assignErr) throw assignErr;
           }
         }
 
         if (createdClassRows.length > 0) {
           const primaryClass = createdClassRows[0];
-          await admin.from('teacher_class_assignments').insert({
-            school_id: school.id,
-            teacher_id: teacherRow.id,
-            class_id: primaryClass.id,
-          });
-
           if (teacherType === 'WALI_KELAS') {
-            await admin.from('classes').update({ wali_kelas_teacher_id: teacherRow.id }).eq('id', primaryClass.id);
+            const year = await getAcademicYear(school.id);
+            const { error: waliErr } = await admin.rpc('assign_homeroom_teacher',{p_school_id:school.id,p_teacher_id:teacherRow.id,p_class_id:primaryClass.id,p_academic_year:year,p_actor_user_id:authData.user.id});
+            if (waliErr) throw waliErr;
+          } else if (teacherType === 'GURU_MAPEL' && teacherSubject) {
+            const { data: subjectRow, error: subjectLookupErr } = await admin.from('subjects').select('id').eq('school_id', school.id).ilike('name', String(teacherSubject).trim()).maybeSingle();
+            if (subjectLookupErr) throw subjectLookupErr;
+            if (subjectRow) {
+              const year = await getAcademicYear(school.id);
+              const { error: assignErr } = await admin.rpc('replace_subject_assignment',{p_school_id:school.id,p_subject_id:subjectRow.id,p_teacher_id:teacherRow.id,p_class_ids:[primaryClass.id],p_academic_year:year,p_actor_user_id:authData.user.id});
+              if (assignErr) throw assignErr;
+            }
           }
         }
-      } catch (linkErr) {
-        console.warn('Penghubungan data guru dan rombel mengalami catatan:', linkErr);
+      } catch (linkErr: any) {
+        console.error('Penghubungan data guru dan rombel gagal:', linkErr);
+        throw linkErr;
       }
     }
 

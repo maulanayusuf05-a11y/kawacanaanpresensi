@@ -72,6 +72,8 @@ export const DataGuruView: React.FC = () => {
   const [accountEmail, setAccountEmail] = useState('');
   const [accountRole, setAccountRole] = useState<'GURU MAPEL' | 'WALI KELAS'>('WALI KELAS');
   const [accountClassId, setAccountClassId] = useState('');
+  const [accountClassIds, setAccountClassIds] = useState<string[]>([]);
+  const [accountSubjectId, setAccountSubjectId] = useState('');
   const [isCreatingAccount, setIsCreatingAccount] = useState(false);
 
   const [nama, setNama] = useState('');
@@ -176,13 +178,31 @@ export const DataGuruView: React.FC = () => {
     setAccountUsername(defaultUsername);
     setAccountPassword('123456');
     setAccountEmail('');
+    const assignedSubject = subjects.find((sub) => sub.teacherId === t.id);
     setAccountRole(isWali ? 'WALI KELAS' : 'GURU MAPEL');
     setAccountClassId(matchedClass ? matchedClass.id : '');
+    setAccountClassIds(assignedSubject?.targetClassIds || (matchedClass ? [matchedClass.id] : []));
+    setAccountSubjectId(assignedSubject?.id || '');
   };
 
   const handleCreateAccountSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!accountTeacher || !accountUsername.trim() || !accountPassword.trim()) return;
+    if (accountRole === 'GURU MAPEL') {
+      if (!accountSubjectId) {
+        showToast('Guru Mapel harus ditetapkan ke Mata Pelajaran terlebih dahulu.', 'error');
+        return;
+      }
+      if (accountClassIds.length === 0) {
+        showToast('Guru Mapel harus mempunyai minimal satu kelas yang diajar.', 'error');
+        return;
+      }
+      const chosenSubject = subjects.find((s) => s.id === accountSubjectId);
+      if (chosenSubject?.teacherId && chosenSubject.teacherId !== accountTeacher.id) {
+        showToast('Mata Pelajaran tersebut sudah ditugaskan kepada guru lain. Pilih mapel yang belum dimiliki guru lain.', 'error');
+        return;
+      }
+    }
 
     // Validate role exclusivity
     const targetRole = accountRole === 'WALI KELAS' ? 'wali_kelas' : 'guru_mapel';
@@ -207,7 +227,9 @@ export const DataGuruView: React.FC = () => {
         password: accountPassword.trim(),
         email: accountEmail.trim() || null,
         role: accountRole,
-        classIds: accountClassId ? [accountClassId] : [],
+        classIds: accountRole === 'GURU MAPEL' ? accountClassIds : (accountClassId ? [accountClassId] : []),
+        subjectId: accountRole === 'GURU MAPEL' ? accountSubjectId : null,
+        subjectName: accountRole === 'GURU MAPEL' ? (subjects.find((s) => s.id === accountSubjectId)?.name || null) : null,
       });
       setAccountTeacher(null);
     } catch (err: any) {
@@ -979,6 +1001,65 @@ export const DataGuruView: React.FC = () => {
                   <option value="GURU MAPEL">Guru Mapel</option>
                 </select>
               </div>
+
+              {accountRole === 'GURU MAPEL' && (
+                <>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Mata Pelajaran *</label>
+                    <select
+                      required
+                      value={accountSubjectId}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        setAccountSubjectId(id);
+                        const sub = subjects.find((x) => x.id === id);
+                        setAccountClassIds(sub?.targetClassIds || []);
+                      }}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 font-bold focus:bg-white focus:border-blue-600 outline-none"
+                    >
+                      <option value="">Pilih mata pelajaran...</option>
+                      {subjects.map((sub) => (
+                        <option key={sub.id} value={sub.id}>
+                          {sub.name}{sub.teacherId && sub.teacherId !== accountTeacher.id ? ' — sudah ditugaskan ke guru lain' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Kelas yang Diajar *</label>
+                    <div className="grid grid-cols-2 gap-2 max-h-28 overflow-y-auto p-2 bg-slate-50 rounded-xl border border-slate-200">
+                      {classes.map((c) => (
+                        <label key={c.id} className="flex items-center gap-2 text-[11px] font-semibold cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={accountClassIds.includes(c.id)}
+                            onChange={(e) => setAccountClassIds((v) => e.target.checked ? [...new Set([...v, c.id])] : v.filter((id) => id !== c.id))}
+                            className="rounded text-blue-600"
+                          />
+                          {c.name}
+                        </label>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-1">Penugasan kelas disimpan melalui subject_class_assignments.</p>
+                  </div>
+                </>
+              )}
+
+              {accountRole === 'WALI KELAS' && (
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Kelas Wali *</label>
+                  <select
+                    required
+                    value={accountClassId}
+                    onChange={(e) => setAccountClassId(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 font-bold focus:bg-white focus:border-blue-600 outline-none"
+                  >
+                    <option value="">Pilih kelas...</option>
+                    {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  <p className="text-[10px] text-slate-500 mt-1">Satu Wali Kelas hanya boleh memiliki satu kelas.</p>
+                </div>
+              )}
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t">
                 <button

@@ -98,6 +98,29 @@ export default async function handler(req: any, res: any) {
 
   // Guru dan Akun sengaja dipisahkan. profiles.id adalah ID akun/Auth,
   // sedangkan teachers.id adalah ID master guru yang independen.
+  const getAcademicYear = async (schoolId: string, fallback = '2026/2027') => {
+    const { data } = await db.from('school_profile').select('tahun_pelajaran').eq('school_id', schoolId).maybeSingle();
+    return String(data?.tahun_pelajaran || fallback).trim() || fallback;
+  };
+  const assignHomeroom = async (schoolId: string, teacherId: string, classId: string | null, actorUserId: string) => {
+    const academicYear = await getAcademicYear(schoolId);
+    const { error } = await db.rpc('assign_homeroom_teacher', {
+      p_school_id: schoolId, p_teacher_id: teacherId, p_class_id: classId,
+      p_academic_year: academicYear, p_actor_user_id: actorUserId,
+    });
+    if (error) throw error;
+    return academicYear;
+  };
+  const assignSubject = async (schoolId: string, subjectId: string, teacherId: string, classIds: string[], actorUserId: string) => {
+    const academicYear = await getAcademicYear(schoolId);
+    const { error } = await db.rpc('replace_subject_assignment', {
+      p_school_id: schoolId, p_subject_id: subjectId, p_teacher_id: teacherId,
+      p_class_ids: [...new Set(classIds)], p_academic_year: academicYear, p_actor_user_id: actorUserId,
+    });
+    if (error) throw error;
+    return academicYear;
+  };
+
   const ensureTeacherForAccount = async (opts: {
     profileId: string;
     schoolId: string;
@@ -122,18 +145,13 @@ export default async function handler(req: any, res: any) {
         .from('teachers').select('*').eq('id', teacherId).maybeSingle();
       if (teacherReadError) throw teacherReadError;
       if (existingTeacher) {
-        const existingRole = normalizeTeacherRole(existingTeacher.jabatan);
-        const requestedRole = normalizeTeacherRole(opts.jabatan);
-        if (existingRole !== 'OTHER' && requestedRole !== 'OTHER' && existingRole !== requestedRole) {
-          throw new Error(`Guru ini sudah berstatus ${existingRole === 'WALI KELAS' ? 'Wali Kelas' : 'Guru Mapel'} dan tidak dapat berpindah role.`);
-        }
         const { data: updatedTeacher, error } = await db.from('teachers').update({
           school_id: opts.schoolId,
           nama: opts.nama,
           nip: (opts.nip || existingTeacher.nip || '').trim() || null,
           jenis_kelamin: opts.jenisKelamin || existingTeacher.jenis_kelamin || 'L',
-          jabatan: opts.jabatan || existingTeacher.jabatan || 'Wali Kelas',
-          jenis_ptk: opts.jabatan || existingTeacher.jenis_ptk || existingTeacher.jabatan || 'Wali Kelas',
+          // Role assignment is deliberately NOT stored on teachers.
+          jabatan: null,
           mata_pelajaran: opts.mataPelajaran ?? existingTeacher.mata_pelajaran ?? null,
           status_kepegawaian: opts.statusKepegawaian ?? existingTeacher.status_kepegawaian ?? null,
           no_hp: opts.noHp ?? existingTeacher.no_hp ?? null,
@@ -151,11 +169,6 @@ export default async function handler(req: any, res: any) {
         .from('teachers').select('*').eq('school_id', opts.schoolId).eq('nip', normalizedNip).maybeSingle();
       if (nipLookupError) throw nipLookupError;
       if (existingByNip) {
-        const existingRole = normalizeTeacherRole(existingByNip.jabatan);
-        const requestedRole = normalizeTeacherRole(opts.jabatan);
-        if (existingRole !== 'OTHER' && requestedRole !== 'OTHER' && existingRole !== requestedRole) {
-          throw new Error(`NIP ini sudah berstatus ${existingRole === 'WALI KELAS' ? 'Wali Kelas' : 'Guru Mapel'} dan tidak dapat berpindah role.`);
-        }
         const { error: linkError } = await db.from('profiles').update({ teacher_id: existingByNip.id }).eq('id', opts.profileId);
         if (linkError) throw linkError;
         return existingByNip;
@@ -167,8 +180,8 @@ export default async function handler(req: any, res: any) {
       nama: opts.nama,
       nip: normalizedNip || null,
       jenis_kelamin: opts.jenisKelamin || 'L',
-      jabatan: opts.jabatan || 'Wali Kelas',
-      jenis_ptk: opts.jabatan || 'Wali Kelas',
+      jabatan: null,
+      jenis_ptk: null,
       mata_pelajaran: opts.mataPelajaran ?? null,
       status_kepegawaian: opts.statusKepegawaian ?? null,
       no_hp: opts.noHp ?? null,
@@ -592,7 +605,7 @@ export default async function handler(req: any, res: any) {
       const className = body.className || null;
       const grade = Number(body.grade || 5);
       const subjectName = String(body.subjectName || '').trim();
-      const classIds = [...new Set((Array.isArray(body.classIds) ? body.classIds : []).map((v: any) => String(v)).filter(Boolean))];
+      const classIds: string[] = Array.from(new Set<string>((Array.isArray(body.classIds) ? body.classIds : []).map((v: any) => String(v)).filter(Boolean)));
 
       if (!rawCode) {
         return json(res, 400, { error: 'User ID dan Kode Sekolah wajib disertakan.' });
@@ -655,7 +668,7 @@ export default async function handler(req: any, res: any) {
       if (role === 'WALI KELAS') {
         if (className && (!targetClassId || targetClassId === '__NEW_CLASS__')) {
           const { data: newCls, error: clsErr } = await db.from('classes').insert({
-            school_id: schoolId, name: className, grade, academic_year: '2026/2027', wali_kelas_teacher_id: linkedTeacher.id,
+            school_id: schoolId, name: className, grade, academic_year: await getAcademicYear(schoolId), wali_kelas_teacher_id: linkedTeacher.id,
           }).select('id').single();
           if (clsErr) throw clsErr;
           targetClassId = newCls.id;
@@ -663,12 +676,7 @@ export default async function handler(req: any, res: any) {
           const { data: cls, error: clsErr } = await db.from('classes').select('id').eq('id', targetClassId).eq('school_id', schoolId).maybeSingle();
           if (clsErr) throw clsErr;
           if (!cls) throw new Error('Kelas yang dipilih tidak ditemukan di sekolah tersebut.');
-          const { error: updateErr } = await db.from('classes').update({ wali_kelas_teacher_id: linkedTeacher.id }).eq('id', targetClassId);
-          if (updateErr) throw updateErr;
-        }
-        if (targetClassId) {
-          const { error: tcaErr } = await db.from('teacher_class_assignments').upsert({ school_id: schoolId, teacher_id: linkedTeacher.id, class_id: targetClassId }, { onConflict: 'teacher_id,class_id' });
-          if (tcaErr) throw tcaErr;
+          await assignHomeroom(schoolId, linkedTeacher.id, targetClassId, effectiveUserId);
         }
       } else {
         const { data: validClasses, error: classErr } = await db.from('classes').select('id').eq('school_id', schoolId).in('id', classIds);
@@ -682,12 +690,7 @@ export default async function handler(req: any, res: any) {
           if (subjectErr) throw subjectErr;
           subjectRow = createdSub;
         }
-        const { error: staErr } = await db.from('subject_teacher_assignments').upsert({ school_id: schoolId, subject_id: subjectRow.id, teacher_id: linkedTeacher.id }, { onConflict: 'school_id,subject_id,teacher_id' });
-        if (staErr) throw staErr;
-        for (const selectedId of classIds) {
-          const { error: scaErr } = await db.from('subject_class_assignments').upsert({ school_id: schoolId, subject_id: subjectRow.id, class_id: selectedId }, { onConflict: 'school_id,subject_id,class_id' });
-          if (scaErr) throw scaErr;
-        }
+        await assignSubject(schoolId, subjectRow.id, linkedTeacher.id, classIds, effectiveUserId);
       }
 
 
@@ -968,22 +971,19 @@ export default async function handler(req: any, res: any) {
           if (!targetClassId) {
             const clsName = String(body.className || 'Kelas 5').trim();
             const clsGrade = Number(body.grade || 5);
-            const { data: newCls, error: clsErr } = await db.from('classes').insert({ school_id: finalSchoolId, name: clsName, grade: clsGrade, academic_year: '2026/2027', wali_kelas_teacher_id: createdTeacher.id }).select('id').single();
+            const { data: newCls, error: clsErr } = await db.from('classes').insert({ school_id: finalSchoolId, name: clsName, grade: clsGrade, academic_year: await getAcademicYear(finalSchoolId), wali_kelas_teacher_id: createdTeacher.id }).select('id').single();
             if (clsErr) throw clsErr;
             targetClassId = newCls.id;
           } else {
             const { data: cls, error: clsErr } = await db.from('classes').select('id').eq('id', targetClassId).eq('school_id', finalSchoolId).maybeSingle();
             if (clsErr) throw clsErr;
             if (!cls) throw new Error('Kelas yang dipilih tidak ditemukan di sekolah tersebut.');
-            const { error: updateErr } = await db.from('classes').update({ wali_kelas_teacher_id: createdTeacher.id }).eq('id', targetClassId);
-            if (updateErr) throw updateErr;
+            await assignHomeroom(finalSchoolId, createdTeacher.id, targetClassId, newUserId);
           }
-          const { error: tcaErr } = await db.from('teacher_class_assignments').upsert({ school_id: finalSchoolId, teacher_id: createdTeacher.id, class_id: targetClassId }, { onConflict: 'teacher_id,class_id' });
-          if (tcaErr) throw tcaErr;
         }
 
         if (mode !== 'personal' && role === 'GURU MAPEL') {
-          const classIds = [...new Set((Array.isArray(body.classIds) ? body.classIds : []).map((v: any) => String(v)).filter(Boolean))];
+          const classIds: string[] = Array.from(new Set<string>((Array.isArray(body.classIds) ? body.classIds : []).map((v: any) => String(v)).filter(Boolean)));
           const { data: validClasses, error: classErr } = await db.from('classes').select('id').eq('school_id', finalSchoolId).in('id', classIds);
           if (classErr) throw classErr;
           if ((validClasses || []).length !== classIds.length) throw new Error('Ada kelas Guru Mapel yang tidak berasal dari sekolah yang dipilih.');
@@ -995,12 +995,7 @@ export default async function handler(req: any, res: any) {
             if (subjectErr) throw subjectErr;
             subjectRow = createdSub;
           }
-          const { error: staErr } = await db.from('subject_teacher_assignments').upsert({ school_id: finalSchoolId, subject_id: subjectRow.id, teacher_id: createdTeacher.id }, { onConflict: 'school_id,subject_id,teacher_id' });
-          if (staErr) throw staErr;
-          for (const classId of classIds) {
-            const { error: scaErr } = await db.from('subject_class_assignments').upsert({ school_id: finalSchoolId, subject_id: subjectRow.id, class_id: classId }, { onConflict: 'school_id,subject_id,class_id' });
-            if (scaErr) throw scaErr;
-          }
+          await assignSubject(finalSchoolId, subjectRow.id, createdTeacher.id, classIds, newUserId);
         }
       }
 
@@ -1126,21 +1121,14 @@ export default async function handler(req: any, res: any) {
         if (!isPersonal && body.className) {
           const clsName = String(body.className).trim();
           const clsGrade = Number(body.grade || 1);
-          const { data: newCls } = await db.from('classes').insert({
+          const { error: clsErr } = await db.from('classes').insert({
             school_id: targetSchoolId,
             name: clsName,
             grade: clsGrade,
-            academic_year: '2026/2027',
+            academic_year: await getAcademicYear(targetSchoolId),
             wali_kelas_teacher_id: linkedTeacher.id,
-          }).select('id').single();
-
-          if (newCls) {
-            await db.from('teacher_class_assignments').insert({
-              school_id: targetSchoolId,
-              teacher_id: linkedTeacher.id,
-              class_id: newCls.id,
-            });
-          }
+          });
+          if (clsErr) throw clsErr;
         }
       } else {
         linkedTeacher = await ensureTeacherForAccount({ profileId: callerUser.id, schoolId: targetSchoolId, nama: teacherName, nip, jenisKelamin: gender, jabatan: 'Wali Kelas', mataPelajaran: 'Wali Kelas', statusKepegawaian: employmentStatus, noHp: phone });
@@ -1153,24 +1141,15 @@ export default async function handler(req: any, res: any) {
             school_id: targetSchoolId,
             name: clsName,
             grade: clsGrade,
-            academic_year: '2026/2027',
+            academic_year: await getAcademicYear(targetSchoolId),
             wali_kelas_teacher_id: linkedTeacher.id,
           }).select('id').single();
 
           if (newCls) targetClassId = newCls.id;
         } else {
-          await db.from('classes').update({
-            wali_kelas_teacher_id: linkedTeacher.id,
-          }).eq('id', targetClassId);
+          await assignHomeroom(targetSchoolId, linkedTeacher.id, targetClassId, callerUser.id);
         }
 
-        if (targetClassId) {
-          await db.from('teacher_class_assignments').upsert({
-            school_id: targetSchoolId,
-            teacher_id: linkedTeacher.id,
-            class_id: targetClassId,
-          }, { onConflict: 'teacher_id,class_id' });
-        }
       }
 
       // Upsert profile dengan penanganan robust
@@ -1192,22 +1171,18 @@ export default async function handler(req: any, res: any) {
       const { error: profErr } = await db.from('profiles').upsert(profilePayload, { onConflict: 'id' });
       if (profErr) {
         console.error('Error upserting profile in onboard_homeroom:', profErr);
-        await db.from('profiles').update({
-          school_id: targetSchoolId,
-          name: teacherName,
-          role: 'WALI KELAS',
-          is_active: true,
+        const { error: fallbackProfileErr } = await db.from('profiles').update({
+          school_id: targetSchoolId, name: teacherName, role: 'WALI KELAS', is_active: true,
         }).eq('id', callerUser.id);
+        if (fallbackProfileErr) throw new Error(`Gagal menyimpan profil Wali Kelas: ${fallbackProfileErr.message}`);
       }
 
-      try {
-        await db.from('profiles').update({
-          workspace_type: mode === 'personal' ? 'personal' : 'school',
-          registration_mode: mode === 'personal' ? 'personal' : 'school',
-          is_google_auth: true,
-          auth_provider: 'google',
-        }).eq('id', callerUser.id);
-      } catch (_) {}
+      const { error: workspaceProfileErr } = await db.from('profiles').update({
+        workspace_type: mode === 'personal' ? 'personal' : 'school',
+        registration_mode: mode === 'personal' ? 'personal' : 'school',
+        is_google_auth: true, auth_provider: 'google',
+      }).eq('id', callerUser.id);
+      if (workspaceProfileErr) throw new Error(`Gagal menyinkronkan status workspace Wali Kelas: ${workspaceProfileErr.message}`);
 
       // Upsert teacher record
 
@@ -1285,20 +1260,14 @@ export default async function handler(req: any, res: any) {
           const clsName = String(body.className).trim();
           const clsGrade = Number(body.grade || 1);
 
-          const { data: newCls } = await db.from('classes').insert({
+          const { error: clsErr } = await db.from('classes').insert({
             school_id: targetSchoolId,
             name: clsName,
             grade: clsGrade,
-            academic_year: '2026/2027',
-          }).select('id').single();
+            academic_year: await getAcademicYear(targetSchoolId),
+          });
+          if (clsErr) throw clsErr;
 
-          if (newCls) {
-            await db.from('teacher_class_assignments').insert({
-              school_id: targetSchoolId,
-              teacher_id: linkedTeacher.id,
-              class_id: newCls.id,
-            });
-          }
         }
       }
 
@@ -1323,22 +1292,18 @@ export default async function handler(req: any, res: any) {
       const { error: profErr } = await db.from('profiles').upsert(profilePayload, { onConflict: 'id' });
       if (profErr) {
         console.error('Error upserting profile in onboard_subject_teacher:', profErr);
-        await db.from('profiles').update({
-          school_id: targetSchoolId,
-          name: teacherName,
-          role: 'GURU MAPEL',
-          is_active: true,
+        const { error: fallbackProfileErr } = await db.from('profiles').update({
+          school_id: targetSchoolId, name: teacherName, role: 'GURU MAPEL', is_active: true,
         }).eq('id', callerUser.id);
+        if (fallbackProfileErr) throw new Error(`Gagal menyimpan profil Guru Mapel: ${fallbackProfileErr.message}`);
       }
 
-      try {
-        await db.from('profiles').update({
-          workspace_type: mode === 'personal' ? 'personal' : 'school',
-          registration_mode: mode === 'personal' ? 'personal' : 'school',
-          is_google_auth: true,
-          auth_provider: 'google',
-        }).eq('id', callerUser.id);
-      } catch (_) {}
+      const { error: workspaceProfileErr } = await db.from('profiles').update({
+        workspace_type: mode === 'personal' ? 'personal' : 'school',
+        registration_mode: mode === 'personal' ? 'personal' : 'school',
+        is_google_auth: true, auth_provider: 'google',
+      }).eq('id', callerUser.id);
+      if (workspaceProfileErr) throw new Error(`Gagal menyinkronkan status workspace Guru Mapel: ${workspaceProfileErr.message}`);
 
       // Upsert teacher record
       // Upsert subject record
@@ -1355,24 +1320,9 @@ export default async function handler(req: any, res: any) {
         subjectRow = createdSubject;
       }
       if (linkedTeacher?.id && subjectRow?.id) {
-        const { error: staErr } = await db.from('subject_teacher_assignments').upsert({
-          school_id: targetSchoolId,
-          subject_id: subjectRow.id,
-          teacher_id: linkedTeacher.id,
-        }, { onConflict: 'school_id,subject_id,teacher_id' });
-        if (staErr) throw staErr;
-
-        if (mode === 'school') {
-          const classIds = [...new Set((Array.isArray(body.classIds) ? body.classIds : []).map((v: any) => String(v)).filter(Boolean))];
-          if (classIds.length === 0) throw new Error('Guru Mapel wajib memilih minimal satu kelas yang diajar.');
-          const { data: validClasses, error: classErr } = await db.from('classes').select('id').eq('school_id', targetSchoolId).in('id', classIds);
-          if (classErr) throw classErr;
-          if ((validClasses || []).length !== classIds.length) throw new Error('Ada kelas Guru Mapel yang tidak berasal dari sekolah yang dipilih.');
-          for (const classId of classIds) {
-            const { error: scaErr } = await db.from('subject_class_assignments').upsert({ school_id: targetSchoolId, subject_id: subjectRow.id, class_id: classId }, { onConflict: 'school_id,subject_id,class_id' });
-            if (scaErr) throw scaErr;
-          }
-        }
+        const classIds: string[] = mode === 'school' ? Array.from(new Set<string>((Array.isArray(body.classIds) ? body.classIds : []).map((v: any) => String(v)).filter(Boolean))) : [];
+        if (mode === 'school' && classIds.length === 0) throw new Error('Guru Mapel wajib memilih minimal satu kelas yang diajar.');
+        await assignSubject(targetSchoolId, subjectRow.id, linkedTeacher.id, classIds, callerUser.id);
       }
 
       return json(res, 200, {

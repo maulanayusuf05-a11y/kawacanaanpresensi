@@ -93,9 +93,10 @@ export const DataKelasView: React.FC = () => {
       ids.add(activeWorkspace.classId);
     }
     const matched = classes.filter((c) => ids.has(c.id));
-    if (matched.length === 0) {
-      return isPersonalWorkspace ? classes : classes.slice(0, 1);
-    }
+    // Fail closed: di workspace sekolah, Wali/Guru tanpa assignment tidak boleh
+    // otomatis mendapatkan kelas pertama. Untuk ruang kerja individu, semua kelas
+    // tetap tersedia karena memang merupakan workspace pribadi.
+    if (matched.length === 0) return isPersonalWorkspace ? classes : [];
     return matched;
   }, [isAdmin, isPersonalWorkspace, classes, currentUser, activeWorkspace]);
 

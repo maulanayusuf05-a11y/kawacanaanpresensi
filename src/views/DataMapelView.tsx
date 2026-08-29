@@ -58,30 +58,15 @@ export const DataMapelView: React.FC = () => {
 
   // Find teacher record linked to currentUser
   const currentTeacher = useMemo(() => {
-    if (!currentUser) return null;
-    const uName = (currentUser.name || '').trim().toLowerCase();
-    const uUsername = (currentUser.username || '').trim().toLowerCase();
-    return teachers.find(
-      (t) =>
-        (t.nip && t.nip !== '-' && t.nip.trim().toLowerCase() === uUsername) ||
-        (t.nama && t.nama.trim().toLowerCase() === uName)
-    ) || null;
-  }, [currentUser, teachers]);
+    if (!currentUser?.teacherId) return null;
+    return teachers.find((t) => t.id === currentUser.teacherId) || null;
+  }, [currentUser?.teacherId, teachers]);
 
   // Check if a specific subject is taught by current user
   const isMySubject = (sub: Subject) => {
     if (!currentUser) return false;
-    if (sub.teacherId && (sub.teacherId === currentUser.teacherId || (currentTeacher && sub.teacherId === currentTeacher.id))) {
-      return true;
-    }
-    if (userScope.assignedSubjectIds.includes(sub.id)) return true;
-    if (sub.teacherName && currentUser.name && sub.teacherName.trim().toLowerCase() === currentUser.name.trim().toLowerCase()) {
-      return true;
-    }
-    if (currentTeacher && sub.teacherName && sub.teacherName.trim().toLowerCase() === currentTeacher.nama.trim().toLowerCase()) {
-      return true;
-    }
-    return false;
+    if (sub.teacherId && currentUser.teacherId && sub.teacherId === currentUser.teacherId) return true;
+    return userScope.assignedSubjectIds.includes(sub.id);
   };
 
   const mySubjectsCount = useMemo(() => {

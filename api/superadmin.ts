@@ -488,22 +488,35 @@ export default async function handler(req:any,res:any){
       const isPersonal = targetSchool?.workspace_type === 'personal' || targetSchool?.is_personal === true;
       const workspaceLabel = isPersonal ? `Ruang Kerja Individu (${targetSchool?.name || id})` : `Sekolah (${targetSchool?.name || id})`;
 
-      // Hapus data terkait sekolah/ruang kerja secara menyeluruh
-      try { await admin.from('teacher_class_assignments').delete().eq('school_id', id); } catch (_) {}
-      try { await admin.from('attendance_records').delete().eq('school_id', id); } catch (_) {}
-      try { await admin.from('students').delete().eq('school_id', id); } catch (_) {}
-      try { await admin.from('classes').delete().eq('school_id', id); } catch (_) {}
-      try { await admin.from('subjects').delete().eq('school_id', id); } catch (_) {}
-      try { await admin.from('academic_events').delete().eq('school_id', id); } catch (_) {}
-      try { await admin.from('school_profile').delete().eq('school_id', id); } catch (_) {}
-      try { await admin.from('system_config').delete().eq('school_id', id); } catch (_) {}
-      try { await admin.from('teachers').delete().eq('school_id', id); } catch (_) {}
+      // Hapus data terkait sekolah/ruang kerja secara menyeluruh.
+      // Setiap operasi wajib diperiksa; tidak ada silent failure pada penghapusan tenant.
+      const deleteTenantRows = async (table: string) => {
+        const { error } = await admin.from(table).delete().eq('school_id', id);
+        if (error) throw new Error(`Gagal menghapus ${table}: ${error.message}`);
+      };
+      // Urutan mengikuti dependensi FK.
+      await deleteTenantRows('teacher_class_assignments');
+      await deleteTenantRows('teacher_class_assignments_legacy_archive');
+      await deleteTenantRows('attendance_records');
+      await deleteTenantRows('subject_schedule_days');
+      await deleteTenantRows('subject_class_assignments');
+      await deleteTenantRows('subject_teacher_assignments');
+      await deleteTenantRows('students');
+      await deleteTenantRows('classes');
+      await deleteTenantRows('subjects');
+      await deleteTenantRows('academic_events');
+      await deleteTenantRows('school_profile');
+      await deleteTenantRows('system_config');
+      await deleteTenantRows('teachers');
 
-      const { data: users } = await admin.from('profiles').select('id, name, username').eq('school_id', id);
+      const { data: users, error: usersErr } = await admin.from('profiles').select('id, name, username').eq('school_id', id);
+      if (usersErr) throw new Error(`Gagal membaca akun tenant: ${usersErr.message}`);
       for(const u of users || []) {
-        try { await admin.auth.admin.deleteUser(u.id); } catch (_) {}
+        const { error: authDeleteErr } = await admin.auth.admin.deleteUser(u.id);
+        if (authDeleteErr) throw new Error(`Gagal menghapus akun Auth ${u.username || u.id}: ${authDeleteErr.message}`);
       }
-      try { await admin.from('profiles').delete().eq('school_id', id); } catch (_) {}
+      const { error: profilesDeleteErr } = await admin.from('profiles').delete().eq('school_id', id);
+      if (profilesDeleteErr) throw new Error(`Gagal menghapus profiles tenant: ${profilesDeleteErr.message}`);
 
       const { error } = await admin.from('schools').delete().eq('id', id);
       if(error) throw error;
