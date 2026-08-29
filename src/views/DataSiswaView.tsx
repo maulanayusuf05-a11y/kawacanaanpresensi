@@ -129,6 +129,7 @@ export const DataSiswaView: React.FC = () => {
 
   // Delete Confirmation Modal
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isDeletingStudent, setIsDeletingStudent] = useState(false);
 
   // Import Modal States
   const [selectedImportClassId, setSelectedImportClassId] = useState(myAssignedClasses[0]?.id || classes[0]?.id || '');
@@ -224,9 +225,17 @@ export const DataSiswaView: React.FC = () => {
     setIsModalOpen(false);
   };
 
-  const handleDelete = (id: string) => {
-    deleteStudent(id);
-    setDeletingId(null);
+  const handleDelete = async (id: string) => {
+    if (isDeletingStudent) return;
+    setIsDeletingStudent(true);
+    try {
+      await deleteStudent(id);
+      setDeletingId(null);
+    } catch {
+      // Error is handled with toast in deleteStudent
+    } finally {
+      setIsDeletingStudent(false);
+    }
   };
 
   const findMatchingClass = (rawClass: string, classList: Array<{ id: string; name: string }>) => {
@@ -1281,22 +1290,26 @@ export const DataSiswaView: React.FC = () => {
             <div className="w-12 h-12 rounded-full bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mx-auto mb-3">
               <Trash2 size={24} />
             </div>
-            <h3 className="font-bold text-slate-900 text-base mb-1">Hapus Data Siswa?</h3>
+            <h3 className="font-bold text-slate-900 text-base mb-1">Hapus data siswa?</h3>
             <p className="text-xs text-slate-500 mb-5 leading-relaxed">
-              Tindakan ini akan menghapus siswa dan akun login terkait secara permanen.
+              Data siswa dan seluruh data terkait, termasuk riwayat absensi, akan dihapus. Tindakan ini tidak dapat dibatalkan.
             </p>
             <div className="flex justify-center gap-3">
               <button
+                type="button"
+                disabled={isDeletingStudent}
                 onClick={() => setDeletingId(null)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer disabled:opacity-50"
               >
                 Batal
               </button>
               <button
-                onClick={() => handleDelete(deletingId)}
-                className="px-5 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-md cursor-pointer"
+                type="button"
+                disabled={isDeletingStudent}
+                onClick={() => void handleDelete(deletingId)}
+                className="px-5 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-md cursor-pointer disabled:opacity-50"
               >
-                Ya, Hapus
+                {isDeletingStudent ? 'Menghapus...' : 'Ya, Hapus'}
               </button>
             </div>
           </div>

@@ -1429,9 +1429,9 @@ export const DataGuruView: React.FC = () => {
               <AlertTriangle size={24} />
             </div>
             <div className="text-center space-y-1">
-              <h3 className="font-extrabold text-slate-900 text-sm">Hapus Data Guru?</h3>
+              <h3 className="font-extrabold text-slate-900 text-sm">Hapus data guru?</h3>
               <p className="text-xs text-slate-500">
-                Data guru <strong>{deleting.nama}</strong> akan dihapus dari daftar master guru.
+                Data guru dan seluruh data terkait, termasuk riwayat absensi, akan dihapus. Tindakan ini tidak dapat dibatalkan.
               </p>
             </div>
             <div className="flex items-center justify-center gap-2 pt-2">

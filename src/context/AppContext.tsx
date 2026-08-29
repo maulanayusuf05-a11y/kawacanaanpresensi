@@ -2410,15 +2410,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     );
   };
   const deleteStudent = async (id: string) => {
-    const schoolId = currentUser?.schoolId;
-    if (!schoolId) throw new Error("Sekolah aktif tidak ditemukan.");
-    const { error } = await supabase
-      .from("students")
-      .delete()
-      .eq("id", id)
-      .eq("school_id", schoolId);
-    if (error) throw error;
-    setStudents((p) => p.filter((x) => x.id !== id));
+    try {
+      if (!id) throw new Error("ID siswa tidak valid.");
+      const { error } = await supabase.rpc("delete_student_by_id", {
+        p_student_id: id,
+      });
+      if (error) throw error;
+      await loadData(currentUser?.id);
+      showToast("Data siswa berhasil dihapus.", "success");
+    } catch (e: any) {
+      showToast(e?.message || "Gagal menghapus siswa.", "error");
+      throw e;
+    }
   };
   const deleteStudentsByClass = async (classId: string) => {
     const schoolId = currentUser?.schoolId;
