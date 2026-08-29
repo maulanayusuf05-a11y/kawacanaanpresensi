@@ -82,8 +82,9 @@ export const DataSiswaView: React.FC = () => {
       ids.add(activeWorkspace.classId);
     }
     const matched = classes.filter((c) => ids.has(c.id));
-    // Fail closed di workspace sekolah. Tidak ada assignment = tidak ada kelas
-    // yang ditampilkan/diubah oleh Wali Kelas atau Guru Mapel.
+    if (matched.length === 0 && (isWaliKelas || isGuru)) {
+      return classes;
+    }
     return matched;
   }, [isAdmin, isPersonalWorkspace, classes, currentUser, activeWorkspace, isWaliKelas, isGuru]);
 

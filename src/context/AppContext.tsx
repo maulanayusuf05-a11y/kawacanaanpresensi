@@ -2034,21 +2034,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   };
   const addClass = async (c: Omit<SchoolClass, "id">) => {
     try {
-      const { dbWaliTeacherId, waliName } = await resolveWaliKelas(
-        c.waliKelasTeacherId || null,
-      );
       const schoolId = currentUser?.schoolId || null;
       if (!schoolId) throw new Error("Sekolah aktif tidak ditemukan.");
 
       const academicYear =
         c.academicYear || schoolProfile.tahunPelajaran || "2026/2027";
+      const { data: duplicateClass } = await supabase
+        .from("classes")
+        .select("id")
+        .eq("school_id", schoolId)
+        .eq("academic_year", academicYear)
+        .ilike("name", c.name.trim())
+        .maybeSingle();
+      if (duplicateClass) {
+        throw new Error(`Rombel "${c.name.trim()}" sudah ada pada tahun ajaran ${academicYear}.`);
+      }
       const { data: insertedData, error } = await supabase
         .from("classes")
         .insert({
           name: c.name.trim(),
           grade: c.grade,
           academic_year: academicYear,
-          wali_kelas_teacher_id: dbWaliTeacherId || null,
+          wali_kelas_teacher_id: null,
           school_id: schoolId,
         })
         .select("*, wali:wali_kelas_teacher_id(id,nama)")
@@ -2062,7 +2069,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           grade: insertedData.grade,
           academicYear: insertedData.academic_year,
           waliKelasTeacherId: insertedData.wali_kelas_teacher_id || null,
-          waliKelasName: waliName || insertedData.wali?.nama || null,
+          waliKelasName: insertedData.wali?.nama || null,
         },
       ]);
       showToast(`Kelas ${insertedData.name} berhasil ditambahkan`);
@@ -2073,22 +2080,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   };
   const updateClass = async (id: string, c: Omit<SchoolClass, "id">) => {
     try {
-      const { dbWaliTeacherId, waliName } = await resolveWaliKelas(
-        c.waliKelasTeacherId || null,
-        id,
-      );
       const schoolId = currentUser?.schoolId || null;
       if (!schoolId) throw new Error("Sekolah aktif tidak ditemukan.");
       const academicYear =
         c.academicYear || schoolProfile.tahunPelajaran || "2026/2027";
+      const { data: duplicateClass } = await supabase
+        .from("classes")
+        .select("id")
+        .eq("school_id", schoolId)
+        .eq("academic_year", academicYear)
+        .ilike("name", c.name.trim())
+        .neq("id", id)
+        .maybeSingle();
+      if (duplicateClass) {
+        throw new Error(`Rombel "${c.name.trim()}" sudah ada pada tahun ajaran ${academicYear}.`);
+      }
+      const classUpdate: any = {
+        name: c.name.trim(),
+        grade: c.grade,
+        academic_year: academicYear,
+      };
+      // Wali Kelas dikelola dari assignment terpisah. Jangan menghapusnya saat
+      // admin hanya mengedit nama/tingkat rombel.
+      if (Object.prototype.hasOwnProperty.call(c, "waliKelasTeacherId")) {
+        classUpdate.wali_kelas_teacher_id = c.waliKelasTeacherId || null;
+      }
       const { data: updatedData, error } = await supabase
         .from("classes")
-        .update({
-          name: c.name.trim(),
-          grade: c.grade,
-          academic_year: academicYear,
-          wali_kelas_teacher_id: dbWaliTeacherId || null,
-        })
+        .update(classUpdate)
         .eq("id", id)
         .eq("school_id", schoolId)
         .select("*, wali:wali_kelas_teacher_id(id,nama)")
@@ -2103,7 +2122,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
                 grade: updatedData.grade,
                 academicYear: updatedData.academic_year,
                 waliKelasTeacherId: updatedData.wali_kelas_teacher_id || null,
-                waliKelasName: waliName || updatedData.wali?.nama || null,
+                waliKelasName: updatedData.wali?.nama || null,
               }
             : x,
         ),
@@ -2520,8 +2539,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           );
           if (matchedSubject) {
             targetSubjectIds = [matchedSubject.id];
-          } else if (subjects.length > 0) {
-            targetSubjectIds = [subjects[0].id];
           }
         }
         for (const subId of targetSubjectIds) {
@@ -2560,32 +2577,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       const activeAcademicYear = schoolProfile.tahunPelajaran || "2026/2027";
 
       if (roleType === "WALI_KELAS") {
-        const targetClassId = targetClassIds?.[0] || null;
-        if (!targetClassId) {
-          throw new Error("Wali Kelas harus memiliki satu rombel.");
+        if (targetClassIds && targetClassIds.length > 1) {
+          throw new Error("Satu guru hanya boleh menjadi Wali Kelas untuk satu rombel pada satu tahun ajaran.");
         }
-        // Clear any previous wali kelas assignment for this teacher in this year
-          const { error: clearWaliError } = await supabase
+        if (targetClassIds && targetClassIds.length > 0) {
+          const targetClassId = targetClassIds[0];
+          const { data: targetClass, error: targetClassError } = await supabase
+            .from("classes")
+            .select("id,academic_year")
+            .eq("school_id", schoolId)
+            .eq("id", targetClassId)
+            .maybeSingle();
+          if (targetClassError) throw targetClassError;
+          if (!targetClass) throw new Error("Rombel tujuan tidak ditemukan pada sekolah aktif.");
+          if (targetClass.academic_year && targetClass.academic_year !== activeAcademicYear) {
+            throw new Error(`Rombel tersebut bukan bagian dari tahun ajaran aktif ${activeAcademicYear}.`);
+          }
+          // Hanya lepaskan assignment Wali Kelas guru ini pada tahun ajaran aktif.
+          const { error: clearError } = await supabase
             .from("classes")
             .update({ wali_kelas_teacher_id: null })
             .eq("school_id", schoolId)
             .eq("academic_year", activeAcademicYear)
             .eq("wali_kelas_teacher_id", teacherId);
-          if (clearWaliError) throw clearWaliError;
+          if (clearError) throw clearError;
 
-          // Assign to target class only in the active academic year.
-          const { data: assignedClass, error: assignWaliError } = await supabase
+          // Satu rombel aktif hanya boleh memiliki satu wali. Assignment baru
+          // menggantikan wali sebelumnya secara eksplisit.
+          const { error: assignError } = await supabase
             .from("classes")
             .update({ wali_kelas_teacher_id: teacherId })
             .eq("school_id", schoolId)
             .eq("academic_year", activeAcademicYear)
-            .eq("id", targetClassId)
-            .select("id")
-            .maybeSingle();
-          if (assignWaliError) throw assignWaliError;
-          if (!assignedClass) {
-            throw new Error("Kelas wali tidak ditemukan pada tahun ajaran aktif.");
-          }
+            .eq("id", targetClassId);
+          if (assignError) throw assignError;
+        }
 
         const linkedUser = users.find((u) => u.teacherId === teacherId);
         if (linkedUser) {
@@ -2605,37 +2631,65 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         const chosenSubject = subjects.find((s) => s.id === subjectId);
         const subjectName = chosenSubject?.name || null;
 
-        if (!subjectId) {
-          throw new Error("Guru Mapel harus memiliki mata pelajaran.");
-        }
-        const uniqueTargetClassIds = [...new Set(targetClassIds || [])];
-        if (uniqueTargetClassIds.length === 0) {
-          throw new Error("Guru Mapel harus memiliki minimal satu rombel yang diajar.");
+        if (!subjectId) throw new Error("Mata pelajaran wajib dipilih untuk assignment Guru Mapel.");
+        if (!chosenSubject) throw new Error("Mata pelajaran tidak ditemukan pada sekolah aktif.");
+        const uniqueTargetClassIds = [...new Set((targetClassIds || []).filter(Boolean))];
+        if (uniqueTargetClassIds.length) {
+          const { data: targetClasses, error: targetClassesError } = await supabase
+            .from("classes")
+            .select("id,academic_year")
+            .eq("school_id", schoolId)
+            .eq("academic_year", activeAcademicYear)
+            .in("id", uniqueTargetClassIds);
+          if (targetClassesError) throw targetClassesError;
+          if ((targetClasses || []).length !== uniqueTargetClassIds.length) {
+            throw new Error("Ada Rombel tujuan yang tidak valid atau bukan bagian dari tahun ajaran aktif.");
+          }
         }
 
-        // Validasi semua kelas berasal dari sekolah + tahun ajaran aktif.
-        const { data: validClasses, error: classCheckError } = await supabase
-          .from("classes")
-          .select("id")
+        // Assignment Guru + Mapel adalah relasi tahunan. Kita ganti hanya
+        // assignment untuk kombinasi guru-mapel-tahun ini.
+        const { error: staDeleteError } = await supabase
+          .from("subject_teacher_assignments")
+          .delete()
           .eq("school_id", schoolId)
-          .eq("academic_year", activeAcademicYear)
-          .in("id", uniqueTargetClassIds);
-        if (classCheckError) throw classCheckError;
-        if ((validClasses || []).length !== uniqueTargetClassIds.length) {
-          throw new Error("Ada kelas target yang tidak termasuk sekolah atau tahun ajaran aktif.");
-        }
+          .eq("teacher_id", teacherId)
+          .eq("subject_id", subjectId)
+          .eq("academic_year", activeAcademicYear);
+        if (staDeleteError) throw staDeleteError;
 
-        // Gunakan RPC yang sudah menjadi jalur normal aplikasi agar assignment
-        // guru + mapel + rombel tersimpan konsisten dalam satu operasi database.
-        const { error: assignmentError } = await supabase.rpc("replace_subject_assignment", {
-          p_school_id: schoolId,
-          p_subject_id: subjectId,
-          p_teacher_id: teacherId,
-          p_class_ids: uniqueTargetClassIds,
-          p_academic_year: activeAcademicYear,
-          p_actor_user_id: currentUser?.id || null,
-        });
-        if (assignmentError) throw assignmentError;
+        const { error: staErr } = await supabase
+          .from("subject_teacher_assignments")
+          .insert({
+            school_id: schoolId,
+            subject_id: subjectId,
+            teacher_id: teacherId,
+            academic_year: activeAcademicYear,
+          });
+        if (staErr) throw staErr;
+
+        // Selalu sinkronkan kelas. Array kosong berarti guru tidak mengajar
+        // mapel tersebut pada rombel mana pun tahun ini.
+        const { error: scaDeleteError } = await supabase
+          .from("subject_class_assignments")
+          .delete()
+          .eq("school_id", schoolId)
+          .eq("subject_id", subjectId)
+          .eq("academic_year", activeAcademicYear);
+        if (scaDeleteError) throw scaDeleteError;
+
+        if (uniqueTargetClassIds.length) {
+          const classInserts = uniqueTargetClassIds.map((cid) => ({
+            school_id: schoolId,
+            subject_id: subjectId,
+            class_id: cid,
+            academic_year: activeAcademicYear,
+          }));
+          const { error: scaInsertError } = await supabase
+            .from("subject_class_assignments")
+            .insert(classInserts);
+          if (scaInsertError) throw scaInsertError;
+        }
 
         const linkedUser = users.find((u) => u.teacherId === teacherId);
         if (linkedUser) {
@@ -2651,40 +2705,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             .eq("school_id", schoolId);
         }
       } else {
-        const { error: clearWaliError } = await supabase
+        await supabase
           .from("classes")
           .update({ wali_kelas_teacher_id: null })
           .eq("school_id", schoolId)
           .eq("academic_year", activeAcademicYear)
           .eq("wali_kelas_teacher_id", teacherId);
-        if (clearWaliError) throw clearWaliError;
 
-        const { data: teacherSubjectRows, error: subjectLookupError } = await supabase
-          .from("subject_teacher_assignments")
-          .select("subject_id")
-          .eq("school_id", schoolId)
-          .eq("teacher_id", teacherId)
-          .eq("academic_year", activeAcademicYear);
-        if (subjectLookupError) throw subjectLookupError;
-
-        const teacherSubjectIds = (teacherSubjectRows || []).map((r: any) => r.subject_id);
-        if (teacherSubjectIds.length) {
-          const { error: clearSubjectClassesError } = await supabase
-            .from("subject_class_assignments")
-            .delete()
-            .eq("school_id", schoolId)
-            .eq("academic_year", activeAcademicYear)
-            .in("subject_id", teacherSubjectIds);
-          if (clearSubjectClassesError) throw clearSubjectClassesError;
-        }
-
-        const { error: clearSubjectTeacherError } = await supabase
+        await supabase
           .from("subject_teacher_assignments")
           .delete()
           .eq("school_id", schoolId)
           .eq("teacher_id", teacherId)
           .eq("academic_year", activeAcademicYear);
-        if (clearSubjectTeacherError) throw clearSubjectTeacherError;
 
         const linkedUser = users.find((u) => u.teacherId === teacherId);
         if (linkedUser) {
@@ -2723,6 +2756,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         .from("classes")
         .select("id,name")
         .eq("school_id", schoolId)
+        .eq("academic_year", schoolProfile.tahunPelajaran || "2026/2027")
         .eq("wali_kelas_teacher_id", teacherId);
       if (error) throw error;
       ids = (data || []).map((x: any) => x.id);

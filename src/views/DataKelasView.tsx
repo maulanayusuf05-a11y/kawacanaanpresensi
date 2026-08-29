@@ -292,7 +292,7 @@ export const DataKelasView: React.FC = () => {
     setEditing(null);
     setName('');
     setGrade(1);
-    setWaliKelasTeacherId(isWaliKelas && currentUser?.teacherId ? currentUser.teacherId : '');
+    setWaliKelasTeacherId('');
     setEditingClassMapelIds([]);
     setOpen(true);
   };
@@ -301,7 +301,7 @@ export const DataKelasView: React.FC = () => {
     setEditing(c);
     setName(c.name);
     setGrade(c.grade);
-    setWaliKelasTeacherId(c.waliKelasTeacherId || '');
+    setWaliKelasTeacherId('');
     
     // Guru Mapel yang saat ini ditugaskan mengajar kelas ini
     const assignedTeachers = subjects
@@ -320,44 +320,22 @@ export const DataKelasView: React.FC = () => {
       return;
     }
 
-    if (waliKelasTeacherId) {
-      const validation = validateTeacherRoleAssignment(
-        waliKelasTeacherId,
-        'wali_kelas',
-        classes.filter((c) => (editing ? c.id !== editing.id : true)),
-        subjects,
-        schoolProfile?.tahunPelajaran
-      );
-      if (!validation.valid) {
-        showToast(validation.errorMessage || 'Konflik peran guru terdeteksi.', 'error');
-        return;
-      }
-    }
-    
     // Ekstrak angka kelas otomatis dari teks nama kelas (contoh: "Kelas 1A" -> 1, "2B" -> 2)
     const matchNumber = name.match(/\d+/);
     const autoGrade = matchNumber ? parseInt(matchNumber[0], 10) : 1;
-
-    // Cari nama wali kelas dari waliCandidates
-    const selectedCandidate = waliCandidates.find((w) => w.id === waliKelasTeacherId);
-    const resolvedWaliName = selectedCandidate ? selectedCandidate.name : null;
 
     if (editing) {
       await updateClass(editing.id, {
         name: name.trim(),
         grade: grade || autoGrade,
         academicYear: schoolProfile?.tahunPelajaran || editing.academicYear,
-        waliKelasTeacherId: waliKelasTeacherId || null,
-        waliKelasName: resolvedWaliName || editing.waliKelasName || null,
       });
       showToast('Data rombongan belajar berhasil diperbarui', 'success');
     } else {
       await addClass({
         name: name.trim(),
         grade: grade || autoGrade,
-        academicYear: schoolProfile?.tahunPelajaran || '2025/2026',
-        waliKelasTeacherId: waliKelasTeacherId || null,
-        waliKelasName: resolvedWaliName || null,
+        academicYear: schoolProfile?.tahunPelajaran || '2026/2027',
       });
       showToast('Rombongan belajar baru berhasil ditambahkan', 'success');
     }
@@ -1527,24 +1505,10 @@ export const DataKelasView: React.FC = () => {
               </div>
 
               {!isPersonalWorkspace && (
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Wali Kelas Penanggung Jawab</label>
-                  <select
-                    value={waliKelasTeacherId}
-                    onChange={(e) => setWaliKelasTeacherId(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:border-blue-600 outline-none cursor-pointer"
-                  >
-                    <option value="">-- Belum Ditugaskan --</option>
-                    {waliCandidates.map((w) => (
-                      <option key={w.id} value={w.id}>
-                        {w.isWaliRole ? '⭐ ' : ''}{w.name} ({w.role}) {w.assignedClassName ? `• Saat ini di ${w.assignedClassName}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-[10px] text-slate-500 mt-1">
-                    Daftar wali kelas terintegrasi dari master Data Guru. Satu guru hanya dapat menjadi Wali Kelas untuk satu rombel kelas.
-                  </p>
-                </div>
+                <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3 text-xs text-blue-800">
+                    <div className="font-extrabold">Wali Kelas diatur setelah Rombel dibuat.</div>
+                    <div className="mt-1 text-blue-700">Simpan Rombel terlebih dahulu, lalu gunakan aksi <b>Tetapkan Wali Kelas</b> pada daftar Rombel. Ini mencegah assignment ke Rombel yang belum tersimpan.</div>
+                  </div>
               )}
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 shrink-0">
