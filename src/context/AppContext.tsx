@@ -2581,13 +2581,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           throw new Error("Satu guru hanya boleh menjadi Wali Kelas untuk satu rombel pada satu tahun ajaran.");
         }
 
-        // Hapus penugasan mapel jika ada pada tahun ajaran aktif
+        // Hapus penugasan mapel jika ada pada sekolah aktif
         await supabase
           .from("subject_teacher_assignments")
           .delete()
           .eq("school_id", schoolId)
-          .eq("teacher_id", teacherId)
-          .eq("academic_year", activeAcademicYear);
+          .eq("teacher_id", teacherId);
 
         if (targetClassIds && targetClassIds.length > 0) {
           const targetClassId = targetClassIds[0];
@@ -2602,12 +2601,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           if (targetClass.academic_year && targetClass.academic_year !== activeAcademicYear) {
             throw new Error(`Rombel tersebut bukan bagian dari tahun ajaran aktif ${activeAcademicYear}.`);
           }
-          // Lepaskan assignment Wali Kelas guru ini pada tahun ajaran aktif.
+          // Lepaskan assignment Wali Kelas guru ini pada sekolah aktif.
           const { error: clearError } = await supabase
             .from("classes")
             .update({ wali_kelas_teacher_id: null })
             .eq("school_id", schoolId)
-            .eq("academic_year", activeAcademicYear)
             .eq("wali_kelas_teacher_id", teacherId);
           if (clearError) throw clearError;
 
@@ -2616,7 +2614,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             .from("classes")
             .update({ wali_kelas_teacher_id: teacherId })
             .eq("school_id", schoolId)
-            .eq("academic_year", activeAcademicYear)
             .eq("id", targetClassId);
           if (assignError) throw assignError;
         }
@@ -2671,7 +2668,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           .from("classes")
           .update({ wali_kelas_teacher_id: null })
           .eq("school_id", schoolId)
-          .eq("academic_year", activeAcademicYear)
           .eq("wali_kelas_teacher_id", teacherId);
 
         if (subjectId && chosenSubject) {
@@ -2681,11 +2677,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               .from("classes")
               .select("id,academic_year")
               .eq("school_id", schoolId)
-              .eq("academic_year", activeAcademicYear)
               .in("id", uniqueTargetClassIds);
             if (targetClassesError) throw targetClassesError;
             if ((targetClasses || []).length !== uniqueTargetClassIds.length) {
-              throw new Error("Ada Rombel tujuan yang tidak valid atau bukan bagian dari tahun ajaran aktif.");
+              throw new Error("Ada Rombel tujuan yang tidak valid.");
             }
           }
 
@@ -2694,8 +2689,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             .from("subject_teacher_assignments")
             .delete()
             .eq("school_id", schoolId)
-            .eq("teacher_id", teacherId)
-            .eq("academic_year", activeAcademicYear);
+            .eq("teacher_id", teacherId);
           if (staDeleteError) throw staDeleteError;
 
           const { error: staErr } = await supabase
@@ -2713,8 +2707,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             .from("subject_class_assignments")
             .delete()
             .eq("school_id", schoolId)
-            .eq("subject_id", subjectId)
-            .eq("academic_year", activeAcademicYear);
+            .eq("subject_id", subjectId);
           if (scaDeleteError) throw scaDeleteError;
 
           if (uniqueTargetClassIds.length) {
@@ -2774,15 +2767,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           .from("classes")
           .update({ wali_kelas_teacher_id: null })
           .eq("school_id", schoolId)
-          .eq("academic_year", activeAcademicYear)
           .eq("wali_kelas_teacher_id", teacherId);
 
         await supabase
           .from("subject_teacher_assignments")
           .delete()
           .eq("school_id", schoolId)
-          .eq("teacher_id", teacherId)
-          .eq("academic_year", activeAcademicYear);
+          .eq("teacher_id", teacherId);
 
         // Perbarui tabel teachers agar kolom STATUS PENUGASAN (ADMIN) otomatis tersimpan & terbaca
         await supabase

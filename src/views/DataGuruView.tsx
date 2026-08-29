@@ -256,22 +256,18 @@ export const DataGuruView: React.FC = () => {
     // Initial state for penugasan in edit modal based on assignments and current teacher role
     const homeroomClass = classes.find((c) => c.waliKelasTeacherId === t.id);
     const assignedSubject = subjects.find((s) => s.teacherId === t.id);
+    const normJabatan = (t.jabatan || '').trim().toLowerCase();
+    const normPTK = (t.jenisPTK || '').trim().toLowerCase();
 
-    if (homeroomClass || (t.jabatan || '').trim() === 'Wali Kelas') {
+    if (homeroomClass || normJabatan.includes('wali') || normPTK.includes('wali')) {
       setModalRoleType('WALI_KELAS');
       setModalWaliClassId(homeroomClass ? homeroomClass.id : '');
-      setModalSubjectId('');
-      setModalMapelClassIds([]);
-    } else if (assignedSubject || (t.jabatan || '').trim() === 'Guru Mapel') {
+    } else if (assignedSubject || normJabatan.includes('mapel') || normPTK.includes('mapel')) {
       setModalRoleType('GURU_MAPEL');
       setModalWaliClassId('');
-      setModalSubjectId(assignedSubject ? assignedSubject.id : '');
-      setModalMapelClassIds(assignedSubject?.targetClassIds || []);
     } else {
       setModalRoleType('NONE');
       setModalWaliClassId('');
-      setModalSubjectId('');
-      setModalMapelClassIds([]);
     }
 
     setOpen(true);
@@ -281,22 +277,18 @@ export const DataGuruView: React.FC = () => {
     setAssigningTeacher(t);
     const homeroomClass = classes.find((c) => c.waliKelasTeacherId === t.id);
     const assignedSubject = subjects.find((s) => s.teacherId === t.id);
+    const normJabatan = (t.jabatan || '').trim().toLowerCase();
+    const normPTK = (t.jenisPTK || '').trim().toLowerCase();
 
-    if (homeroomClass || (t.jabatan || '').trim() === 'Wali Kelas') {
+    if (homeroomClass || normJabatan.includes('wali') || normPTK.includes('wali')) {
       setAssignRoleType('WALI_KELAS');
       setAssignWaliClassId(homeroomClass ? homeroomClass.id : '');
-      setAssignSubjectId('');
-      setAssignMapelClassIds([]);
-    } else if (assignedSubject || (t.jabatan || '').trim() === 'Guru Mapel') {
+    } else if (assignedSubject || normJabatan.includes('mapel') || normPTK.includes('mapel')) {
       setAssignRoleType('GURU_MAPEL');
       setAssignWaliClassId('');
-      setAssignSubjectId(assignedSubject ? assignedSubject.id : '');
-      setAssignMapelClassIds(assignedSubject?.targetClassIds || []);
     } else {
       setAssignRoleType('NONE');
       setAssignWaliClassId('');
-      setAssignSubjectId('');
-      setAssignMapelClassIds([]);
     }
   };
 
