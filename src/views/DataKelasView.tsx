@@ -153,6 +153,7 @@ export const DataKelasView: React.FC = () => {
 
   // Delete Class Modal
   const [deleting, setDeleting] = useState<SchoolClass | null>(null);
+  const [isDeletingClass, setIsDeletingClass] = useState(false);
 
   // View Students in Class Modal
   const [viewingClass, setViewingClass] = useState<SchoolClass | null>(null);
@@ -443,9 +444,16 @@ export const DataKelasView: React.FC = () => {
   };
 
   const removeClass = async () => {
-    if (!deleting) return;
-    await deleteClass(deleting.id);
-    setDeleting(null);
+    if (!deleting || isDeletingClass) return;
+    setIsDeletingClass(true);
+    try {
+      await deleteClass(deleting.id);
+      setDeleting(null);
+    } catch {
+      // Error handled with toast in deleteClass
+    } finally {
+      setIsDeletingClass(false);
+    }
   };
 
   const handlePurgeClassStudents = async () => {
@@ -1789,23 +1797,27 @@ export const DataKelasView: React.FC = () => {
               <Trash2 size={24} />
             </div>
             <h3 className="font-black text-slate-900 text-base mb-1">
-              Hapus Rombel Kelas {deleting.name}?
+              Hapus kelas?
             </h3>
             <p className="text-xs text-slate-500 mb-5 leading-relaxed">
-              Kelas <strong>{deleting.name}</strong> akan dihapus dari daftar rombel. Data siswa di kelas ini akan dilepas status kelasnya.
+              Kelas beserta seluruh data yang terkait, termasuk siswa, riwayat absensi, dan assignment, akan dihapus. Tindakan ini tidak dapat dibatalkan.
             </p>
             <div className="flex justify-center gap-3">
               <button
+                type="button"
+                disabled={isDeletingClass}
                 onClick={() => setDeleting(null)}
-                className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+                className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer disabled:opacity-50"
               >
                 Batal
               </button>
               <button
-                onClick={removeClass}
-                className="px-5 py-2.5 text-xs font-extrabold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-md transition-all cursor-pointer"
+                type="button"
+                disabled={isDeletingClass}
+                onClick={() => void removeClass()}
+                className="px-5 py-2.5 text-xs font-extrabold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-md transition-all cursor-pointer disabled:opacity-50"
               >
-                Ya, Hapus Kelas Ini
+                {isDeletingClass ? 'Menghapus...' : 'Ya, Hapus'}
               </button>
             </div>
           </div>

@@ -2174,13 +2174,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         .eq("id", id)
         .eq("school_id", schoolId);
       if (error) throw error;
-      setClasses((p) => p.filter((x) => x.id !== id));
-      setStudents((p) =>
-        p.map((s) =>
-          s.classId === id ? { ...s, classId: null, className: "" } : s,
-        ),
-      );
-      showToast("Kelas berhasil dihapus", "info");
+      await loadData(currentUser?.id);
+      showToast("Kelas berhasil dihapus.", "success");
     } catch (e: any) {
       showToast(e.message || "Gagal menghapus kelas.", "error");
       throw e;
