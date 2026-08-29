@@ -2663,11 +2663,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             .eq("school_id", schoolId);
         }
       } else if (roleType === "GURU_MAPEL") {
-        const chosenSubject = subjects.find((s) => s.id === subjectId);
+        const chosenSubject = subjectId ? subjects.find((s) => s.id === subjectId) : null;
         const subjectName = chosenSubject?.name || null;
-
-        if (!subjectId) throw new Error("Mata pelajaran wajib dipilih untuk assignment Guru Mapel.");
-        if (!chosenSubject) throw new Error("Mata pelajaran tidak ditemukan pada sekolah aktif.");
 
         // Lepas wali kelas jika sebelumnya ditugaskan sebagai wali kelas
         await supabase
@@ -2677,59 +2674,61 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           .eq("academic_year", activeAcademicYear)
           .eq("wali_kelas_teacher_id", teacherId);
 
-        const uniqueTargetClassIds = [...new Set((targetClassIds || []).filter(Boolean))];
-        if (uniqueTargetClassIds.length) {
-          const { data: targetClasses, error: targetClassesError } = await supabase
-            .from("classes")
-            .select("id,academic_year")
-            .eq("school_id", schoolId)
-            .eq("academic_year", activeAcademicYear)
-            .in("id", uniqueTargetClassIds);
-          if (targetClassesError) throw targetClassesError;
-          if ((targetClasses || []).length !== uniqueTargetClassIds.length) {
-            throw new Error("Ada Rombel tujuan yang tidak valid atau bukan bagian dari tahun ajaran aktif.");
+        if (subjectId && chosenSubject) {
+          const uniqueTargetClassIds = [...new Set((targetClassIds || []).filter(Boolean))];
+          if (uniqueTargetClassIds.length) {
+            const { data: targetClasses, error: targetClassesError } = await supabase
+              .from("classes")
+              .select("id,academic_year")
+              .eq("school_id", schoolId)
+              .eq("academic_year", activeAcademicYear)
+              .in("id", uniqueTargetClassIds);
+            if (targetClassesError) throw targetClassesError;
+            if ((targetClasses || []).length !== uniqueTargetClassIds.length) {
+              throw new Error("Ada Rombel tujuan yang tidak valid atau bukan bagian dari tahun ajaran aktif.");
+            }
           }
-        }
 
-        // Assignment Guru + Mapel
-        const { error: staDeleteError } = await supabase
-          .from("subject_teacher_assignments")
-          .delete()
-          .eq("school_id", schoolId)
-          .eq("teacher_id", teacherId)
-          .eq("academic_year", activeAcademicYear);
-        if (staDeleteError) throw staDeleteError;
+          // Assignment Guru + Mapel
+          const { error: staDeleteError } = await supabase
+            .from("subject_teacher_assignments")
+            .delete()
+            .eq("school_id", schoolId)
+            .eq("teacher_id", teacherId)
+            .eq("academic_year", activeAcademicYear);
+          if (staDeleteError) throw staDeleteError;
 
-        const { error: staErr } = await supabase
-          .from("subject_teacher_assignments")
-          .insert({
-            school_id: schoolId,
-            subject_id: subjectId,
-            teacher_id: teacherId,
-            academic_year: activeAcademicYear,
-          });
-        if (staErr) throw staErr;
+          const { error: staErr } = await supabase
+            .from("subject_teacher_assignments")
+            .insert({
+              school_id: schoolId,
+              subject_id: subjectId,
+              teacher_id: teacherId,
+              academic_year: activeAcademicYear,
+            });
+          if (staErr) throw staErr;
 
-        // Sinkronkan kelas
-        const { error: scaDeleteError } = await supabase
-          .from("subject_class_assignments")
-          .delete()
-          .eq("school_id", schoolId)
-          .eq("subject_id", subjectId)
-          .eq("academic_year", activeAcademicYear);
-        if (scaDeleteError) throw scaDeleteError;
-
-        if (uniqueTargetClassIds.length) {
-          const classInserts = uniqueTargetClassIds.map((cid) => ({
-            school_id: schoolId,
-            subject_id: subjectId,
-            class_id: cid,
-            academic_year: activeAcademicYear,
-          }));
-          const { error: scaInsertError } = await supabase
+          // Sinkronkan kelas
+          const { error: scaDeleteError } = await supabase
             .from("subject_class_assignments")
-            .insert(classInserts);
-          if (scaInsertError) throw scaInsertError;
+            .delete()
+            .eq("school_id", schoolId)
+            .eq("subject_id", subjectId)
+            .eq("academic_year", activeAcademicYear);
+          if (scaDeleteError) throw scaDeleteError;
+
+          if (uniqueTargetClassIds.length) {
+            const classInserts = uniqueTargetClassIds.map((cid) => ({
+              school_id: schoolId,
+              subject_id: subjectId,
+              class_id: cid,
+              academic_year: activeAcademicYear,
+            }));
+            const { error: scaInsertError } = await supabase
+              .from("subject_class_assignments")
+              .insert(classInserts);
+            if (scaInsertError) throw scaInsertError;
+          }
         }
 
         // Perbarui tabel teachers agar kolom STATUS PENUGASAN (ADMIN) otomatis tersimpan & terbaca
@@ -2764,7 +2763,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             .update({
               role: "GURU MAPEL",
               subject_id: subjectId || null,
-              subject_name: subjectName,
+              subject_name: subjectName || null,
               class_ids: targetClassIds || linkedUser.classIds || [],
             })
             .eq("id", linkedUser.id)
