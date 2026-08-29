@@ -224,31 +224,13 @@ const dbStudent = (s: any): Student => ({
   className: s.class_name || "",
 });
 const dbTeacher = (t: any): Teacher => {
-  const rawJabatan = (t.jabatan || t.jenis_ptk || t.jenisPTK || "").trim();
-  let jabatan: string = t._resolved_role || rawJabatan || "Belum ditugaskan";
-  if (
-    rawJabatan === "Wali Kelas" ||
-    rawJabatan.toLowerCase().includes("wali")
-  ) {
-    jabatan = "Wali Kelas";
-  } else if (
-    rawJabatan === "Guru Mapel" ||
-    rawJabatan.toLowerCase().includes("mapel")
-  ) {
-    jabatan = "Guru Mapel";
-  } else if (
-    rawJabatan.toLowerCase().includes("belum") ||
-    rawJabatan.toLowerCase().includes("bebas")
-  ) {
-    jabatan = "Belum ditugaskan";
-  }
   return {
     id: t.id,
     nama: t.nama || "",
     nip: t.nip || "",
     jenisKelamin: t.jenis_kelamin || t.jenisKelamin || "L",
-    jabatan,
-    jenisPTK: t.jenis_ptk || t.jenisPTK || jabatan,
+    jabatan: t._resolved_role || "Belum ditugaskan",
+    jenisPTK: t.jenis_ptk || t.jenisPTK || "Belum ditugaskan",
     mataPelajaran: t.mata_pelajaran || t.mataPelajaran || "",
     statusKepegawaian: t.status_kepegawaian || t.statusKepegawaian || "PNS",
     noHp: t.no_hp || t.noHp || "",
@@ -1013,30 +995,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     });
     const authoritativeTeachers = baseTeachers.map((t: any) => {
       const roleFromAssignment = assignmentRoleByTeacher.get(t.id);
-      const rawRole = (t.jabatan || t.jenisPTK || "").trim();
-      let finalJabatan = t.jabatan || "Belum ditugaskan";
-      if (roleFromAssignment) {
-        finalJabatan = roleFromAssignment;
-      } else if (
-        rawRole &&
-        (rawRole === "Wali Kelas" ||
-          String(rawRole).toLowerCase().includes("wali"))
-      ) {
-        finalJabatan = "Wali Kelas";
-      } else if (
-        rawRole &&
-        (rawRole === "Guru Mapel" ||
-          String(rawRole).toLowerCase().includes("mapel"))
-      ) {
-        finalJabatan = "Guru Mapel";
-      } else if (
-        rawRole &&
-        (rawRole.toLowerCase().includes("belum") ||
-          rawRole.toLowerCase().includes("bebas"))
-      ) {
-        finalJabatan = "Belum ditugaskan";
-      }
-      return { ...t, jabatan: finalJabatan };
+      const finalJabatan: "Wali Kelas" | "Guru Mapel" | "Belum ditugaskan" =
+        roleFromAssignment === "Wali Kelas"
+          ? "Wali Kelas"
+          : roleFromAssignment === "Guru Mapel"
+            ? "Guru Mapel"
+            : "Belum ditugaskan";
+      return { ...t, jabatan: finalJabatan, jenisPTK: finalJabatan };
     });
     setTeachers(authoritativeTeachers);
     const hydratedUsers = (allProfiles.data || []).map((p: any) => {
@@ -2558,10 +2523,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         .eq("academic_year", academicYear)
         .eq("teacher_id", teacherId);
 
-      const isWali =
-        (waliRows || []).length > 0 || teacherRow.jabatan === "Wali Kelas";
-      const isMapel =
-        (mapelRows || []).length > 0 || teacherRow.jabatan === "Guru Mapel";
+      const isWali = (waliRows || []).length > 0;
+      const isMapel = (mapelRows || []).length > 0;
 
       if (isWali && !isMapel) {
         if (uniqueClassIds.length > 1)

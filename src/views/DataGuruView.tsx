@@ -146,14 +146,12 @@ export const DataGuruView: React.FC = () => {
     setModalMapelClassIds([]);
   };
 
-  // Helper to get detailed assignment info for a teacher
+  // Helper to get detailed assignment info for a teacher based on actual assignments
   const getTeacherAssignmentDetails = (t: Teacher) => {
+    // 1. Cek apakah guru ditetapkan sebagai wali kelas melalui assignment kelas
     const homeroomClass = classes.find(
       (c) => c.waliKelasTeacherId === t.id || (c.waliKelasName && c.waliKelasName.trim().toLowerCase() === t.nama.trim().toLowerCase())
     );
-    const assignedSubject = subjects.find((s) => s.teacherId === t.id);
-    const isWaliByRole = t.jabatan === 'Wali Kelas' || t.jenisPTK === 'Wali Kelas';
-    const isMapelByRole = t.jabatan === 'Guru Mapel' || t.jenisPTK === 'Guru Mapel' || !!t.mataPelajaran;
 
     if (homeroomClass) {
       return {
@@ -165,21 +163,14 @@ export const DataGuruView: React.FC = () => {
       };
     }
 
-    if (isWaliByRole) {
-      return {
-        type: 'Wali Kelas' as const,
-        label: 'Wali Kelas (Atur Rombel di Data Kelas)',
-        className: null,
-        classId: null,
-        badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200'
-      };
-    }
+    // 2. Cek apakah guru memiliki assignment pada mata pelajaran
+    const assignedSubject = subjects.find((s) => s.teacherId === t.id);
 
     if (assignedSubject) {
       const targetNames = (assignedSubject.targetClassIds || [])
         .map((cid) => classes.find((c) => c.id === cid)?.name || '')
         .filter(Boolean);
-      const classText = targetNames.length > 0 ? ` (${targetNames.join(', ')})` : ' (Atur Rombel di Data Kelas)';
+      const classText = targetNames.length > 0 ? ` (${targetNames.join(', ')})` : '';
       return {
         type: 'Guru Mapel' as const,
         label: `${assignedSubject.name}${classText}`,
@@ -190,21 +181,10 @@ export const DataGuruView: React.FC = () => {
       };
     }
 
-    if (isMapelByRole) {
-      const mapelName = t.mataPelajaran || 'Guru Mapel';
-      return {
-        type: 'Guru Mapel' as const,
-        label: `${mapelName} (Atur Rombel di Data Kelas)`,
-        subjectName: mapelName,
-        subjectId: null,
-        targetClassIds: [],
-        badgeColor: 'bg-amber-50 text-amber-800 border-amber-200'
-      };
-    }
-
+    // 3. Jika belum memiliki assignment apa pun -> BELUM DITUGASKAN
     return {
       type: 'Belum Ditugaskan' as const,
-      label: 'Bebas Tugas',
+      label: 'Belum Ditugaskan',
       badgeColor: 'bg-slate-100 text-slate-600 border-slate-200'
     };
   };
@@ -225,20 +205,20 @@ export const DataGuruView: React.FC = () => {
     setNip(t.nip);
     setJenisKelamin(t.jenisKelamin);
 
-    // Initial state for penugasan in edit modal
+    // Initial state for penugasan in edit modal based purely on assignments
     const homeroomClass = classes.find((c) => c.waliKelasTeacherId === t.id);
     const assignedSubject = subjects.find((s) => s.teacherId === t.id);
 
-    if (homeroomClass || t.jabatan === 'Wali Kelas' || t.jenisPTK === 'Wali Kelas') {
+    if (homeroomClass) {
       setModalRoleType('WALI_KELAS');
-      setModalWaliClassId(homeroomClass?.id || '');
+      setModalWaliClassId(homeroomClass.id);
       setModalSubjectId('');
       setModalMapelClassIds([]);
-    } else if (assignedSubject || t.jabatan === 'Guru Mapel' || t.jenisPTK === 'Guru Mapel' || t.mataPelajaran) {
+    } else if (assignedSubject) {
       setModalRoleType('GURU_MAPEL');
       setModalWaliClassId('');
-      setModalSubjectId(assignedSubject?.id || subjects.find((s) => t.mataPelajaran && s.name.toLowerCase().includes(t.mataPelajaran.toLowerCase()))?.id || subjects[0]?.id || '');
-      setModalMapelClassIds(assignedSubject?.targetClassIds || []);
+      setModalSubjectId(assignedSubject.id);
+      setModalMapelClassIds(assignedSubject.targetClassIds || []);
     } else {
       setModalRoleType('NONE');
       setModalWaliClassId('');
@@ -254,16 +234,16 @@ export const DataGuruView: React.FC = () => {
     const homeroomClass = classes.find((c) => c.waliKelasTeacherId === t.id);
     const assignedSubject = subjects.find((s) => s.teacherId === t.id);
 
-    if (homeroomClass || t.jabatan === 'Wali Kelas' || t.jenisPTK === 'Wali Kelas') {
+    if (homeroomClass) {
       setAssignRoleType('WALI_KELAS');
-      setAssignWaliClassId(homeroomClass?.id || '');
+      setAssignWaliClassId(homeroomClass.id);
       setAssignSubjectId('');
       setAssignMapelClassIds([]);
-    } else if (assignedSubject || t.jabatan === 'Guru Mapel' || t.jenisPTK === 'Guru Mapel' || t.mataPelajaran) {
+    } else if (assignedSubject) {
       setAssignRoleType('GURU_MAPEL');
       setAssignWaliClassId('');
-      setAssignSubjectId(assignedSubject?.id || subjects.find((s) => t.mataPelajaran && s.name.toLowerCase().includes(t.mataPelajaran.toLowerCase()))?.id || subjects[0]?.id || '');
-      setAssignMapelClassIds(assignedSubject?.targetClassIds || []);
+      setAssignSubjectId(assignedSubject.id);
+      setAssignMapelClassIds(assignedSubject.targetClassIds || []);
     } else {
       setAssignRoleType('NONE');
       setAssignWaliClassId('');

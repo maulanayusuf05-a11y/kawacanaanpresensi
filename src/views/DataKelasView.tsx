@@ -169,13 +169,10 @@ export const DataKelasView: React.FC = () => {
   const [pasteText, setPasteText] = useState('');
   const [parsedClasses, setParsedClasses] = useState<ParsedClassItem[]>([]);
 
-  // Daftar Guru Mapel bersumber dari Data Guru (teachers & subjects)
+  // Daftar Guru Mapel bersumber dari data assignment mata pelajaran (subjects)
   const guruMapelList = useMemo(() => {
     return teachers.filter((t) => {
-      const isMapelRole = t.jabatan === 'Guru Mapel' || t.jenisPTK === 'Guru Mapel';
-      const hasMapelField = !!t.mataPelajaran;
-      const hasAssignedSubject = subjects.some((s) => s.teacherId === t.id);
-      return isMapelRole || hasMapelField || hasAssignedSubject;
+      return subjects.some((s) => s.teacherId === t.id);
     });
   }, [teachers, subjects]);
 
@@ -196,7 +193,6 @@ export const DataKelasView: React.FC = () => {
   };
 
   // Calon wali kelas bersumber dari master Data Guru (teachers)
-  // Guru dengan jabatan 'Wali Kelas' diutamakan di urutan teratas
   const waliCandidates = useMemo(() => {
     const list: Array<{
       id: string;
@@ -226,15 +222,17 @@ export const DataKelasView: React.FC = () => {
         return false;
       });
 
-      const isWaliRole = t.jabatan === 'Wali Kelas' || t.jenisPTK === 'Wali Kelas';
+      const isAssignedWali = !!assignedClass;
+      const isAssignedMapel = subjects.some((s) => s.teacherId === t.id);
+      const displayRole = isAssignedWali ? 'Wali Kelas' : isAssignedMapel ? 'Guru Mapel' : 'Belum Ditugaskan';
 
       list.push({
         id: candidateId,
         name: teacherName || 'Tanpa Nama',
-        role: t.jabatan || 'Guru',
+        role: displayRole,
         assignedClassName: assignedClass?.name || null,
         isAccount: !!matchedUser,
-        isWaliRole,
+        isWaliRole: isAssignedWali,
       });
     });
 
@@ -246,7 +244,7 @@ export const DataKelasView: React.FC = () => {
     });
 
     return list;
-  }, [teachers, users, classes]);
+  }, [teachers, users, classes, subjects]);
 
   // Filtered classes by search term (menggunakan accessibleClasses)
   const filteredClasses = useMemo(() => {

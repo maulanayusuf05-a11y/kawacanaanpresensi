@@ -104,15 +104,12 @@ export const DataMapelView: React.FC = () => {
   // Delete Confirmation Modal
   const [deletingSubject, setDeletingSubject] = useState<Subject | null>(null);
 
-  // Filter guru yang berjenis Guru Mapel (atau semua guru dengan penanda)
+  // Filter guru yang berjenis Guru Mapel berdasarkan assignment
   const guruMapelList = useMemo(() => {
     return teachers.filter(
-      (t) =>
-        t.jabatan === 'Guru Mapel' ||
-        t.jenisPTK === 'Guru Mapel' ||
-        (t.mataPelajaran && t.mataPelajaran.toLowerCase().includes('mapel'))
+      (t) => subjects.some((s) => s.teacherId === t.id)
     );
-  }, [teachers]);
+  }, [teachers, subjects]);
 
   // Semua guru (fallback jika belum ada yang diset guru mapel)
   const allTeacherOptions = useMemo(() => {
