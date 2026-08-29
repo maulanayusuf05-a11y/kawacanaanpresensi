@@ -31,7 +31,7 @@ interface ParsedTeacherItem {
   nama: string;
   nip: string;
   jenisKelamin: 'L' | 'P';
-  jabatan: string;
+  tugasUtama: string;
   statusKepegawaian: string;
   noHp: string;
   isValid: boolean;
@@ -150,7 +150,7 @@ export const DataGuruView: React.FC = () => {
           badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200',
         });
       });
-    } else if ((t.jabatan || '').trim() === 'Wali Kelas') {
+    } else if ((t.tugasUtama || t.tugas_utama || t.jabatan || '').trim() === 'Wali Kelas') {
       badges.push({
         type: 'Wali Kelas',
         label: 'Wali Kelas',
@@ -171,7 +171,7 @@ export const DataGuruView: React.FC = () => {
           badgeColor: 'bg-amber-50 text-amber-800 border-amber-200',
         });
       });
-    } else if ((t.jabatan || '').trim() === 'Guru Mapel' && badges.length === 0) {
+    } else if ((t.tugasUtama || t.tugas_utama || t.jabatan || '').trim() === 'Guru Mapel' && badges.length === 0) {
       badges.push({
         type: 'Guru Mapel',
         label: 'Guru Mapel',
@@ -257,10 +257,10 @@ export const DataGuruView: React.FC = () => {
     // Initial state for Tugas Utama in edit modal based on assignments and current teacher role
     const homeroomClass = classes.find((c) => c.waliKelasTeacherId === t.id);
     const assignedSubject = subjects.find((s) => s.teacherId === t.id);
-    const normJabatan = (t.jabatan || '').trim().toLowerCase();
+    const normTugas = (t.tugasUtama || t.tugas_utama || t.jabatan || '').trim().toLowerCase();
     const normPTK = (t.jenisPTK || '').trim().toLowerCase();
 
-    if (homeroomClass || normJabatan.includes('wali') || normPTK.includes('wali')) {
+    if (homeroomClass || normTugas.includes('wali') || normPTK.includes('wali')) {
       setModalRoleType('WALI_KELAS');
       setModalWaliClassId(homeroomClass ? homeroomClass.id : '');
     } else {
@@ -275,10 +275,10 @@ export const DataGuruView: React.FC = () => {
     setAssigningTeacher(t);
     const homeroomClass = classes.find((c) => c.waliKelasTeacherId === t.id);
     const assignedSubject = subjects.find((s) => s.teacherId === t.id);
-    const normJabatan = (t.jabatan || '').trim().toLowerCase();
+    const normTugas = (t.tugasUtama || t.tugas_utama || t.jabatan || '').trim().toLowerCase();
     const normPTK = (t.jenisPTK || '').trim().toLowerCase();
 
-    if (homeroomClass || normJabatan.includes('wali') || normPTK.includes('wali')) {
+    if (homeroomClass || normTugas.includes('wali') || normPTK.includes('wali')) {
       setAssignRoleType('WALI_KELAS');
       setAssignWaliClassId(homeroomClass ? homeroomClass.id : '');
     } else {
@@ -394,7 +394,8 @@ export const DataGuruView: React.FC = () => {
       nama: nama.trim(),
       nip: nip.trim(),
       jenisKelamin,
-      jabatan: modalRoleType === 'WALI_KELAS' ? 'Wali Kelas' : modalRoleType === 'GURU_MAPEL' ? 'Guru Mapel' : 'Belum ditugaskan',
+      tugasUtama: modalRoleType === 'WALI_KELAS' ? 'Wali Kelas' : modalRoleType === 'GURU_MAPEL' ? 'Guru Mapel' : 'Belum ditugaskan',
+      tugas_utama: modalRoleType === 'WALI_KELAS' ? 'Wali Kelas' : modalRoleType === 'GURU_MAPEL' ? 'Guru Mapel' : 'Belum ditugaskan',
       jenisPTK: modalRoleType === 'WALI_KELAS' ? 'Wali Kelas' : modalRoleType === 'GURU_MAPEL' ? 'Guru Mapel' : 'Guru',
       mataPelajaran: '',
       statusKepegawaian: 'PNS',
@@ -567,7 +568,7 @@ export const DataGuruView: React.FC = () => {
           nama: rawNama.trim(),
           nip: cleanNip || '-',
           jenisKelamin: gender,
-          jabatan: 'Belum Ditugaskan',
+          tugasUtama: 'Belum Ditugaskan',
           statusKepegawaian: rawStatus.trim() || 'PNS',
           noHp: rawNoHp.trim(),
           isValid,
@@ -615,7 +616,8 @@ export const DataGuruView: React.FC = () => {
       nama: t.nama,
       nip: t.nip && t.nip !== '-' ? t.nip : null,
       jenisKelamin: t.jenisKelamin,
-      jabatan: 'Belum ditugaskan',
+      tugasUtama: 'Belum ditugaskan',
+      tugas_utama: 'Belum ditugaskan',
       jenisPTK: 'Belum ditugaskan',
       mataPelajaran: '',
       statusKepegawaian: t.statusKepegawaian || 'PNS',
@@ -1045,7 +1047,7 @@ export const DataGuruView: React.FC = () => {
                             </td>
                             <td className="p-2">
                               <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                                {item.jabatan}
+                                {item.tugasUtama || 'Belum Ditugaskan'}
                               </span>
                             </td>
                             <td className="p-2 text-center">

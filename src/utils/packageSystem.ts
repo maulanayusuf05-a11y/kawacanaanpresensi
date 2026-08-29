@@ -384,6 +384,8 @@ export function validateTeacherRoleAssignment(
           id: string;
           nama: string;
           nip?: string;
+          tugasUtama?: string;
+          tugas_utama?: string;
           jabatan?: string;
         }>;
       }

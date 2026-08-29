@@ -208,13 +208,13 @@ export const DataKelasView: React.FC = () => {
     teachers.forEach((t) => {
       const teacherName = (t.nama || '').trim();
       const teacherNip = (t.nip || '').trim();
-      const normJabatan = (t.jabatan || '').trim().toLowerCase();
+      const normTugas = (t.tugasUtama || t.tugas_utama || t.jabatan || '').trim().toLowerCase();
       const normPTK = (t.jenisPTK || '').trim().toLowerCase();
 
       const isWaliTugasUtama =
-        normJabatan === 'wali kelas' ||
+        normTugas === 'wali kelas' ||
         normPTK === 'wali kelas' ||
-        normJabatan.includes('wali') ||
+        normTugas.includes('wali') ||
         normPTK.includes('wali');
 
       const assignedClass = classes.find((c) => {
@@ -1132,7 +1132,7 @@ export const DataKelasView: React.FC = () => {
                 </div>
                 <h4 className="font-bold text-slate-800 text-sm">Belum Ada Guru Mata Pelajaran Terdaftar</h4>
                 <p className="text-xs text-slate-500 max-w-md mx-auto">
-                  Silakan buka menu <strong>Data Referensi &gt; Data Guru</strong> dan tambahkan guru dengan jabatan Guru Mapel beserta mata pelajarannya.
+                  Silakan buka menu <strong>Data Referensi &gt; Data Guru</strong> dan tambahkan guru dengan tugas utama Guru Mapel beserta mata pelajarannya.
                 </p>
               </div>
             )}

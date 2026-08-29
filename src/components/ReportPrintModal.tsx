@@ -122,10 +122,12 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
         }
       }
 
-      // 3. Look in teachers list by specialization / mataPelajaran / jabatan
+      // 3. Look in teachers list by specialization / mataPelajaran / tugasUtama
       if (!teacherName && subjectName) {
         const tMatch = teachers.find((t) =>
           (t.mataPelajaran && t.mataPelajaran.toLowerCase().includes(subjectName.toLowerCase())) ||
+          (t.tugasUtama && t.tugasUtama.toLowerCase().includes(subjectName.toLowerCase())) ||
+          (t.tugas_utama && t.tugas_utama.toLowerCase().includes(subjectName.toLowerCase())) ||
           (t.jabatan && t.jabatan.toLowerCase().includes(subjectName.toLowerCase())) ||
           (t.jenisPTK && t.jenisPTK.toLowerCase().includes(subjectName.toLowerCase())) ||
           (t.specialization && t.specialization.toLowerCase().includes(subjectName.toLowerCase()))

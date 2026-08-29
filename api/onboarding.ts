@@ -127,6 +127,8 @@ export default async function handler(req: any, res: any) {
     nama: string;
     nip?: string | null;
     jenisKelamin?: 'L' | 'P';
+    tugasUtama?: string;
+    tugas_utama?: string;
     jabatan?: string;
     mataPelajaran?: string | null;
     statusKepegawaian?: string | null;
@@ -151,7 +153,7 @@ export default async function handler(req: any, res: any) {
           nip: (opts.nip || existingTeacher.nip || '').trim() || null,
           jenis_kelamin: opts.jenisKelamin || existingTeacher.jenis_kelamin || 'L',
           // Role assignment is deliberately NOT stored on teachers.
-          jabatan: null,
+          tugas_utama: opts.tugas_utama || opts.tugasUtama || opts.jabatan || null,
           mata_pelajaran: opts.mataPelajaran ?? existingTeacher.mata_pelajaran ?? null,
           status_kepegawaian: opts.statusKepegawaian ?? existingTeacher.status_kepegawaian ?? null,
           no_hp: opts.noHp ?? existingTeacher.no_hp ?? null,
@@ -180,7 +182,7 @@ export default async function handler(req: any, res: any) {
       nama: opts.nama,
       nip: normalizedNip || null,
       jenis_kelamin: opts.jenisKelamin || 'L',
-      jabatan: null,
+      tugas_utama: opts.tugas_utama || opts.tugasUtama || opts.jabatan || null,
       jenis_ptk: null,
       mata_pelajaran: opts.mataPelajaran ?? null,
       status_kepegawaian: opts.statusKepegawaian ?? null,
@@ -1451,7 +1453,7 @@ export default async function handler(req: any, res: any) {
       const nama = String(body.nama || '').trim();
       const nip = String(body.nip || '').trim();
       const jenisKelamin = body.jenisKelamin || 'L';
-      const jabatan = String(body.jabatan || 'Wali Kelas').trim();
+      const tugasUtama = String(body.tugasUtama || body.tugas_utama || body.jabatan || 'Wali Kelas').trim();
       const statusKepegawaian = String(body.statusKepegawaian || '').trim();
       const noHp = String(body.noHp || '').trim();
 
@@ -1466,8 +1468,7 @@ export default async function handler(req: any, res: any) {
             nama,
             nip,
             jenis_kelamin: jenisKelamin,
-            // Role is assignment-derived; legacy role columns are metadata only.
-            jabatan: null,
+            tugas_utama: tugasUtama || null,
             jenis_ptk: null,
             status_kepegawaian: statusKepegawaian,
             no_hp: noHp,
@@ -1480,7 +1481,7 @@ export default async function handler(req: any, res: any) {
           return json(res, 200, {
             ok: true,
             success: true,
-            teacher: { ...updated, jabatan: null, jenis_ptk: null },
+            teacher: { ...updated, tugas_utama: updated.tugas_utama, jenis_ptk: null },
             teacherId: updated.id,
           });
         }
@@ -1492,7 +1493,7 @@ export default async function handler(req: any, res: any) {
           nama,
           nip,
           jenis_kelamin: jenisKelamin,
-          jabatan: null,
+          tugas_utama: tugasUtama || null,
           jenis_ptk: null,
           status_kepegawaian: statusKepegawaian,
           no_hp: noHp,
@@ -1506,7 +1507,7 @@ export default async function handler(req: any, res: any) {
       return json(res, 200, {
         ok: true,
         success: true,
-        teacher: { ...inserted, jabatan: null, jenis_ptk: null },
+        teacher: { ...inserted, tugas_utama: inserted.tugas_utama, jenis_ptk: null },
         teacherId: inserted.id,
       });
     }

@@ -787,7 +787,7 @@ export const DataMapelView: React.FC = () => {
                       .filter((t) => t.id !== currentTeacher?.id)
                       .map((t) => (
                         <option key={t.id} value={t.id}>
-                          {t.nama} ({t.jabatan || 'Guru'})
+                          {t.nama} ({t.tugasUtama || t.jabatan || 'Guru'})
                         </option>
                       ))}
                   </optgroup>

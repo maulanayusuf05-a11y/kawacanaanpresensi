@@ -317,7 +317,7 @@ export default async function handler(req: any, res: any) {
           nama: adminName,
           nip: (teacherNip || '').trim() || null,
           jenis_kelamin: 'L',
-          jabatan: teacherType === 'GURU_MAPEL' ? 'Guru Mapel' : 'Wali Kelas',
+          tugas_utama: teacherType === 'GURU_MAPEL' ? 'Guru Mapel' : 'Wali Kelas',
           jenis_ptk: teacherType === 'GURU_MAPEL' ? 'Guru Mapel' : 'Wali Kelas',
           no_hp: adminPhone || '-',
           mata_pelajaran: teacherType === 'GURU_MAPEL' ? teacherSubject : 'Tematik',
