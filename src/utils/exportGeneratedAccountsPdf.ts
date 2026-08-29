@@ -139,7 +139,7 @@ export const exportGeneratedAccountsPdf = async ({
 
   // 3. STATISTIK RINGKASAN
   const totalAdmin = accounts.filter((a) => a.category === 'ADMIN' || a.role === 'ADMIN').length;
-  const totalGuru = accounts.filter((a) => a.category === 'GURU' || a.role === 'GURU MAPEL' || a.role === 'WALI KELAS' || a.role === 'GURU MAPEL').length;
+  const totalGuru = accounts.filter((a) => a.category === 'GURU' || a.role === 'GURU MAPEL' || a.role === 'WALI KELAS').length;
   const totalSiswa = accounts.filter((a) => a.category === 'SISWA' || a.role === 'SISWA').length;
   const totalKepsek = accounts.filter((a) => a.category === 'KEPALA SEKOLAH' || a.role === 'KEPALA SEKOLAH').length;
 

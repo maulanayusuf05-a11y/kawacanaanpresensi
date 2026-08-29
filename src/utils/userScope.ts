@@ -121,7 +121,7 @@ export function getUserRoleScope(
       : [];
   }
 
-  let roleBadgeLabel = role;
+  let roleBadgeLabel: string = role;
   let scopeDescription = '';
 
   if (isSuperAdmin) {
