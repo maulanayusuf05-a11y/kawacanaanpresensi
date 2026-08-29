@@ -192,29 +192,29 @@ export const DataKelasView: React.FC = () => {
     return list;
   };
 
-  // Calon wali kelas bersumber dari master Data Guru (teachers)
+  // Calon wali kelas bersumber dari master Data Guru (teachers) dengan Tugas Utama: Wali Kelas
   const waliCandidates = useMemo(() => {
     const list: Array<{
       id: string;
       name: string;
+      nip: string;
       role: string;
+      assignedClassId: string | null;
       assignedClassName: string | null;
-      isAccount: boolean;
       isWaliRole: boolean;
     }> = [];
 
     teachers.forEach((t) => {
       const teacherName = (t.nama || '').trim();
       const teacherNip = (t.nip || '').trim();
+      const normJabatan = (t.jabatan || '').trim().toLowerCase();
+      const normPTK = (t.jenisPTK || '').trim().toLowerCase();
 
-      const matchedUser = users.find(
-        (u) =>
-          (u.role === 'WALI KELAS' || u.role === 'GURU MAPEL' || u.role === 'ADMIN') &&
-          ((teacherNip && teacherNip !== '-' && u.username.toLowerCase() === teacherNip.toLowerCase()) ||
-            u.name.trim().toLowerCase() === teacherName.toLowerCase())
-      );
-
-      const candidateId = t.id;
+      const isWaliTugasUtama =
+        normJabatan === 'wali kelas' ||
+        normPTK === 'wali kelas' ||
+        normJabatan.includes('wali') ||
+        normPTK.includes('wali');
 
       const assignedClass = classes.find((c) => {
         if (c.waliKelasTeacherId === t.id) return true;
@@ -222,29 +222,27 @@ export const DataKelasView: React.FC = () => {
         return false;
       });
 
-      const isAssignedWali = !!assignedClass;
-      const isAssignedMapel = subjects.some((s) => s.teacherId === t.id);
-      const displayRole = isAssignedWali ? 'Wali Kelas' : isAssignedMapel ? 'Guru Mapel' : 'Belum Ditugaskan';
+      const isAssignedWali = isWaliTugasUtama || !!assignedClass;
 
       list.push({
-        id: candidateId,
+        id: t.id,
         name: teacherName || 'Tanpa Nama',
-        role: displayRole,
+        nip: teacherNip,
+        role: isAssignedWali ? 'Wali Kelas' : 'Guru',
+        assignedClassId: assignedClass?.id || null,
         assignedClassName: assignedClass?.name || null,
-        isAccount: !!matchedUser,
         isWaliRole: isAssignedWali,
       });
     });
 
-    // Urutkan: Guru berstatus Wali Kelas di urutan paling atas
-    list.sort((a, b) => {
-      if (a.isWaliRole && !b.isWaliRole) return -1;
-      if (!a.isWaliRole && b.isWaliRole) return 1;
-      return a.name.localeCompare(b.name);
-    });
+    // Saring guru yang memiliki Tugas Utama: Wali Kelas
+    const waliOnly = list.filter((item) => item.isWaliRole);
+    // Jika ada guru ber-tugas utama Wali Kelas, gunakan daftar tersebut; jika belum ada sama sekali, fallback ke semua guru agar admin tetap bisa memilih
+    const sourceList = waliOnly.length > 0 ? waliOnly : list;
 
-    return list;
-  }, [teachers, users, classes, subjects]);
+    sourceList.sort((a, b) => a.name.localeCompare(b.name));
+    return sourceList;
+  }, [teachers, classes]);
 
   // Filtered classes by search term (menggunakan accessibleClasses)
   const filteredClasses = useMemo(() => {
@@ -301,7 +299,7 @@ export const DataKelasView: React.FC = () => {
     setEditing(c);
     setName(c.name);
     setGrade(c.grade);
-    setWaliKelasTeacherId('');
+    setWaliKelasTeacherId(c.waliKelasTeacherId || '');
     
     // Guru Mapel yang saat ini ditugaskan mengajar kelas ini
     const assignedTeachers = subjects
@@ -324,11 +322,16 @@ export const DataKelasView: React.FC = () => {
     const matchNumber = name.match(/\d+/);
     const autoGrade = matchNumber ? parseInt(matchNumber[0], 10) : 1;
 
+    const selectedWali = waliCandidates.find((w) => w.id === waliKelasTeacherId);
+    const resolvedWaliName = selectedWali ? selectedWali.name : null;
+
     if (editing) {
       await updateClass(editing.id, {
         name: name.trim(),
         grade: grade || autoGrade,
         academicYear: schoolProfile?.tahunPelajaran || editing.academicYear,
+        waliKelasTeacherId: waliKelasTeacherId || null,
+        waliKelasName: resolvedWaliName,
       });
       showToast('Data rombongan belajar berhasil diperbarui', 'success');
     } else {
@@ -336,6 +339,8 @@ export const DataKelasView: React.FC = () => {
         name: name.trim(),
         grade: grade || autoGrade,
         academicYear: schoolProfile?.tahunPelajaran || '2026/2027',
+        waliKelasTeacherId: waliKelasTeacherId || null,
+        waliKelasName: resolvedWaliName,
       });
       showToast('Rombongan belajar baru berhasil ditambahkan', 'success');
     }
@@ -1505,10 +1510,31 @@ export const DataKelasView: React.FC = () => {
               </div>
 
               {!isPersonalWorkspace && (
-                <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3 text-xs text-blue-800">
-                    <div className="font-extrabold">Wali Kelas diatur setelah Rombel dibuat.</div>
-                    <div className="mt-1 text-blue-700">Simpan Rombel terlebih dahulu, lalu gunakan aksi <b>Tetapkan Wali Kelas</b> pada daftar Rombel. Ini mencegah assignment ke Rombel yang belum tersimpan.</div>
-                  </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Pilih Wali Kelas
+                    <span className="text-[11px] font-normal text-slate-400 ml-1.5">(Guru dengan Tugas Utama: Wali Kelas)</span>
+                  </label>
+                  <select
+                    value={waliKelasTeacherId}
+                    onChange={(e) => setWaliKelasTeacherId(e.target.value)}
+                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:border-blue-600 outline-none cursor-pointer"
+                  >
+                    <option value="">-- Belum Ditentukan / Kosongkan --</option>
+                    {waliCandidates.map((w) => {
+                      const isAssignedToOther =
+                        w.assignedClassName && (!editing || w.assignedClassId !== editing.id);
+                      return (
+                        <option key={w.id} value={w.id}>
+                          {w.name} {w.nip && w.nip !== '-' ? `(NIP: ${w.nip})` : ''} {isAssignedToOther ? `[Sudah di ${w.assignedClassName}]` : ''}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Daftar di atas memuat guru yang telah diatur <strong>Tugas Utama: Wali Kelas</strong> di menu Data Guru.
+                  </p>
+                </div>
               )}
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 shrink-0">

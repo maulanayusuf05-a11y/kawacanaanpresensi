@@ -95,8 +95,8 @@ export const DataGuruView: React.FC = () => {
   const [nip, setNip] = useState('');
   const [jenisKelamin, setJenisKelamin] = useState<'L' | 'P'>('L');
 
-  // Penugasan state in Add/Edit Teacher Modal
-  const [modalRoleType, setModalRoleType] = useState<'NONE' | 'WALI_KELAS' | 'GURU_MAPEL'>('NONE');
+  // Tugas Utama state in Add/Edit Teacher Modal (hanya 2: Wali Kelas dan Guru Mapel)
+  const [modalRoleType, setModalRoleType] = useState<'WALI_KELAS' | 'GURU_MAPEL'>('WALI_KELAS');
   const [modalWaliClassId, setModalWaliClassId] = useState<string>('');
   const [modalSubjectId, setModalSubjectId] = useState<string>('');
   const [modalMapelClassIds, setModalMapelClassIds] = useState<string[]>([]);
@@ -231,7 +231,7 @@ export const DataGuruView: React.FC = () => {
     setNama('');
     setNip('');
     setJenisKelamin('L');
-    setModalRoleType('NONE');
+    setModalRoleType('WALI_KELAS');
     setModalWaliClassId('');
     setModalSubjectId('');
     setModalMapelClassIds([]);
@@ -253,7 +253,7 @@ export const DataGuruView: React.FC = () => {
     setNip(t.nip);
     setJenisKelamin(t.jenisKelamin);
 
-    // Initial state for penugasan in edit modal based on assignments and current teacher role
+    // Initial state for Tugas Utama in edit modal based on assignments and current teacher role
     const homeroomClass = classes.find((c) => c.waliKelasTeacherId === t.id);
     const assignedSubject = subjects.find((s) => s.teacherId === t.id);
     const normJabatan = (t.jabatan || '').trim().toLowerCase();
@@ -262,11 +262,8 @@ export const DataGuruView: React.FC = () => {
     if (homeroomClass || normJabatan.includes('wali') || normPTK.includes('wali')) {
       setModalRoleType('WALI_KELAS');
       setModalWaliClassId(homeroomClass ? homeroomClass.id : '');
-    } else if (assignedSubject || normJabatan.includes('mapel') || normPTK.includes('mapel')) {
-      setModalRoleType('GURU_MAPEL');
-      setModalWaliClassId('');
     } else {
-      setModalRoleType('NONE');
+      setModalRoleType('GURU_MAPEL');
       setModalWaliClassId('');
     }
 
@@ -283,11 +280,8 @@ export const DataGuruView: React.FC = () => {
     if (homeroomClass || normJabatan.includes('wali') || normPTK.includes('wali')) {
       setAssignRoleType('WALI_KELAS');
       setAssignWaliClassId(homeroomClass ? homeroomClass.id : '');
-    } else if (assignedSubject || normJabatan.includes('mapel') || normPTK.includes('mapel')) {
-      setAssignRoleType('GURU_MAPEL');
-      setAssignWaliClassId('');
     } else {
-      setAssignRoleType('NONE');
+      setAssignRoleType('GURU_MAPEL');
       setAssignWaliClassId('');
     }
   };
@@ -685,7 +679,7 @@ export const DataGuruView: React.FC = () => {
           type="text"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Cari Nama, NIP, atau Wali Kelas / Guru Mapel..."
+          placeholder="Cari Nama, NIP, atau Tugas Utama (Wali Kelas / Guru Mapel)..."
           className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-500/10 transition-all"
         />
       </div>
@@ -698,7 +692,7 @@ export const DataGuruView: React.FC = () => {
               <th className="py-3.5 px-4">NAMA GURU</th>
               <th className="py-3.5 px-4 w-44">NIP</th>
               <th className="py-3.5 px-4 w-24 text-center">JK</th>
-              <th className="py-3.5 px-4 text-center">STATUS PENUGASAN (ADMIN)</th>
+              <th className="py-3.5 px-4 text-center">TUGAS UTAMA</th>
               {canEdit && <th className="py-3.5 px-4 w-32 text-center rounded-r-xl">AKSI</th>}
             </tr>
           </thead>
@@ -747,7 +741,7 @@ export const DataGuruView: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => openAssignModal(t)}
-                              title="Tentukan / Ubah Penugasan (Wali Kelas / Guru Mapel)"
+                              title="Tentukan Tugas Utama (Wali Kelas / Guru Mapel)"
                               className="p-1.5 rounded-lg text-indigo-600 hover:bg-indigo-50 transition cursor-pointer"
                             >
                               <UserCog size={15} />
@@ -788,7 +782,7 @@ export const DataGuruView: React.FC = () => {
         </table>
       </div>
 
-      {/* Modal Penugasan Langsung oleh Admin Sekolah */}
+      {/* Modal Penugasan Tugas Utama oleh Admin Sekolah */}
       {assigningTeacher && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 text-slate-800 space-y-4">
@@ -799,10 +793,10 @@ export const DataGuruView: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="font-extrabold text-slate-900 text-sm">
-                    Kewenangan Penugasan Admin Sekolah
+                    Tentukan Tugas Utama Pendidik
                   </h3>
                   <p className="text-[11px] text-slate-500 font-medium">
-                    Tentukan peran untuk: <strong className="text-slate-800">{assigningTeacher.nama}</strong>
+                    Tentukan tugas utama untuk: <strong className="text-slate-800">{assigningTeacher.nama}</strong>
                   </p>
                 </div>
               </div>
@@ -818,46 +812,33 @@ export const DataGuruView: React.FC = () => {
             <form onSubmit={handleSaveDirectAssignment} className="space-y-4 text-xs">
               <div className="space-y-2">
                 <label className="block font-bold text-slate-700 uppercase tracking-wider text-[11px]">
-                  Pilih Penugasan Guru di Supabase *
+                  Pilih Tugas Utama *
                 </label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2.5">
                   <button
                     type="button"
                     onClick={() => setAssignRoleType('WALI_KELAS')}
-                    className={`p-3 rounded-xl border font-bold flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    className={`p-3.5 rounded-xl border font-bold flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer ${
                       assignRoleType === 'WALI_KELAS'
                         ? 'bg-emerald-50 border-emerald-500 text-emerald-900 ring-2 ring-emerald-500/20'
                         : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
                     }`}
                   >
-                    <GraduationCap size={18} className={assignRoleType === 'WALI_KELAS' ? 'text-emerald-600' : 'text-slate-400'} />
-                    <span>Wali Kelas</span>
+                    <GraduationCap size={20} className={assignRoleType === 'WALI_KELAS' ? 'text-emerald-600' : 'text-slate-400'} />
+                    <span className="text-xs">Wali Kelas</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setAssignRoleType('GURU_MAPEL')}
-                    className={`p-3 rounded-xl border font-bold flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    className={`p-3.5 rounded-xl border font-bold flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer ${
                       assignRoleType === 'GURU_MAPEL'
                         ? 'bg-amber-50 border-amber-500 text-amber-900 ring-2 ring-amber-500/20'
                         : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
                     }`}
                   >
-                    <BookOpen size={18} className={assignRoleType === 'GURU_MAPEL' ? 'text-amber-600' : 'text-slate-400'} />
-                    <span>Guru Mapel</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setAssignRoleType('NONE')}
-                    className={`p-3 rounded-xl border font-bold flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                      assignRoleType === 'NONE'
-                        ? 'bg-slate-200 border-slate-400 text-slate-900 ring-2 ring-slate-400/20'
-                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    <X size={18} className={assignRoleType === 'NONE' ? 'text-slate-700' : 'text-slate-400'} />
-                    <span>Bebas Tugas</span>
+                    <BookOpen size={20} className={assignRoleType === 'GURU_MAPEL' ? 'text-amber-600' : 'text-slate-400'} />
+                    <span className="text-xs">Guru Mapel</span>
                   </button>
                 </div>
               </div>
@@ -867,9 +848,9 @@ export const DataGuruView: React.FC = () => {
                   <div className="flex items-start gap-2.5">
                     <CheckCircle2 size={18} className="text-emerald-600 shrink-0 mt-0.5" />
                     <div>
-                      <h4 className="font-bold text-emerald-950 text-xs">Peran Ditetapkan sebagai Wali Kelas</h4>
+                      <h4 className="font-bold text-emerald-950 text-xs">Tugas Utama: Wali Kelas</h4>
                       <p className="text-[11px] text-emerald-800 mt-1 leading-relaxed">
-                        Guru ini akan terdaftar sebagai <strong>Wali Kelas</strong>. Penentuan rombel/nama kelas binaan dilakukan pada menu <strong>Data Kelas</strong> (cukup membuat atau memilih kelas di menu Data Kelas).
+                        Guru ini terdaftar dengan tugas utama sebagai <strong>Wali Kelas</strong>. Rombel/kelas binaan dapat dipilih langsung saat menambah kelas di menu <strong>Data Kelas</strong>.
                       </p>
                     </div>
                   </div>
@@ -881,18 +862,12 @@ export const DataGuruView: React.FC = () => {
                   <div className="flex items-start gap-2.5">
                     <CheckCircle2 size={18} className="text-amber-600 shrink-0 mt-0.5" />
                     <div>
-                      <h4 className="font-bold text-amber-950 text-xs">Peran Ditetapkan sebagai Guru Mapel</h4>
+                      <h4 className="font-bold text-amber-950 text-xs">Tugas Utama: Guru Mapel</h4>
                       <p className="text-[11px] text-amber-800 mt-1 leading-relaxed">
-                        Guru ini akan terdaftar sebagai <strong>Guru Mapel</strong>. Penetapan mata pelajaran yang diampu dan kelas target yang diajar dapat ditentukan melalui menu <strong>Data Mata Pelajaran</strong> dan <strong>Data Kelas</strong>.
+                        Guru ini terdaftar dengan tugas utama sebagai <strong>Guru Mapel</strong>. Penetapan mata pelajaran yang diampu dan kelas target dapat ditentukan melalui menu <strong>Data Mata Pelajaran</strong> dan <strong>Data Kelas</strong>.
                       </p>
                     </div>
                   </div>
-                </div>
-              )}
-
-              {assignRoleType === 'NONE' && (
-                <div className="p-3 bg-slate-100 rounded-xl text-slate-600 text-[11px]">
-                  Guru ini tidak akan ditugaskan ke kelas maupun mata pelajaran apa pun untuk tahun ajaran aktif.
                 </div>
               )}
 
@@ -910,7 +885,7 @@ export const DataGuruView: React.FC = () => {
                   className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold transition shadow-md shadow-indigo-600/20 disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
                 >
                   <Check size={14} />
-                  <span>{isSavingAssignment ? 'Menyimpan ke Supabase...' : 'Simpan Penugasan'}</span>
+                  <span>{isSavingAssignment ? 'Menyimpan ke Supabase...' : 'Simpan Tugas Utama'}</span>
                 </button>
               </div>
             </form>
@@ -1224,14 +1199,13 @@ export const DataGuruView: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Penugasan (Admin)</label>
+                  <label className="block font-bold text-slate-700 mb-1">Tugas Utama *</label>
                   {isAdmin && !isPersonalWorkspace ? (
                     <select
                       value={modalRoleType}
-                      onChange={(e) => setModalRoleType(e.target.value as 'NONE' | 'WALI_KELAS' | 'GURU_MAPEL')}
+                      onChange={(e) => setModalRoleType(e.target.value as 'WALI_KELAS' | 'GURU_MAPEL')}
                       className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 font-bold focus:bg-white focus:border-blue-600 outline-none text-slate-800"
                     >
-                      <option value="NONE">Bebas Tugas</option>
                       <option value="WALI_KELAS">Wali Kelas</option>
                       <option value="GURU_MAPEL">Guru Mapel</option>
                     </select>
@@ -1248,9 +1222,9 @@ export const DataGuruView: React.FC = () => {
                   <div className="flex items-start gap-2">
                     <CheckCircle2 size={16} className="text-emerald-600 shrink-0 mt-0.5" />
                     <div>
-                      <h4 className="font-bold text-emerald-950 text-xs">Penugasan Wali Kelas</h4>
+                      <h4 className="font-bold text-emerald-950 text-xs">Tugas Utama: Wali Kelas</h4>
                       <p className="text-[11px] text-emerald-800 leading-relaxed">
-                        Data guru akan terdaftar sebagai <strong>Wali Kelas</strong>. Penetapan rombel/nama kelas binaan dapat dilakukan langsung di menu <strong>Data Kelas</strong>.
+                        Data guru akan terdaftar dengan tugas utama <strong>Wali Kelas</strong>. Rombel/nama kelas binaan dapat ditentukan langsung saat menambah kelas di menu <strong>Data Kelas</strong>.
                       </p>
                     </div>
                   </div>
@@ -1262,9 +1236,9 @@ export const DataGuruView: React.FC = () => {
                   <div className="flex items-start gap-2">
                     <CheckCircle2 size={16} className="text-amber-600 shrink-0 mt-0.5" />
                     <div>
-                      <h4 className="font-bold text-amber-950 text-xs">Penugasan Guru Mapel</h4>
+                      <h4 className="font-bold text-amber-950 text-xs">Tugas Utama: Guru Mapel</h4>
                       <p className="text-[11px] text-amber-800 leading-relaxed">
-                        Data guru akan terdaftar sebagai <strong>Guru Mapel</strong>. Penetapan mata pelajaran dan kelas yang diajar dapat ditentukan melalui menu <strong>Data Mata Pelajaran</strong> dan <strong>Data Kelas</strong>.
+                        Data guru akan terdaftar dengan tugas utama <strong>Guru Mapel</strong>. Penetapan mata pelajaran dan kelas yang diajar dapat ditentukan melalui menu <strong>Data Mata Pelajaran</strong> dan <strong>Data Kelas</strong>.
                       </p>
                     </div>
                   </div>

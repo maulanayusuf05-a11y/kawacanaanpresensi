@@ -2049,20 +2049,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       if (duplicateClass) {
         throw new Error(`Rombel "${c.name.trim()}" sudah ada pada tahun ajaran ${academicYear}.`);
       }
+      if (c.waliKelasTeacherId) {
+        // Lepaskan assignment kelas lain jika guru ini sebelumnya menjadi wali kelas di kelas lain
+        await supabase
+          .from("classes")
+          .update({ wali_kelas_teacher_id: null })
+          .eq("school_id", schoolId)
+          .eq("wali_kelas_teacher_id", c.waliKelasTeacherId);
+      }
+
       const { data: insertedData, error } = await supabase
         .from("classes")
         .insert({
           name: c.name.trim(),
           grade: c.grade,
           academic_year: academicYear,
-          wali_kelas_teacher_id: null,
+          wali_kelas_teacher_id: c.waliKelasTeacherId || null,
           school_id: schoolId,
         })
         .select("*, wali:wali_kelas_teacher_id(id,nama)")
         .single();
       if (error) throw error;
       setClasses((p) => [
-        ...p,
+        ...p.map((x) =>
+          c.waliKelasTeacherId && x.waliKelasTeacherId === c.waliKelasTeacherId
+            ? { ...x, waliKelasTeacherId: null, waliKelasName: null }
+            : x,
+        ),
         {
           id: insertedData.id,
           name: insertedData.name,
@@ -2100,9 +2113,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         grade: c.grade,
         academic_year: academicYear,
       };
-      // Wali Kelas dikelola dari assignment terpisah. Jangan menghapusnya saat
-      // admin hanya mengedit nama/tingkat rombel.
       if (Object.prototype.hasOwnProperty.call(c, "waliKelasTeacherId")) {
+        if (c.waliKelasTeacherId) {
+          // Lepaskan assignment kelas lain jika guru ini sebelumnya menjadi wali kelas di kelas lain
+          await supabase
+            .from("classes")
+            .update({ wali_kelas_teacher_id: null })
+            .eq("school_id", schoolId)
+            .neq("id", id)
+            .eq("wali_kelas_teacher_id", c.waliKelasTeacherId);
+        }
         classUpdate.wali_kelas_teacher_id = c.waliKelasTeacherId || null;
       }
       const { data: updatedData, error } = await supabase
@@ -2114,18 +2134,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         .single();
       if (error) throw error;
       setClasses((p) =>
-        p.map((x) =>
-          x.id === id
-            ? {
-                id: updatedData.id,
-                name: updatedData.name,
-                grade: updatedData.grade,
-                academicYear: updatedData.academic_year,
-                waliKelasTeacherId: updatedData.wali_kelas_teacher_id || null,
-                waliKelasName: updatedData.wali?.nama || null,
-              }
-            : x,
-        ),
+        p.map((x) => {
+          if (x.id === id) {
+            return {
+              id: updatedData.id,
+              name: updatedData.name,
+              grade: updatedData.grade,
+              academicYear: updatedData.academic_year,
+              waliKelasTeacherId: updatedData.wali_kelas_teacher_id || null,
+              waliKelasName: updatedData.wali?.nama || null,
+            };
+          }
+          if (
+            updatedData.wali_kelas_teacher_id &&
+            x.waliKelasTeacherId === updatedData.wali_kelas_teacher_id
+          ) {
+            return {
+              ...x,
+              waliKelasTeacherId: null,
+              waliKelasName: null,
+            };
+          }
+          return x;
+        }),
       );
       showToast(`Kelas ${updatedData.name} berhasil diperbarui`);
     } catch (e: any) {
