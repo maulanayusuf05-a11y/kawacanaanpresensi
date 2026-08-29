@@ -2305,46 +2305,61 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     const schoolId = currentUser?.schoolId;
     if (!schoolId) throw new Error("Sekolah aktif tidak ditemukan.");
     const payload = items.map((t) => {
-      const rawJabatan = (t.jabatan || "").trim();
-      const finalJabatan =
-        rawJabatan === "Wali Kelas"
-          ? "Wali Kelas"
-          : rawJabatan === "Guru Mapel"
-            ? "Guru Mapel"
-            : rawJabatan || "Belum ditugaskan";
-      const finalJenisPTK =
-        t.jenisPTK ||
-        (finalJabatan === "Wali Kelas"
-          ? "Wali Kelas"
-          : finalJabatan === "Guru Mapel"
-            ? "Guru Mapel"
-            : "Guru");
       return {
         nama: t.nama.trim(),
-        nip: t.nip || null,
+        nip: t.nip && t.nip.trim() !== "-" ? t.nip.trim() : null,
         jenis_kelamin: t.jenisKelamin || "L",
-        status_kepegawaian: t.statusKepegawaian || null,
+        status_kepegawaian: t.statusKepegawaian || "PNS",
         no_hp: t.noHp || null,
-        mata_pelajaran: t.mataPelajaran || null,
-        jabatan: finalJabatan,
-        jenis_ptk: finalJenisPTK,
+        mata_pelajaran: null,
+        jabatan: "Belum ditugaskan",
+        jenis_ptk: "Belum ditugaskan",
       };
     });
+
     const { error } = await supabase.rpc("import_teachers_atomic", {
       p_school_id: schoolId,
       p_items: payload,
       p_replace_existing: replaceExisting,
       p_actor_user_id: currentUser?.id || null,
     });
+
     if (error) {
       console.warn("import_teachers_atomic error, falling back to direct batch insert:", error);
+      if (replaceExisting) {
+        await supabase.from("teachers").delete().eq("school_id", schoolId);
+      }
       for (const row of payload) {
+        if (row.nip && !replaceExisting) {
+          const { data: existing } = await supabase
+            .from("teachers")
+            .select("id")
+            .eq("school_id", schoolId)
+            .eq("nip", row.nip)
+            .maybeSingle();
+          if (existing) {
+            await supabase
+              .from("teachers")
+              .update({
+                nama: row.nama,
+                jenis_kelamin: row.jenis_kelamin,
+                status_kepegawaian: row.status_kepegawaian,
+                no_hp: row.no_hp,
+                jabatan: "Belum ditugaskan",
+                jenis_ptk: "Belum ditugaskan",
+                mata_pelajaran: null,
+              })
+              .eq("id", existing.id);
+            continue;
+          }
+        }
         await supabase.from("teachers").insert({
           school_id: schoolId,
           ...row,
         });
       }
     }
+
     await loadData(currentUser?.id);
     showToast(`Berhasil mengimpor ${items.length} data guru.`);
   };
