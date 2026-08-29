@@ -2030,6 +2030,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       throw new Error("Guru wali kelas tidak ditemukan pada sekolah aktif.");
     return { dbWaliTeacherId: teacher.id, waliName: teacher.nama };
   };
+  const ensureTeacherCanBeWaliKelas = async (teacherId: string, academicYear: string) => {
+    const schoolId = currentUser?.schoolId || null;
+    if (!schoolId) throw new Error("Sekolah aktif tidak ditemukan.");
+
+    // Aturan utama: assignment Guru Mapel pada tahun ajaran aktif
+    // membuat guru tidak boleh sekaligus menjadi Wali Kelas.
+    const { data: mapelAssignments, error: mapelError } = await supabase
+      .from("subject_teacher_assignments")
+      .select("subject_id")
+      .eq("school_id", schoolId)
+      .eq("teacher_id", teacherId)
+      .eq("academic_year", academicYear)
+      .limit(1);
+    if (mapelError) throw mapelError;
+
+    if ((mapelAssignments || []).length > 0) {
+      throw new Error(
+        "Guru tersebut sudah memiliki assignment Guru Mapel pada tahun ajaran " +
+          academicYear +
+          " sehingga tidak dapat ditetapkan sebagai Wali Kelas.",
+      );
+    }
+  };
+
   const addClass = async (c: Omit<SchoolClass, "id">) => {
     try {
       const schoolId = currentUser?.schoolId || null;
@@ -2048,12 +2072,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         throw new Error(`Rombel "${c.name.trim()}" sudah ada pada tahun ajaran ${academicYear}.`);
       }
       if (c.waliKelasTeacherId) {
-        // Lepaskan assignment kelas lain jika guru ini sebelumnya menjadi wali kelas di kelas lain
-        await supabase
-          .from("classes")
-          .update({ wali_kelas_teacher_id: null })
-          .eq("school_id", schoolId)
-          .eq("wali_kelas_teacher_id", c.waliKelasTeacherId);
+        await ensureTeacherCanBeWaliKelas(c.waliKelasTeacherId, academicYear);
+
+        // Satu guru hanya boleh menjadi Wali Kelas untuk satu rombel
+        // pada tahun ajaran yang sama. Jangan otomatis memindahkan kelas lama.
+        const existingHomeroom = classes.find(
+          (existing) =>
+            existing.waliKelasTeacherId === c.waliKelasTeacherId &&
+            existing.id !== undefined &&
+            (!existing.academicYear || existing.academicYear === academicYear),
+        );
+        if (existingHomeroom) {
+          throw new Error(
+            `Guru ini sudah menjadi Wali Kelas di "${existingHomeroom.name}" untuk tahun ajaran ${academicYear}.`,
+          );
+        }
       }
 
       const { data: insertedData, error } = await supabase
@@ -2113,13 +2146,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       };
       if (Object.prototype.hasOwnProperty.call(c, "waliKelasTeacherId")) {
         if (c.waliKelasTeacherId) {
-          // Lepaskan assignment kelas lain jika guru ini sebelumnya menjadi wali kelas di kelas lain
-          await supabase
-            .from("classes")
-            .update({ wali_kelas_teacher_id: null })
-            .eq("school_id", schoolId)
-            .neq("id", id)
-            .eq("wali_kelas_teacher_id", c.waliKelasTeacherId);
+          await ensureTeacherCanBeWaliKelas(c.waliKelasTeacherId, academicYear);
+
+          const existingHomeroom = classes.find(
+            (existing) =>
+              existing.id !== id &&
+              existing.waliKelasTeacherId === c.waliKelasTeacherId &&
+              (!existing.academicYear || existing.academicYear === academicYear),
+          );
+          if (existingHomeroom) {
+            throw new Error(
+              `Guru ini sudah menjadi Wali Kelas di "${existingHomeroom.name}" untuk tahun ajaran ${academicYear}.`,
+            );
+          }
         }
         classUpdate.wali_kelas_teacher_id = c.waliKelasTeacherId || null;
       }

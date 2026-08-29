@@ -171,11 +171,33 @@ export const DataKelasView: React.FC = () => {
   const [parsedClasses, setParsedClasses] = useState<ParsedClassItem[]>([]);
 
   // Daftar Guru Mapel bersumber dari data assignment mata pelajaran (subjects)
+  const activeAcademicYear = schoolProfile?.tahunPelajaran || '2026/2027';
+
+  // Guru Mapel ditentukan dari assignment mata pelajaran aktif, bukan profiles.role.
+  const guruMapelTeacherIds = useMemo(() => {
+    return new Set(
+      subjects
+        .filter((s) => !!s.teacherId)
+        .map((s) => s.teacherId as string),
+    );
+  }, [subjects]);
+
+  // Guru yang sudah menjadi Wali Kelas pada tahun ajaran aktif tidak boleh
+  // dipilih sebagai Guru Mapel.
+  const waliTeacherIds = useMemo(() => {
+    return new Set(
+      classes
+        .filter((c) => !c.academicYear || c.academicYear === activeAcademicYear)
+        .map((c) => c.waliKelasTeacherId)
+        .filter(Boolean) as string[],
+    );
+  }, [classes, activeAcademicYear]);
+
   const guruMapelList = useMemo(() => {
-    return teachers.filter((t) => {
-      return subjects.some((s) => s.teacherId === t.id);
-    });
-  }, [teachers, subjects]);
+    return teachers.filter(
+      (t) => guruMapelTeacherIds.has(t.id) && !waliTeacherIds.has(t.id),
+    );
+  }, [teachers, guruMapelTeacherIds, waliTeacherIds]);
 
   // Helper untuk mendapatkan Guru Mapel yang mengajar di kelas tertentu
   const getSubjectTeachersForClass = (classId: string) => {
@@ -214,13 +236,17 @@ export const DataKelasView: React.FC = () => {
         normTugas === 'wali kelas' ||
         normTugas.includes('wali');
 
+      // Assignment Guru Mapel aktif adalah konflik yang harus mengalahkan
+      // Tugas Utama Wali Kelas. Guru Mapel tidak boleh dipilih sebagai Wali Kelas.
+      const isActiveMapelAssignment = guruMapelTeacherIds.has(t.id);
+
       const assignedClass = classes.find((c) => {
         if (c.waliKelasTeacherId === t.id) return true;
         if (c.waliKelasName && c.waliKelasName.trim().toLowerCase() === teacherName.toLowerCase()) return true;
         return false;
       });
 
-      const isAssignedWali = isWaliTugasUtama || !!assignedClass;
+      const isAssignedWali = !isActiveMapelAssignment && (isWaliTugasUtama || !!assignedClass);
 
       list.push({
         id: t.id,
@@ -233,14 +259,13 @@ export const DataKelasView: React.FC = () => {
       });
     });
 
-    // Saring guru yang memiliki Tugas Utama: Wali Kelas
-    const waliOnly = list.filter((item) => item.isWaliRole);
-    // Jika ada guru ber-tugas utama Wali Kelas, gunakan daftar tersebut; jika belum ada sama sekali, fallback ke semua guru agar admin tetap bisa memilih
-    const sourceList = waliOnly.length > 0 ? waliOnly : list;
+    // Hanya guru yang benar-benar eligible sebagai Wali Kelas yang ditampilkan.
+    // Tidak ada fallback ke semua guru karena Guru Mapel harus selalu diblokir.
+    const sourceList = list.filter((item) => item.isWaliRole);
 
     sourceList.sort((a, b) => a.name.localeCompare(b.name));
     return sourceList;
-  }, [teachers, classes]);
+  }, [teachers, classes, guruMapelTeacherIds]);
 
   // Filtered classes by search term (menggunakan accessibleClasses)
   const filteredClasses = useMemo(() => {
@@ -323,6 +348,14 @@ export const DataKelasView: React.FC = () => {
     const selectedWali = waliCandidates.find((w) => w.id === waliKelasTeacherId);
     const resolvedWaliName = selectedWali ? selectedWali.name : null;
 
+    if (waliKelasTeacherId && guruMapelTeacherIds.has(waliKelasTeacherId)) {
+      showToast(
+        'Guru tersebut sudah memiliki assignment Guru Mapel pada tahun ajaran aktif dan tidak dapat menjadi Wali Kelas.',
+        'error',
+      );
+      return;
+    }
+
     if (editing) {
       await updateClass(editing.id, {
         name: name.trim(),
@@ -354,6 +387,14 @@ export const DataKelasView: React.FC = () => {
   const saveQuickWali = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!assignWaliModal) return;
+
+    if (quickWaliId && guruMapelTeacherIds.has(quickWaliId)) {
+      showToast(
+        'Guru tersebut sudah memiliki assignment Guru Mapel pada tahun ajaran aktif dan tidak dapat menjadi Wali Kelas.',
+        'error',
+      );
+      return;
+    }
 
     if (quickWaliId) {
       const validation = validateTeacherRoleAssignment(
@@ -397,6 +438,14 @@ export const DataKelasView: React.FC = () => {
     const targetClassId = classMapelModal.id;
 
     try {
+      const targetClassWaliId = classMapelModal &&
+        classes.find((c) => c.id === targetClassId)?.waliKelasTeacherId;
+      if (targetClassWaliId && modalMapelTeacherIds.includes(targetClassWaliId)) {
+        throw new Error(
+          'Wali Kelas pada rombel ini tidak dapat sekaligus ditugaskan sebagai Guru Mapel.',
+        );
+      }
+
       for (const teacher of guruMapelList) {
         const isSelected = modalMapelTeacherIds.includes(teacher.id);
         const teacherSubject = subjects.find((s) => s.teacherId === teacher.id);
@@ -1537,7 +1586,7 @@ export const DataKelasView: React.FC = () => {
                     })}
                   </select>
                   <p className="text-[11px] text-slate-500 mt-1">
-                    Daftar di atas memuat guru yang telah diatur <strong>Tugas Utama: Wali Kelas</strong> di menu Data Guru.
+                    Hanya guru dengan <strong>Tugas Utama: Wali Kelas</strong> yang tidak memiliki assignment Guru Mapel aktif yang dapat dipilih.
                   </p>
                 </div>
               )}
