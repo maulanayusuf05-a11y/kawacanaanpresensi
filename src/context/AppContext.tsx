@@ -233,9 +233,8 @@ const dbTeacher = (t: any): Teacher => {
     tugasUtama: tugas,
     tugas_utama: tugas,
     jabatan: tugas,
-    jenisPTK: t.jenis_ptk || t.jenisPTK || "Belum ditugaskan",
     mataPelajaran: t.mata_pelajaran || t.mataPelajaran || "",
-    statusKepegawaian: t.status_kepegawaian || t.statusKepegawaian || "PNS",
+    statusKepegawaian: t.statusKepegawaian || t.status_kepegawaian || "PNS",
     noHp: t.no_hp || t.noHp || "",
   };
 };
@@ -2230,13 +2229,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         : rawTugas === "Guru Mapel"
           ? "Guru Mapel"
           : rawTugas || "Belum ditugaskan";
-    const finalJenisPTK =
-      t.jenisPTK ||
-      (finalTugasUtama === "Wali Kelas"
-        ? "Wali Kelas"
-        : finalTugasUtama === "Guru Mapel"
-          ? "Guru Mapel"
-          : "Guru");
 
     const { data, error } = await supabase
       .from("teachers")
@@ -2249,7 +2241,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         no_hp: t.noHp || null,
         mata_pelajaran: t.mataPelajaran || null,
         tugas_utama: finalTugasUtama,
-        jenis_ptk: finalJenisPTK,
       })
       .select("*")
       .single();
@@ -2269,13 +2260,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         : rawTugas === "Guru Mapel"
           ? "Guru Mapel"
           : rawTugas || "Belum ditugaskan";
-    const finalJenisPTK =
-      t.jenisPTK ||
-      (finalTugasUtama === "Wali Kelas"
-        ? "Wali Kelas"
-        : finalTugasUtama === "Guru Mapel"
-          ? "Guru Mapel"
-          : "Guru");
 
     const { data, error } = await supabase
       .from("teachers")
@@ -2287,7 +2271,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         no_hp: t.noHp || null,
         mata_pelajaran: t.mataPelajaran || null,
         tugas_utama: finalTugasUtama,
-        jenis_ptk: finalJenisPTK,
       })
       .eq("id", id)
       .eq("school_id", schoolId)
@@ -2313,7 +2296,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         no_hp: t.noHp || null,
         mata_pelajaran: null,
         tugas_utama: "Belum ditugaskan",
-        jenis_ptk: "Belum ditugaskan",
       };
     });
 
@@ -2346,7 +2328,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
                 status_kepegawaian: row.status_kepegawaian,
                 no_hp: row.no_hp,
                 tugas_utama: "Belum ditugaskan",
-                jenis_ptk: "Belum ditugaskan",
                 mata_pelajaran: null,
               })
               .eq("id", existing.id);
@@ -2613,7 +2594,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           .from("teachers")
           .update({
             tugas_utama: "Wali Kelas",
-            jenis_ptk: "Wali Kelas",
             mata_pelajaran: null,
           })
           .eq("id", teacherId)
@@ -2628,7 +2608,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
                   tugasUtama: "Wali Kelas",
                   tugas_utama: "Wali Kelas",
                   jabatan: "Wali Kelas",
-                  jenisPTK: "Wali Kelas",
                   mataPelajaran: "",
                 }
               : t,
@@ -2721,7 +2700,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           .from("teachers")
           .update({
             tugas_utama: "Guru Mapel",
-            jenis_ptk: "Guru Mapel",
             mata_pelajaran: subjectName || null,
           })
           .eq("id", teacherId)
@@ -2736,7 +2714,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
                   tugasUtama: "Guru Mapel",
                   tugas_utama: "Guru Mapel",
                   jabatan: "Guru Mapel",
-                  jenisPTK: "Guru Mapel",
                   mataPelajaran: subjectName || "",
                 }
               : t,
@@ -2774,7 +2751,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           .from("teachers")
           .update({
             tugas_utama: "Belum ditugaskan",
-            jenis_ptk: "Belum ditugaskan",
             mata_pelajaran: null,
           })
           .eq("id", teacherId)
@@ -2789,7 +2765,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
                   tugasUtama: "Belum ditugaskan",
                   tugas_utama: "Belum ditugaskan",
                   jabatan: "Belum ditugaskan",
-                  jenisPTK: "Belum ditugaskan",
                   mataPelajaran: "",
                 }
               : t,

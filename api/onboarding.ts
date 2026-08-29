@@ -183,7 +183,6 @@ export default async function handler(req: any, res: any) {
       nip: normalizedNip || null,
       jenis_kelamin: opts.jenisKelamin || 'L',
       tugas_utama: opts.tugas_utama || opts.tugasUtama || opts.jabatan || null,
-      jenis_ptk: null,
       mata_pelajaran: opts.mataPelajaran ?? null,
       status_kepegawaian: opts.statusKepegawaian ?? null,
       no_hp: opts.noHp ?? null,
@@ -364,7 +363,7 @@ export default async function handler(req: any, res: any) {
         .order('created_at', { ascending: false });
 
       // 2. Ambil master guru hanya untuk identitas/school linkage.
-      // teachers.jabatan/jenis_ptk/mata_pelajaran TIDAK digunakan untuk menentukan role.
+      // teachers.tugas_utama/mata_pelajaran TIDAK digunakan untuk menentukan role.
       const { data: teacherRecords } = await db
         .from('teachers')
         .select('id, school_id')
@@ -1469,7 +1468,6 @@ export default async function handler(req: any, res: any) {
             nip,
             jenis_kelamin: jenisKelamin,
             tugas_utama: tugasUtama || null,
-            jenis_ptk: null,
             status_kepegawaian: statusKepegawaian,
             no_hp: noHp,
           })
@@ -1481,7 +1479,7 @@ export default async function handler(req: any, res: any) {
           return json(res, 200, {
             ok: true,
             success: true,
-            teacher: { ...updated, tugas_utama: updated.tugas_utama, jenis_ptk: null },
+            teacher: { ...updated, tugas_utama: updated.tugas_utama },
             teacherId: updated.id,
           });
         }
@@ -1494,7 +1492,6 @@ export default async function handler(req: any, res: any) {
           nip,
           jenis_kelamin: jenisKelamin,
           tugas_utama: tugasUtama || null,
-          jenis_ptk: null,
           status_kepegawaian: statusKepegawaian,
           no_hp: noHp,
           school_id: schoolId,
@@ -1507,7 +1504,7 @@ export default async function handler(req: any, res: any) {
       return json(res, 200, {
         ok: true,
         success: true,
-        teacher: { ...inserted, tugas_utama: inserted.tugas_utama, jenis_ptk: null },
+        teacher: { ...inserted, tugas_utama: inserted.tugas_utama },
         teacherId: inserted.id,
       });
     }

@@ -258,9 +258,8 @@ export const DataGuruView: React.FC = () => {
     const homeroomClass = classes.find((c) => c.waliKelasTeacherId === t.id);
     const assignedSubject = subjects.find((s) => s.teacherId === t.id);
     const normTugas = (t.tugasUtama || t.tugas_utama || t.jabatan || '').trim().toLowerCase();
-    const normPTK = (t.jenisPTK || '').trim().toLowerCase();
 
-    if (homeroomClass || normTugas.includes('wali') || normPTK.includes('wali')) {
+    if (homeroomClass || normTugas.includes('wali')) {
       setModalRoleType('WALI_KELAS');
       setModalWaliClassId(homeroomClass ? homeroomClass.id : '');
     } else {
@@ -276,9 +275,8 @@ export const DataGuruView: React.FC = () => {
     const homeroomClass = classes.find((c) => c.waliKelasTeacherId === t.id);
     const assignedSubject = subjects.find((s) => s.teacherId === t.id);
     const normTugas = (t.tugasUtama || t.tugas_utama || t.jabatan || '').trim().toLowerCase();
-    const normPTK = (t.jenisPTK || '').trim().toLowerCase();
 
-    if (homeroomClass || normTugas.includes('wali') || normPTK.includes('wali')) {
+    if (homeroomClass || normTugas.includes('wali')) {
       setAssignRoleType('WALI_KELAS');
       setAssignWaliClassId(homeroomClass ? homeroomClass.id : '');
     } else {
@@ -396,7 +394,6 @@ export const DataGuruView: React.FC = () => {
       jenisKelamin,
       tugasUtama: modalRoleType === 'WALI_KELAS' ? 'Wali Kelas' : modalRoleType === 'GURU_MAPEL' ? 'Guru Mapel' : 'Belum ditugaskan',
       tugas_utama: modalRoleType === 'WALI_KELAS' ? 'Wali Kelas' : modalRoleType === 'GURU_MAPEL' ? 'Guru Mapel' : 'Belum ditugaskan',
-      jenisPTK: modalRoleType === 'WALI_KELAS' ? 'Wali Kelas' : modalRoleType === 'GURU_MAPEL' ? 'Guru Mapel' : 'Guru',
       mataPelajaran: '',
       statusKepegawaian: 'PNS',
       noHp: '',
@@ -618,7 +615,6 @@ export const DataGuruView: React.FC = () => {
       jenisKelamin: t.jenisKelamin,
       tugasUtama: 'Belum ditugaskan',
       tugas_utama: 'Belum ditugaskan',
-      jenisPTK: 'Belum ditugaskan',
       mataPelajaran: '',
       statusKepegawaian: t.statusKepegawaian || 'PNS',
       noHp: t.noHp || '',

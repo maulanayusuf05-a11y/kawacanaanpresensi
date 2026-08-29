@@ -122,7 +122,7 @@ export default async function handler(req: any, res: any) {
         let teacher: any = null;
         if (normalizedNip !== '-') {
           const { data: existingTeacher, error: lookupError } = await admin.from('teachers')
-            .select('id,tugas_utama,jenis_ptk').eq('school_id', schoolId).eq('nip', normalizedNip).maybeSingle();
+            .select('id,tugas_utama').eq('school_id', schoolId).eq('nip', normalizedNip).maybeSingle();
           if (lookupError) {
             await admin.from('profiles').delete().eq('id', authData.user.id);
             await admin.auth.admin.deleteUser(authData.user.id);
@@ -130,7 +130,7 @@ export default async function handler(req: any, res: any) {
           }
           teacher = existingTeacher;
           if (teacher) {
-            const teacherRole = String((teacher as any).tugas_utama || (teacher as any).jabatan || (teacher as any).jenis_ptk || '').toUpperCase();
+            const teacherRole = String((teacher as any).tugas_utama || (teacher as any).jabatan || '').toUpperCase();
             if ((role === 'WALI KELAS' && teacherRole.includes('MAPEL')) || (role === 'GURU MAPEL' && teacherRole.includes('WALI'))) {
               await admin.from('profiles').delete().eq('id', authData.user.id);
               await admin.auth.admin.deleteUser(authData.user.id);
@@ -142,7 +142,6 @@ export default async function handler(req: any, res: any) {
           const { data: insertedTeacher, error: teacherError } = await admin.from('teachers').insert({
             school_id: schoolId, nama: name, nip: normalizedNip || null, jenis_kelamin: 'L',
             tugas_utama: null,
-            jenis_ptk: null,
           }).select('id').single();
           if (teacherError || !insertedTeacher) {
             await admin.from('profiles').delete().eq('id', authData.user.id);
@@ -234,18 +233,18 @@ export default async function handler(req: any, res: any) {
       let teacherId: string | null = target.teacher_id || null;
       if (role === 'GURU MAPEL' || role === 'WALI KELAS') {
         if (teacherId) {
-          const { error: teacherUpdateErr } = await admin.from('teachers').update({ nama: name, nip: (username || '').trim() || null, tugas_utama: null, jenis_ptk: null }).eq('id', teacherId).eq('school_id', target.school_id);
+          const { error: teacherUpdateErr } = await admin.from('teachers').update({ nama: name, nip: (username || '').trim() || null, tugas_utama: null }).eq('id', teacherId).eq('school_id', target.school_id);
           if (teacherUpdateErr) return json(res, 400, { error: teacherUpdateErr.message });
         } else {
           let teacher: any = null;
           const normalizedNip = (username || '').trim();
           if (normalizedNip !== '-') {
             const { data: existingTeacher, error: lookupError } = await admin.from('teachers')
-              .select('id,tugas_utama,jenis_ptk').eq('school_id', target?.school_id).eq('nip', normalizedNip).maybeSingle();
+              .select('id,tugas_utama').eq('school_id', target?.school_id).eq('nip', normalizedNip).maybeSingle();
             if (lookupError) return json(res, 400, { error: lookupError.message });
             teacher = existingTeacher;
             if (teacher) {
-              const teacherRole = String((teacher as any).tugas_utama || (teacher as any).jabatan || (teacher as any).jenis_ptk || '').toUpperCase();
+              const teacherRole = String((teacher as any).tugas_utama || (teacher as any).jabatan || '').toUpperCase();
               if ((role === 'WALI KELAS' && teacherRole.includes('MAPEL')) || (role === 'GURU MAPEL' && teacherRole.includes('WALI'))) {
                 return json(res, 409, { error: `Guru tersebut sudah berstatus ${teacherRole.includes('MAPEL') ? 'Guru Mapel' : 'Wali Kelas'} dan tidak dapat diberi role ${role}.` });
               }
@@ -255,7 +254,6 @@ export default async function handler(req: any, res: any) {
             const { data: insertedTeacher, error: teacherError } = await admin.from('teachers').insert({
               school_id: target?.school_id, nama: name, nip: normalizedNip || null, jenis_kelamin: 'L',
               tugas_utama: null,
-              jenis_ptk: null
             }).select('id').single();
             if (teacherError || !insertedTeacher) return json(res, 400, { error: teacherError?.message || 'Gagal membuat data guru.' });
             teacher = insertedTeacher;

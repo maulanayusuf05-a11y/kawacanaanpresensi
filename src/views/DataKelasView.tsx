@@ -209,13 +209,10 @@ export const DataKelasView: React.FC = () => {
       const teacherName = (t.nama || '').trim();
       const teacherNip = (t.nip || '').trim();
       const normTugas = (t.tugasUtama || t.tugas_utama || t.jabatan || '').trim().toLowerCase();
-      const normPTK = (t.jenisPTK || '').trim().toLowerCase();
 
       const isWaliTugasUtama =
         normTugas === 'wali kelas' ||
-        normPTK === 'wali kelas' ||
-        normTugas.includes('wali') ||
-        normPTK.includes('wali');
+        normTugas.includes('wali');
 
       const assignedClass = classes.find((c) => {
         if (c.waliKelasTeacherId === t.id) return true;

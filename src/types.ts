@@ -90,8 +90,7 @@ export interface Teacher {
   jenisKelamin: 'L' | 'P';
   tugasUtama?: 'Wali Kelas' | 'Guru Mapel' | string;
   tugas_utama?: string;
-  jabatan?: 'Wali Kelas' | 'Guru Mapel' | string; // 'Wali Kelas' | 'Guru Mapel'
-  jenisPTK?: string; // for backwards compatibility
+  jabatan?: 'Wali Kelas' | 'Guru Mapel' | string;
   noHp?: string;
   mataPelajaran?: string;
   statusKepegawaian?: string;

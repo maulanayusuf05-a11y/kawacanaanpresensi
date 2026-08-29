@@ -318,7 +318,6 @@ export default async function handler(req: any, res: any) {
           nip: (teacherNip || '').trim() || null,
           jenis_kelamin: 'L',
           tugas_utama: teacherType === 'GURU_MAPEL' ? 'Guru Mapel' : 'Wali Kelas',
-          jenis_ptk: teacherType === 'GURU_MAPEL' ? 'Guru Mapel' : 'Wali Kelas',
           no_hp: adminPhone || '-',
           mata_pelajaran: teacherType === 'GURU_MAPEL' ? teacherSubject : 'Tematik',
         }).select('id').single();
