@@ -50,6 +50,7 @@ export const DataGuruView: React.FC = () => {
     updateTeacher,
     deleteTeacher,
     importTeachers,
+    executeTeacherAssignment,
     addUser,
     showToast,
     activeWorkspace,
@@ -271,57 +272,6 @@ export const DataGuruView: React.FC = () => {
     }
   };
 
-  // Dedicated function to execute assignment to Supabase
-  const executeTeacherAssignment = async (
-    teacherId: string,
-    roleType: 'NONE' | 'WALI_KELAS' | 'GURU_MAPEL',
-    subjectId?: string
-  ) => {
-    const schoolId = currentUser?.schoolId;
-    if (!schoolId) throw new Error('ID Sekolah aktif tidak ditemukan.');
-    const year = schoolProfile.tahunPelajaran || '2026/2027';
-
-    if (roleType === 'WALI_KELAS') {
-      // Set role Wali Kelas pada guru
-      await supabase.from('teachers').update({ jabatan: 'Wali Kelas', jenis_ptk: 'Wali Kelas' }).eq('id', teacherId).eq('school_id', schoolId);
-      // Bersihkan penugasan mapel lama jika ada agar peran eksklusif
-      await supabase.from('subject_teacher_assignments').delete().eq('school_id', schoolId).eq('teacher_id', teacherId).eq('academic_year', year);
-    } else if (roleType === 'GURU_MAPEL') {
-      const chosenSubject = subjects.find((s) => s.id === subjectId);
-      const subjectName = chosenSubject?.name || '';
-      
-      // Update data guru
-      await supabase.from('teachers').update({ 
-        jabatan: 'Guru Mapel', 
-        jenis_ptk: 'Guru Mapel',
-        mata_pelajaran: subjectName || undefined 
-      }).eq('id', teacherId).eq('school_id', schoolId);
-
-      // Lepaskan status wali kelas jika ada
-      await supabase.from('classes').update({ wali_kelas_teacher_id: null }).eq('school_id', schoolId).eq('wali_kelas_teacher_id', teacherId);
-
-      // Tautkan guru ke subject jika subjectId valid
-      if (subjectId) {
-        // Hapus mapping mapel lama guru ini
-        await supabase.from('subject_teacher_assignments').delete().eq('school_id', schoolId).eq('teacher_id', teacherId).eq('academic_year', year);
-        // Hapus guru lama dari mapel ini jika ada
-        await supabase.from('subject_teacher_assignments').delete().eq('school_id', schoolId).eq('subject_id', subjectId).eq('academic_year', year);
-        // Masukkan penugasan mapel baru
-        await supabase.from('subject_teacher_assignments').insert({
-          school_id: schoolId,
-          subject_id: subjectId,
-          teacher_id: teacherId,
-          academic_year: year
-        });
-      }
-    } else {
-      // Bebas Tugas: Reset status jabatan
-      await supabase.from('teachers').update({ jabatan: 'Belum ditugaskan', jenis_ptk: 'Guru' }).eq('id', teacherId).eq('school_id', schoolId);
-      await supabase.from('classes').update({ wali_kelas_teacher_id: null }).eq('school_id', schoolId).eq('wali_kelas_teacher_id', teacherId);
-      await supabase.from('subject_teacher_assignments').delete().eq('school_id', schoolId).eq('teacher_id', teacherId).eq('academic_year', year);
-    }
-  };
-
   const handleSaveDirectAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!assigningTeacher) return;
@@ -332,8 +282,6 @@ export const DataGuruView: React.FC = () => {
         assignRoleType,
         assignSubjectId
       );
-      await loadData(currentUser?.id);
-      showToast(`Penugasan ${assigningTeacher.nama} berhasil diperbarui di database.`, 'success');
       setAssigningTeacher(null);
     } catch (err: any) {
       showToast(err.message || 'Gagal menyimpan penugasan guru', 'error');
