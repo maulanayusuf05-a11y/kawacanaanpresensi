@@ -21,7 +21,8 @@ import {
   AlertCircle,
   GraduationCap,
   BookOpen,
-  UserCog
+  UserCog,
+  Info
 } from 'lucide-react';
 import { validateTeacherRoleAssignment } from '../utils/packageSystem';
 import { supabase } from '../lib/supabase';
@@ -150,6 +151,8 @@ export const DataGuruView: React.FC = () => {
       (c) => c.waliKelasTeacherId === t.id || (c.waliKelasName && c.waliKelasName.trim().toLowerCase() === t.nama.trim().toLowerCase())
     );
     const assignedSubject = subjects.find((s) => s.teacherId === t.id);
+    const isWaliByRole = t.jabatan === 'Wali Kelas' || t.jenisPTK === 'Wali Kelas';
+    const isMapelByRole = t.jabatan === 'Guru Mapel' || t.jenisPTK === 'Guru Mapel' || !!t.mataPelajaran;
 
     if (homeroomClass) {
       return {
@@ -161,11 +164,21 @@ export const DataGuruView: React.FC = () => {
       };
     }
 
+    if (isWaliByRole) {
+      return {
+        type: 'Wali Kelas' as const,
+        label: 'Wali Kelas (Atur Rombel di Data Kelas)',
+        className: null,
+        classId: null,
+        badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200'
+      };
+    }
+
     if (assignedSubject) {
       const targetNames = (assignedSubject.targetClassIds || [])
         .map((cid) => classes.find((c) => c.id === cid)?.name || '')
         .filter(Boolean);
-      const classText = targetNames.length > 0 ? ` (${targetNames.join(', ')})` : '';
+      const classText = targetNames.length > 0 ? ` (${targetNames.join(', ')})` : ' (Atur Rombel di Data Kelas)';
       return {
         type: 'Guru Mapel' as const,
         label: `${assignedSubject.name}${classText}`,
@@ -176,9 +189,21 @@ export const DataGuruView: React.FC = () => {
       };
     }
 
+    if (isMapelByRole) {
+      const mapelName = t.mataPelajaran || 'Guru Mapel';
+      return {
+        type: 'Guru Mapel' as const,
+        label: `${mapelName} (Atur Rombel di Data Kelas)`,
+        subjectName: mapelName,
+        subjectId: null,
+        targetClassIds: [],
+        badgeColor: 'bg-amber-50 text-amber-800 border-amber-200'
+      };
+    }
+
     return {
       type: 'Belum Ditugaskan' as const,
-      label: 'Belum Ditugaskan',
+      label: 'Bebas Tugas',
       badgeColor: 'bg-slate-100 text-slate-600 border-slate-200'
     };
   };
@@ -203,16 +228,16 @@ export const DataGuruView: React.FC = () => {
     const homeroomClass = classes.find((c) => c.waliKelasTeacherId === t.id);
     const assignedSubject = subjects.find((s) => s.teacherId === t.id);
 
-    if (homeroomClass) {
+    if (homeroomClass || t.jabatan === 'Wali Kelas' || t.jenisPTK === 'Wali Kelas') {
       setModalRoleType('WALI_KELAS');
-      setModalWaliClassId(homeroomClass.id);
+      setModalWaliClassId(homeroomClass?.id || '');
       setModalSubjectId('');
       setModalMapelClassIds([]);
-    } else if (assignedSubject) {
+    } else if (assignedSubject || t.jabatan === 'Guru Mapel' || t.jenisPTK === 'Guru Mapel' || t.mataPelajaran) {
       setModalRoleType('GURU_MAPEL');
       setModalWaliClassId('');
-      setModalSubjectId(assignedSubject.id);
-      setModalMapelClassIds(assignedSubject.targetClassIds || []);
+      setModalSubjectId(assignedSubject?.id || subjects.find((s) => t.mataPelajaran && s.name.toLowerCase().includes(t.mataPelajaran.toLowerCase()))?.id || subjects[0]?.id || '');
+      setModalMapelClassIds(assignedSubject?.targetClassIds || []);
     } else {
       setModalRoleType('NONE');
       setModalWaliClassId('');
@@ -228,16 +253,16 @@ export const DataGuruView: React.FC = () => {
     const homeroomClass = classes.find((c) => c.waliKelasTeacherId === t.id);
     const assignedSubject = subjects.find((s) => s.teacherId === t.id);
 
-    if (homeroomClass) {
+    if (homeroomClass || t.jabatan === 'Wali Kelas' || t.jenisPTK === 'Wali Kelas') {
       setAssignRoleType('WALI_KELAS');
-      setAssignWaliClassId(homeroomClass.id);
+      setAssignWaliClassId(homeroomClass?.id || '');
       setAssignSubjectId('');
       setAssignMapelClassIds([]);
-    } else if (assignedSubject) {
+    } else if (assignedSubject || t.jabatan === 'Guru Mapel' || t.jenisPTK === 'Guru Mapel' || t.mataPelajaran) {
       setAssignRoleType('GURU_MAPEL');
       setAssignWaliClassId('');
-      setAssignSubjectId(assignedSubject.id);
-      setAssignMapelClassIds(assignedSubject.targetClassIds || []);
+      setAssignSubjectId(assignedSubject?.id || subjects.find((s) => t.mataPelajaran && s.name.toLowerCase().includes(t.mataPelajaran.toLowerCase()))?.id || subjects[0]?.id || '');
+      setAssignMapelClassIds(assignedSubject?.targetClassIds || []);
     } else {
       setAssignRoleType('NONE');
       setAssignWaliClassId('');
@@ -250,47 +275,48 @@ export const DataGuruView: React.FC = () => {
   const executeTeacherAssignment = async (
     teacherId: string,
     roleType: 'NONE' | 'WALI_KELAS' | 'GURU_MAPEL',
-    waliClassId: string,
-    subjectId: string,
-    mapelClassIds: string[]
+    subjectId?: string
   ) => {
     const schoolId = currentUser?.schoolId;
     if (!schoolId) throw new Error('ID Sekolah aktif tidak ditemukan.');
     const year = schoolProfile.tahunPelajaran || '2026/2027';
 
     if (roleType === 'WALI_KELAS') {
-      if (!waliClassId) throw new Error('Pilih kelas untuk penugasan Wali Kelas.');
-      // Bersihkan penugasan mapel lama jika ada
+      // Set role Wali Kelas pada guru
+      await supabase.from('teachers').update({ jabatan: 'Wali Kelas', jenis_ptk: 'Wali Kelas' }).eq('id', teacherId).eq('school_id', schoolId);
+      // Bersihkan penugasan mapel lama jika ada agar peran eksklusif
       await supabase.from('subject_teacher_assignments').delete().eq('school_id', schoolId).eq('teacher_id', teacherId).eq('academic_year', year);
-      
-      // Jalankan RPC assign_homeroom_teacher
-      const { error: rpcErr } = await supabase.rpc('assign_homeroom_teacher', {
-        p_school_id: schoolId,
-        p_teacher_id: teacherId,
-        p_class_id: waliClassId,
-        p_academic_year: year,
-        p_actor_user_id: currentUser?.id || null
-      });
-      if (rpcErr) throw rpcErr;
     } else if (roleType === 'GURU_MAPEL') {
-      if (!subjectId) throw new Error('Pilih mata pelajaran untuk penugasan Guru Mapel.');
-      if (mapelClassIds.length === 0) throw new Error('Pilih minimal satu kelas target yang diajar.');
+      const chosenSubject = subjects.find((s) => s.id === subjectId);
+      const subjectName = chosenSubject?.name || '';
+      
+      // Update data guru
+      await supabase.from('teachers').update({ 
+        jabatan: 'Guru Mapel', 
+        jenis_ptk: 'Guru Mapel',
+        mata_pelajaran: subjectName || undefined 
+      }).eq('id', teacherId).eq('school_id', schoolId);
 
       // Lepaskan status wali kelas jika ada
       await supabase.from('classes').update({ wali_kelas_teacher_id: null }).eq('school_id', schoolId).eq('wali_kelas_teacher_id', teacherId);
 
-      // Jalankan RPC replace_subject_assignment
-      const { error: rpcErr } = await supabase.rpc('replace_subject_assignment', {
-        p_school_id: schoolId,
-        p_subject_id: subjectId,
-        p_teacher_id: teacherId,
-        p_class_ids: mapelClassIds,
-        p_academic_year: year,
-        p_actor_user_id: currentUser?.id || null
-      });
-      if (rpcErr) throw rpcErr;
+      // Tautkan guru ke subject jika subjectId valid
+      if (subjectId) {
+        // Hapus mapping mapel lama guru ini
+        await supabase.from('subject_teacher_assignments').delete().eq('school_id', schoolId).eq('teacher_id', teacherId).eq('academic_year', year);
+        // Hapus guru lama dari mapel ini jika ada
+        await supabase.from('subject_teacher_assignments').delete().eq('school_id', schoolId).eq('subject_id', subjectId).eq('academic_year', year);
+        // Masukkan penugasan mapel baru
+        await supabase.from('subject_teacher_assignments').insert({
+          school_id: schoolId,
+          subject_id: subjectId,
+          teacher_id: teacherId,
+          academic_year: year
+        });
+      }
     } else {
-      // Hapus seluruh penugasan
+      // Bebas Tugas: Reset status jabatan
+      await supabase.from('teachers').update({ jabatan: 'Belum ditugaskan', jenis_ptk: 'Guru' }).eq('id', teacherId).eq('school_id', schoolId);
       await supabase.from('classes').update({ wali_kelas_teacher_id: null }).eq('school_id', schoolId).eq('wali_kelas_teacher_id', teacherId);
       await supabase.from('subject_teacher_assignments').delete().eq('school_id', schoolId).eq('teacher_id', teacherId).eq('academic_year', year);
     }
@@ -304,12 +330,10 @@ export const DataGuruView: React.FC = () => {
       await executeTeacherAssignment(
         assigningTeacher.id,
         assignRoleType,
-        assignWaliClassId,
-        assignSubjectId,
-        assignMapelClassIds
+        assignSubjectId
       );
       await loadData(currentUser?.id);
-      showToast(`Penugasan ${assigningTeacher.nama} berhasil diperbarui di database Supabase.`, 'success');
+      showToast(`Penugasan ${assigningTeacher.nama} berhasil diperbarui di database.`, 'success');
       setAssigningTeacher(null);
     } catch (err: any) {
       showToast(err.message || 'Gagal menyimpan penugasan guru', 'error');
@@ -429,9 +453,7 @@ export const DataGuruView: React.FC = () => {
         await executeTeacherAssignment(
           targetTeacherId,
           modalRoleType,
-          modalWaliClassId,
-          modalSubjectId,
-          modalMapelClassIds
+          modalSubjectId
         );
         await loadData(currentUser?.id);
       }
@@ -840,49 +862,30 @@ export const DataGuruView: React.FC = () => {
               </div>
 
               {assignRoleType === 'WALI_KELAS' && (
-                <div className="p-3.5 bg-emerald-50/50 rounded-xl border border-emerald-200 space-y-3 animate-in fade-in">
-                  <div>
-                    <label className="block font-bold text-emerald-950 mb-1">
-                      Pilih Kelas Binaan (Wali Kelas) *
-                    </label>
-                    <select
-                      required
-                      value={assignWaliClassId}
-                      onChange={(e) => setAssignWaliClassId(e.target.value)}
-                      className="w-full px-3 py-2 border border-emerald-300 rounded-xl bg-white font-bold text-slate-800 focus:border-emerald-600 outline-none"
-                    >
-                      <option value="">-- Pilih Kelas --</option>
-                      {classes.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name} {c.waliKelasTeacherId && c.waliKelasTeacherId !== assigningTeacher.id ? `(Wali: ${c.waliKelasName || 'Guru Lain'})` : ''}
-                        </option>
-                      ))}
-                    </select>
+                <div className="p-3.5 bg-emerald-50/70 rounded-xl border border-emerald-200 space-y-2 animate-in fade-in">
+                  <div className="flex items-start gap-2.5">
+                    <CheckCircle2 size={18} className="text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="font-bold text-emerald-950 text-xs">Peran Ditetapkan sebagai Wali Kelas</h4>
+                      <p className="text-[11px] text-emerald-800 mt-1 leading-relaxed">
+                        Guru ini akan terdaftar sebagai <strong>Wali Kelas</strong>. Penentuan rombel/nama kelas binaan dilakukan pada menu <strong>Data Kelas</strong> (cukup membuat atau memilih kelas di menu Data Kelas).
+                      </p>
+                    </div>
                   </div>
-                  <p className="text-[11px] text-emerald-800">
-                    Penugasan ini akan otomatis tersinkron ke tabel <code>classes.wali_kelas_teacher_id</code> dan memberikan akses pengisian presensi rombel.
-                  </p>
                 </div>
               )}
 
               {assignRoleType === 'GURU_MAPEL' && (
-                <div className="p-3.5 bg-amber-50/50 rounded-xl border border-amber-200 space-y-3 animate-in fade-in">
+                <div className="p-3.5 bg-amber-50/70 rounded-xl border border-amber-200 space-y-3 animate-in fade-in">
                   <div>
-                    <label className="block font-bold text-amber-950 mb-1">
+                    <label className="block font-bold text-amber-950 text-xs mb-1">
                       Pilih Mata Pelajaran yang Diampu *
                     </label>
                     <select
                       required
                       value={assignSubjectId}
-                      onChange={(e) => {
-                        const sId = e.target.value;
-                        setAssignSubjectId(sId);
-                        const matchSub = subjects.find((s) => s.id === sId);
-                        if (matchSub && matchSub.targetClassIds) {
-                          setAssignMapelClassIds(matchSub.targetClassIds);
-                        }
-                      }}
-                      className="w-full px-3 py-2 border border-amber-300 rounded-xl bg-white font-bold text-slate-800 focus:border-amber-600 outline-none"
+                      onChange={(e) => setAssignSubjectId(e.target.value)}
+                      className="w-full px-3 py-2 border border-amber-300 rounded-xl bg-white font-bold text-slate-800 focus:border-amber-600 outline-none text-xs"
                     >
                       <option value="">-- Pilih Mata Pelajaran --</option>
                       {subjects.map((sub) => (
@@ -892,34 +895,12 @@ export const DataGuruView: React.FC = () => {
                       ))}
                     </select>
                   </div>
-
-                  <div>
-                    <label className="block font-bold text-amber-950 mb-1">
-                      Kelas Target yang Diajar *
-                    </label>
-                    <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto p-2 bg-white rounded-xl border border-amber-300">
-                      {classes.map((c) => (
-                        <label key={c.id} className="flex items-center gap-2 text-[11px] font-semibold text-slate-800 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={assignMapelClassIds.includes(c.id)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setAssignMapelClassIds((prev) => [...new Set([...prev, c.id])]);
-                              } else {
-                                setAssignMapelClassIds((prev) => prev.filter((cid) => cid !== c.id));
-                              }
-                            }}
-                            className="rounded text-amber-600"
-                          />
-                          <span>{c.name}</span>
-                        </label>
-                      ))}
-                    </div>
+                  <div className="flex items-start gap-2 pt-1 border-t border-amber-200/60">
+                    <Info size={15} className="text-amber-600 shrink-0 mt-0.5" />
+                    <p className="text-[11px] text-amber-800 leading-relaxed">
+                      Penetapan kelas target yang diajar oleh Guru Mapel dilakukan secara fleksibel melalui menu <strong>Data Kelas</strong>.
+                    </p>
                   </div>
-                  <p className="text-[11px] text-amber-800">
-                    Tersinkronisasi otomatis dengan <code>subject_teacher_assignments</code> dan <code>subject_class_assignments</code>.
-                  </p>
                 </div>
               )}
 
@@ -1273,23 +1254,16 @@ export const DataGuruView: React.FC = () => {
               </div>
 
               {isAdmin && !isPersonalWorkspace && modalRoleType === 'WALI_KELAS' && (
-                <div className="p-3 bg-emerald-50/70 rounded-xl border border-emerald-200 space-y-2">
-                  <label className="block font-bold text-emerald-950 text-[11px]">
-                    Pilih Kelas Binaan (Wali Kelas) *
-                  </label>
-                  <select
-                    required
-                    value={modalWaliClassId}
-                    onChange={(e) => setModalWaliClassId(e.target.value)}
-                    className="w-full px-3 py-2 border border-emerald-300 rounded-xl bg-white font-bold text-slate-800 focus:border-emerald-600 outline-none"
-                  >
-                    <option value="">-- Pilih Kelas --</option>
-                    {classes.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} {c.waliKelasTeacherId && c.waliKelasTeacherId !== editing?.id ? `(Wali: ${c.waliKelasName || 'Guru Lain'})` : ''}
-                      </option>
-                    ))}
-                  </select>
+                <div className="p-3 bg-emerald-50/70 rounded-xl border border-emerald-200 space-y-1.5">
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 size={16} className="text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="font-bold text-emerald-950 text-xs">Penugasan Wali Kelas</h4>
+                      <p className="text-[11px] text-emerald-800 leading-relaxed">
+                        Data guru akan terdaftar sebagai <strong>Wali Kelas</strong>. Penetapan rombel/nama kelas binaan dapat dilakukan langsung di menu <strong>Data Kelas</strong>.
+                      </p>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -1302,15 +1276,8 @@ export const DataGuruView: React.FC = () => {
                     <select
                       required
                       value={modalSubjectId}
-                      onChange={(e) => {
-                        const sId = e.target.value;
-                        setModalSubjectId(sId);
-                        const matchSub = subjects.find((s) => s.id === sId);
-                        if (matchSub && matchSub.targetClassIds) {
-                          setModalMapelClassIds(matchSub.targetClassIds);
-                        }
-                      }}
-                      className="w-full px-3 py-2 border border-amber-300 rounded-xl bg-white font-bold text-slate-800 focus:border-amber-600 outline-none"
+                      onChange={(e) => setModalSubjectId(e.target.value)}
+                      className="w-full px-3 py-2 border border-amber-300 rounded-xl bg-white font-bold text-slate-800 focus:border-amber-600 outline-none text-xs"
                     >
                       <option value="">-- Pilih Mata Pelajaran --</option>
                       {subjects.map((sub) => (
@@ -1320,30 +1287,11 @@ export const DataGuruView: React.FC = () => {
                       ))}
                     </select>
                   </div>
-
-                  <div>
-                    <label className="block font-bold text-amber-950 text-[11px] mb-1">
-                      Kelas Target yang Diajar *
-                    </label>
-                    <div className="grid grid-cols-2 gap-1.5 max-h-28 overflow-y-auto p-2 bg-white rounded-xl border border-amber-300">
-                      {classes.map((c) => (
-                        <label key={c.id} className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-800 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={modalMapelClassIds.includes(c.id)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setModalMapelClassIds((prev) => [...new Set([...prev, c.id])]);
-                              } else {
-                                setModalMapelClassIds((prev) => prev.filter((cid) => cid !== c.id));
-                              }
-                            }}
-                            className="rounded text-amber-600"
-                          />
-                          <span>{c.name}</span>
-                        </label>
-                      ))}
-                    </div>
+                  <div className="flex items-start gap-2 pt-1 border-t border-amber-200/60">
+                    <Info size={14} className="text-amber-600 shrink-0 mt-0.5" />
+                    <p className="text-[11px] text-amber-800 leading-relaxed">
+                      Kelas-kelas target yang diajar oleh Guru Mapel ini dapat ditentukan secara lengkap di menu <strong>Data Kelas</strong>.
+                    </p>
                   </div>
                 </div>
               )}
