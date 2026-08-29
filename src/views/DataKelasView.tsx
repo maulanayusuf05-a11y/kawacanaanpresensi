@@ -342,8 +342,6 @@ export const DataKelasView: React.FC = () => {
     const selectedCandidate = waliCandidates.find((w) => w.id === waliKelasTeacherId);
     const resolvedWaliName = selectedCandidate ? selectedCandidate.name : null;
 
-    let targetClassId = editing?.id;
-
     if (editing) {
       await updateClass(editing.id, {
         name: name.trim(),
@@ -354,40 +352,14 @@ export const DataKelasView: React.FC = () => {
       });
       showToast('Data rombongan belajar berhasil diperbarui', 'success');
     } else {
-      const created = await addClass({
+      await addClass({
         name: name.trim(),
         grade: grade || autoGrade,
         academicYear: schoolProfile?.tahunPelajaran || '2025/2026',
         waliKelasTeacherId: waliKelasTeacherId || null,
         waliKelasName: resolvedWaliName || null,
       });
-      if (created && (created as any).id) {
-        targetClassId = (created as any).id;
-      }
       showToast('Rombongan belajar baru berhasil ditambahkan', 'success');
-    }
-
-    // Update penugasan Guru Mapel untuk kelas ini jika ada perubahan
-    if (targetClassId && isAdmin) {
-      try {
-        for (const teacher of guruMapelList) {
-          const isSelected = editingClassMapelIds.includes(teacher.id);
-          const teacherSubject = subjects.find((s) => s.teacherId === teacher.id);
-          const currentClassIds = teacherSubject?.targetClassIds || [];
-          let newClassIds = [...currentClassIds];
-          if (isSelected && !newClassIds.includes(targetClassId)) {
-            newClassIds.push(targetClassId);
-          } else if (!isSelected && newClassIds.includes(targetClassId)) {
-            newClassIds = newClassIds.filter((id) => id !== targetClassId);
-          }
-
-          if (JSON.stringify([...currentClassIds].sort()) !== JSON.stringify([...newClassIds].sort())) {
-            await assignTeacherClasses(teacher.id, newClassIds);
-          }
-        }
-      } catch (err: any) {
-        console.error('Error synchronizing guru mapel classes:', err);
-      }
     }
 
     setOpen(false);
@@ -1570,56 +1542,8 @@ export const DataKelasView: React.FC = () => {
                     ))}
                   </select>
                   <p className="text-[10px] text-slate-500 mt-1">
-                    Daftar wali kelas terintegrasi dari master Data Guru. Pendidik berstatus Wali Kelas ditampilkan di urutan teratas.
+                    Daftar wali kelas terintegrasi dari master Data Guru. Satu guru hanya dapat menjadi Wali Kelas untuk satu rombel kelas.
                   </p>
-                </div>
-              )}
-
-              {/* Guru Mapel Pengajar Checkbox Section */}
-              {!isPersonalWorkspace && isAdmin && guruMapelList.length > 0 && (
-                <div className="pt-2 border-t border-slate-100 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="block font-bold text-slate-700">
-                      Guru Mapel Pengajar (Opsional)
-                    </label>
-                    <span className="text-[11px] text-indigo-600 font-bold">
-                      {editingClassMapelIds.length} dipilih
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-500 leading-snug">
-                    Tandai Guru Mapel yang mengajar di rombongan belajar ini:
-                  </p>
-                  <div className="max-h-36 overflow-y-auto space-y-1.5 p-2 bg-slate-50 rounded-xl border border-slate-200">
-                    {guruMapelList.map((teacher) => {
-                      const isChecked = editingClassMapelIds.includes(teacher.id);
-                      const tSub = subjects.find((s) => s.teacherId === teacher.id);
-                      const mapelLabel = teacher.mataPelajaran || tSub?.name || 'Mapel';
-                      return (
-                        <label
-                          key={teacher.id}
-                          className={`flex items-center gap-2 p-1.5 rounded-lg border text-xs cursor-pointer transition-all ${
-                            isChecked
-                              ? 'bg-indigo-50/80 border-indigo-300 text-indigo-900 font-bold'
-                              : 'bg-white border-slate-100 text-slate-600 hover:bg-slate-100'
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setEditingClassMapelIds((prev) => [...prev, teacher.id]);
-                              } else {
-                                setEditingClassMapelIds((prev) => prev.filter((id) => id !== teacher.id));
-                              }
-                            }}
-                            className="rounded text-indigo-600 focus:ring-indigo-500"
-                          />
-                          <span className="truncate">{teacher.nama} ({mapelLabel})</span>
-                        </label>
-                      );
-                    })}
-                  </div>
                 </div>
               )}
 

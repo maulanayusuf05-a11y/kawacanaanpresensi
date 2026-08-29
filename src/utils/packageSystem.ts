@@ -343,9 +343,12 @@ export function resolveWorkspaceSubscription(
 
 /**
  * =========================================================================
- * ATURAN KHUSUS VALIDASI ROLE GURU DALAM RUANG KERJA SEKOLAH:
- * "Wali Kelas dan Guru Mapel tidak boleh dimiliki oleh guru yang sama dalam
- * sekolah dan tahun ajaran yang sama."
+ * ATURAN PENUGASAN ROLE GURU DALAM RUANG KERJA SEKOLAH:
+ * - Wali Kelas ditentukan dari classes.wali_kelas_teacher_id.
+ * - Satu guru hanya boleh menjadi Wali Kelas untuk satu kelas dalam tahun/periode ajaran yang sama.
+ * - Guru Mapel ditentukan dari subject_teacher_assignments.
+ * - Guru Mapel dapat mengajar beberapa kelas.
+ * - Wali Kelas juga boleh menjadi Guru Mapel jika dibuatkan penugasan secara eksplisit.
  * =========================================================================
  */
 export interface TeacherRoleValidationResult {
@@ -371,7 +374,7 @@ export function validateTeacherRoleAssignment(
           waliKelasName?: string | null;
           academicYear?: string | null;
         }>;
-        existingSubjects: Array<{
+        existingSubjects?: Array<{
           id: string;
           name: string;
           teacherId?: string | null;
@@ -422,7 +425,7 @@ export function validateTeacherRoleAssignment(
   if (roleClean === 'WALI_KELAS') roleClean = 'WALI KELAS';
   if (roleClean === 'GURU_MAPEL') roleClean = 'GURU MAPEL';
 
-  if (roleClean !== 'WALI KELAS' && roleClean !== 'GURU MAPEL') {
+  if (roleClean !== 'WALI KELAS') {
     return { valid: true };
   }
 
@@ -440,38 +443,18 @@ export function validateTeacherRoleAssignment(
   const tId = teacherId || matchedTeacher?.id;
   const tName = (matchedTeacher?.nama || teacherName || '').trim().toLowerCase();
 
-  // 1. Jika hendak menugaskan sebagai WALI KELAS:
-  // Cek apakah guru ini SUDAH mengajar mata pelajaran (sebagai GURU MAPEL)
+  // Jika hendak menugaskan sebagai WALI KELAS:
+  // Cek apakah guru ini SUDAH menjadi Wali Kelas pada kelas lain di tahun ajaran yang sama
   if (roleClean === 'WALI KELAS') {
-    const teachingSubject = existingSubjects.find((sub) => {
-      if (tId && sub.teacherId && sub.teacherId === tId) return true;
-      if (tName && sub.teacherName && sub.teacherName.trim().toLowerCase() === tName) return true;
-      return false;
-    });
-
-    if (teachingSubject) {
-      const details = `Guru "${matchedTeacher?.nama || teacherName || 'Pendidik'}" saat ini sudah terdaftar sebagai Guru Mapel pada mata pelajaran "${teachingSubject.name}". Berdasarkan aturan resmi, Wali Kelas dan Guru Mapel tidak boleh dijabat oleh guru yang sama dalam sekolah dan tahun ajaran yang sama.`;
-      return {
-        valid: false,
-        conflictType: 'GURU_MAPEL_CONFLICT',
-        conflictDetails: details,
-        errorMessage: details,
-      };
-    }
-  }
-
-  // 2. Jika hendak menugaskan sebagai GURU MAPEL:
-  // Cek apakah guru ini SUDAH menjadi WALI KELAS di salah satu kelas
-  if (roleClean === 'GURU MAPEL') {
-    const homeroomClass = existingClasses.find((cls) => {
+    const existingHomeroomClass = existingClasses.find((cls) => {
       if (academicYear && cls.academicYear && cls.academicYear !== academicYear) return false;
       if (tId && cls.waliKelasTeacherId && cls.waliKelasTeacherId === tId) return true;
       if (tName && cls.waliKelasName && cls.waliKelasName.trim().toLowerCase() === tName) return true;
       return false;
     });
 
-    if (homeroomClass) {
-      const details = `Guru "${matchedTeacher?.nama || teacherName || 'Pendidik'}" saat ini sudah bertugas sebagai Wali Kelas pada "${homeroomClass.name}". Berdasarkan aturan resmi, Guru Mapel dan Wali Kelas tidak boleh dijabat oleh guru yang sama dalam sekolah dan tahun ajaran yang sama.`;
+    if (existingHomeroomClass) {
+      const details = `Guru "${matchedTeacher?.nama || teacherName || 'Pendidik'}" saat ini sudah menjadi Wali Kelas pada "${existingHomeroomClass.name}". Satu guru hanya boleh menjadi Wali Kelas untuk satu rombel kelas dalam tahun ajaran yang sama.`;
       return {
         valid: false,
         conflictType: 'WALI_KELAS_CONFLICT',

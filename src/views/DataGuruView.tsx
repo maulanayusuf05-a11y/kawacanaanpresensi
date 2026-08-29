@@ -114,49 +114,69 @@ export const DataGuruView: React.FC = () => {
     if (!t) {
       return {
         type: 'Belum Ditugaskan' as const,
-        label: 'Belum Ditugaskan',
-        badgeColor: 'bg-slate-100 text-slate-600 border-slate-200'
+        label: 'BELUM DITUGASKAN',
+        badgeColor: 'bg-slate-100 text-slate-600 border-slate-200',
+        badges: [
+          {
+            type: 'Belum Ditugaskan',
+            label: 'BELUM DITUGASKAN',
+            badgeColor: 'bg-slate-100 text-slate-600 border-slate-200',
+          },
+        ],
       };
     }
 
-    // 1. Cek apakah guru ditetapkan sebagai wali kelas melalui assignment kelas
-    const homeroomClass = (classes || []).find(
-      (c) => c.waliKelasTeacherId === t.id || (c.waliKelasName && t.nama && c.waliKelasName.trim().toLowerCase() === t.nama.trim().toLowerCase())
+    const homeroomClasses = (classes || []).filter(
+      (c) => c.waliKelasTeacherId === t.id
     );
 
-    if (homeroomClass) {
-      return {
-        type: 'Wali Kelas' as const,
-        label: `Wali Kelas ${homeroomClass.name || ''}`.trim(),
-        className: homeroomClass.name,
-        classId: homeroomClass.id,
-        badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200'
-      };
+    const assignedSubjects = (subjects || []).filter(
+      (s) => s.teacherId === t.id
+    );
+
+    const badges: Array<{
+      type: 'Wali Kelas' | 'Guru Mapel' | 'Belum Ditugaskan';
+      label: string;
+      badgeColor: string;
+    }> = [];
+
+    if (homeroomClasses.length > 0) {
+      homeroomClasses.forEach((hc) => {
+        badges.push({
+          type: 'Wali Kelas',
+          label: `Wali Kelas ${hc.name || ''}`.trim(),
+          badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+        });
+      });
     }
 
-    // 2. Cek apakah guru memiliki assignment pada mata pelajaran
-    const assignedSubject = (subjects || []).find((s) => s.teacherId === t.id);
-
-    if (assignedSubject) {
-      const targetNames = (assignedSubject.targetClassIds || [])
-        .map((cid) => (classes || []).find((c) => c.id === cid)?.name || '')
-        .filter(Boolean);
-      const classText = targetNames.length > 0 ? ` (${targetNames.join(', ')})` : '';
-      return {
-        type: 'Guru Mapel' as const,
-        label: `${assignedSubject.name || 'Guru Mapel'}${classText}`,
-        subjectName: assignedSubject.name,
-        subjectId: assignedSubject.id,
-        targetClassIds: assignedSubject.targetClassIds || [],
-        badgeColor: 'bg-amber-50 text-amber-800 border-amber-200'
-      };
+    if (assignedSubjects.length > 0) {
+      assignedSubjects.forEach((sub) => {
+        const targetNames = (sub.targetClassIds || [])
+          .map((cid) => (classes || []).find((c) => c.id === cid)?.name || '')
+          .filter(Boolean);
+        const classText = targetNames.length > 0 ? ` (${targetNames.join(', ')})` : '';
+        badges.push({
+          type: 'Guru Mapel',
+          label: `${sub.name || 'Guru Mapel'}${classText}`,
+          badgeColor: 'bg-amber-50 text-amber-800 border-amber-200',
+        });
+      });
     }
 
-    // 3. Jika belum memiliki assignment apa pun -> BELUM DITUGASKAN
+    if (badges.length === 0) {
+      badges.push({
+        type: 'Belum Ditugaskan',
+        label: 'BELUM DITUGASKAN',
+        badgeColor: 'bg-slate-100 text-slate-600 border-slate-200',
+      });
+    }
+
     return {
-      type: 'Belum Ditugaskan' as const,
-      label: 'Belum Ditugaskan',
-      badgeColor: 'bg-slate-100 text-slate-600 border-slate-200'
+      type: badges[0].type,
+      label: badges.map((b) => b.label).join(', '),
+      badgeColor: badges[0].badgeColor,
+      badges,
     };
   };
 
@@ -703,13 +723,18 @@ export const DataGuruView: React.FC = () => {
                       </span>
                     </td>
                     <td className="py-3.5 px-4 text-center">
-                      <span
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${assignDetails.badgeColor}`}
-                      >
-                        {assignDetails.type === 'Wali Kelas' && <GraduationCap size={13} className="shrink-0" />}
-                        {assignDetails.type === 'Guru Mapel' && <BookOpen size={13} className="shrink-0" />}
-                        <span>{assignDetails.label}</span>
-                      </span>
+                      <div className="flex flex-wrap items-center justify-center gap-1.5">
+                        {assignDetails.badges.map((b, bIdx) => (
+                          <span
+                            key={bIdx}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${b.badgeColor}`}
+                          >
+                            {b.type === 'Wali Kelas' && <GraduationCap size={13} className="shrink-0" />}
+                            {b.type === 'Guru Mapel' && <BookOpen size={13} className="shrink-0" />}
+                            <span>{b.label}</span>
+                          </span>
+                        ))}
+                      </div>
                     </td>
                     {canEdit && (
                       <td className="py-3.5 px-4 text-center">

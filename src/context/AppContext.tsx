@@ -980,46 +980,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         ids.push(a.class_id);
         subjectClassScope.set(a.subject_id, ids);
       });
-    // Assignment tables are the source of truth for teacher assignment role.
-    const assignmentRoleByTeacher = new Map<
-      string,
-      "Wali Kelas" | "Guru Mapel"
-    >();
-    classList
-      .forEach((c: any) => {
-        if (c.waliKelasTeacherId && (!c.academicYear || c.academicYear === activeAcademicYear))
-          assignmentRoleByTeacher.set(c.waliKelasTeacherId, "Wali Kelas");
-      });
-    (scopeTeacherRows.data || [])
-      .filter((a: any) => !a.academic_year || a.academic_year === activeAcademicYear)
-      .forEach((a: any) => {
-        if (!assignmentRoleByTeacher.has(a.teacher_id))
-          assignmentRoleByTeacher.set(a.teacher_id, "Guru Mapel");
-      });
-    const authoritativeTeachers = baseTeachers.map((t: any) => {
-      const roleFromAssignment = assignmentRoleByTeacher.get(t.id);
-      const finalJabatan: "Wali Kelas" | "Guru Mapel" | "Belum ditugaskan" =
-        roleFromAssignment === "Wali Kelas"
-          ? "Wali Kelas"
-          : roleFromAssignment === "Guru Mapel"
-            ? "Guru Mapel"
-            : "Belum ditugaskan";
-      return { ...t, jabatan: finalJabatan, jenisPTK: finalJabatan };
-    });
-    setTeachers(authoritativeTeachers);
+    // Master teachers state directly from teachers table
+    setTeachers(baseTeachers);
+
     const hydratedUsers = (allProfiles.data || []).map((p: any) => {
       const u = emptyUser(p);
-      const assignmentRole = u.teacherId
-        ? assignmentRoleByTeacher.get(u.teacherId)
-        : undefined;
-      const effectiveRole = assignmentRole || u.role;
+      const isWali = u.teacherId && classList.some((c: any) => c.waliKelasTeacherId === u.teacherId && (!c.academicYear || c.academicYear === activeAcademicYear));
+      const hasMapel = u.teacherId && (subjectTeacherScope.get(u.teacherId) || []).length > 0;
+
+      let effectiveRole = u.role;
+      if (u.role === "WALI KELAS" || u.role === "GURU MAPEL") {
+        if (isWali && !hasMapel) effectiveRole = "WALI KELAS";
+        else if (hasMapel && !isWali) effectiveRole = "GURU MAPEL";
+        else if (isWali && hasMapel) effectiveRole = u.role || "WALI KELAS";
+      }
+
       let ids: string[] = [];
-      if (effectiveRole === "Wali Kelas" && u.teacherId) {
+      if (isWali) {
         ids = classList
-          .filter((c: any) => c.waliKelasTeacherId === u.teacherId)
+          .filter((c: any) => c.waliKelasTeacherId === u.teacherId && (!c.academicYear || c.academicYear === activeAcademicYear))
           .map((c: any) => c.id);
-      } else if (effectiveRole === "Guru Mapel" && u.teacherId) {
-        const unique = new Set<string>();
+      }
+      if (hasMapel) {
+        const unique = new Set<string>(ids);
         (subjectTeacherScope.get(u.teacherId) || []).forEach((subjectId) => {
           (subjectClassScope.get(subjectId) || []).forEach((classId) =>
             unique.add(classId),
@@ -1029,12 +1012,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       }
       return {
         ...u,
-        role:
-          effectiveRole === "Wali Kelas"
-            ? "WALI KELAS"
-            : effectiveRole === "Guru Mapel"
-              ? "GURU MAPEL"
-              : u.role,
+        role: effectiveRole,
         classIds: ids,
         classNames: ids
           .map(
@@ -1053,11 +1031,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         (baseProfile as any)?.schoolCode ||
         null,
     };
-    const myAssignmentRole = me.teacherId
-      ? assignmentRoleByTeacher.get(me.teacherId)
-      : undefined;
-    if (myAssignmentRole)
-      me.role = myAssignmentRole === "Wali Kelas" ? "WALI KELAS" : "GURU MAPEL";
     if (me.role === "WALI KELAS") {
       const myWaliClasses = classList.filter(
         (c: any) => c.waliKelasTeacherId === me.teacherId,
@@ -1207,7 +1180,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         subjectScheduleRowsError.message,
       );
     const teacherMap = new Map<string, any>(
-      (authoritativeTeachers || baseTeachers || []).map((t: any) => [t.id, t]),
+      (baseTeachers || []).map((t: any) => [t.id, t]),
     );
     const classMap = new Map<string, any>(
       (classList || []).map((c: any) => [c.id, c]),
@@ -2025,28 +1998,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     setActiveStudyDays(c.activeStudyDays || activeStudyDays);
     showToast("Pengaturan Sistem berhasil diperbarui");
   };
-  const resolveWaliKelas = async (inputTeacherId: string | null) => {
+  const resolveWaliKelas = async (inputTeacherId: string | null, targetClassId?: string | null) => {
     if (!inputTeacherId) return { dbWaliTeacherId: null, waliName: null };
+    const schoolId = currentUser?.schoolId || null;
+    const year = schoolProfile.tahunPelajaran || "2026/2027";
+
+    // Validasi aturan: Satu guru hanya boleh menjadi Wali Kelas untuk satu kelas dalam tahun ajaran yang sama
+    const existingHomeroom = classes.find(
+      (c) =>
+        c.waliKelasTeacherId === inputTeacherId &&
+        (!c.academicYear || c.academicYear === year) &&
+        (!targetClassId || c.id !== targetClassId),
+    );
+    if (existingHomeroom) {
+      throw new Error(
+        `Guru ini sudah ditugaskan sebagai Wali Kelas pada "${existingHomeroom.name}" untuk tahun ajaran ${year}. Satu guru hanya boleh menjadi Wali Kelas untuk satu rombel kelas.`,
+      );
+    }
+
     const teacherMatch = teachers.find((t) => t.id === inputTeacherId);
     if (teacherMatch) {
-      const schoolId = currentUser?.schoolId || null;
-      const year = schoolProfile.tahunPelajaran || "2026/2027";
-      if (schoolId) {
-        const { data: sta } = await supabase
-          .from("subject_teacher_assignments")
-          .select("id")
-          .eq("school_id", schoolId)
-          .eq("teacher_id", teacherMatch.id)
-          .eq("academic_year", year)
-          .limit(1);
-        if ((sta || []).length)
-          throw new Error(
-            "Guru Mapel tidak dapat ditetapkan sebagai Wali Kelas pada tahun ajaran aktif.",
-          );
-      }
       return { dbWaliTeacherId: teacherMatch.id, waliName: teacherMatch.nama };
     }
-    const schoolId = currentUser?.schoolId || null;
     if (!schoolId) throw new Error("Sekolah aktif tidak ditemukan.");
     const { data: teacher, error } = await supabase
       .from("teachers")
@@ -2057,18 +2030,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     if (error) throw error;
     if (!teacher)
       throw new Error("Guru wali kelas tidak ditemukan pada sekolah aktif.");
-    const year = schoolProfile.tahunPelajaran || "2026/2027";
-    const { data: sta } = await supabase
-      .from("subject_teacher_assignments")
-      .select("id")
-      .eq("school_id", schoolId)
-      .eq("teacher_id", teacher.id)
-      .eq("academic_year", year)
-      .limit(1);
-    if ((sta || []).length)
-      throw new Error(
-        "Guru Mapel tidak dapat ditetapkan sebagai Wali Kelas pada tahun ajaran aktif.",
-      );
     return { dbWaliTeacherId: teacher.id, waliName: teacher.nama };
   };
   const addClass = async (c: Omit<SchoolClass, "id">) => {
@@ -2078,17 +2039,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       );
       const schoolId = currentUser?.schoolId || null;
       if (!schoolId) throw new Error("Sekolah aktif tidak ditemukan.");
-      if (dbWaliTeacherId) {
-        const teacher = teachers.find((t) => t.id === dbWaliTeacherId);
-        if (
-          teacher &&
-          (teacher.jabatan || "").toLowerCase().includes("mapel")
-        ) {
-          throw new Error(
-            "Guru Mapel tidak dapat ditetapkan sebagai Wali Kelas.",
-          );
-        }
-      }
+
       const academicYear =
         c.academicYear || schoolProfile.tahunPelajaran || "2026/2027";
       const { data: insertedData, error } = await supabase
@@ -2124,6 +2075,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     try {
       const { dbWaliTeacherId, waliName } = await resolveWaliKelas(
         c.waliKelasTeacherId || null,
+        id,
       );
       const schoolId = currentUser?.schoolId || null;
       if (!schoolId) throw new Error("Sekolah aktif tidak ditemukan.");
@@ -2608,23 +2560,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       const activeAcademicYear = schoolProfile.tahunPelajaran || "2026/2027";
 
       if (roleType === "WALI_KELAS") {
-        const { error: tErr } = await supabase
-          .from("teachers")
-          .update({
-            jabatan: "Wali Kelas",
-            jenis_ptk: "Wali Kelas",
-            mata_pelajaran: null,
-          })
-          .eq("id", teacherId)
-          .eq("school_id", schoolId);
-        if (tErr) throw tErr;
+        if (targetClassIds && targetClassIds.length > 0) {
+          const targetClassId = targetClassIds[0];
+          // Clear any previous wali kelas assignment for this teacher in this year
+          await supabase
+            .from("classes")
+            .update({ wali_kelas_teacher_id: null })
+            .eq("school_id", schoolId)
+            .eq("wali_kelas_teacher_id", teacherId);
 
-        await supabase
-          .from("subject_teacher_assignments")
-          .delete()
-          .eq("school_id", schoolId)
-          .eq("teacher_id", teacherId)
-          .eq("academic_year", activeAcademicYear);
+          // Assign to target class
+          await supabase
+            .from("classes")
+            .update({ wali_kelas_teacher_id: teacherId })
+            .eq("school_id", schoolId)
+            .eq("id", targetClassId);
+        }
 
         const linkedUser = users.find((u) => u.teacherId === teacherId);
         if (linkedUser) {
@@ -2635,9 +2586,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             .from("profiles")
             .update({
               role: "WALI KELAS",
-              subject_id: null,
-              subject_name: null,
-              class_ids: userClassIds,
+              class_ids: targetClassIds || userClassIds,
             })
             .eq("id", linkedUser.id)
             .eq("school_id", schoolId);
@@ -2646,35 +2595,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         const chosenSubject = subjects.find((s) => s.id === subjectId);
         const subjectName = chosenSubject?.name || null;
 
-        const { error: tErr } = await supabase
-          .from("teachers")
-          .update({
-            jabatan: "Guru Mapel",
-            jenis_ptk: "Guru Mapel",
-            mata_pelajaran: subjectName,
-          })
-          .eq("id", teacherId)
-          .eq("school_id", schoolId);
-        if (tErr) throw tErr;
-
-        await supabase
-          .from("classes")
-          .update({ wali_kelas_teacher_id: null })
-          .eq("school_id", schoolId)
-          .eq("wali_kelas_teacher_id", teacherId);
-
         if (subjectId) {
           await supabase
             .from("subject_teacher_assignments")
             .delete()
             .eq("school_id", schoolId)
             .eq("teacher_id", teacherId)
-            .eq("academic_year", activeAcademicYear);
-
-          await supabase
-            .from("subject_teacher_assignments")
-            .delete()
-            .eq("school_id", schoolId)
             .eq("subject_id", subjectId)
             .eq("academic_year", activeAcademicYear);
 
@@ -2722,17 +2648,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             .eq("school_id", schoolId);
         }
       } else {
-        const { error: tErr } = await supabase
-          .from("teachers")
-          .update({
-            jabatan: "Belum ditugaskan",
-            jenis_ptk: "Guru",
-            mata_pelajaran: null,
-          })
-          .eq("id", teacherId)
-          .eq("school_id", schoolId);
-        if (tErr) throw tErr;
-
         await supabase
           .from("classes")
           .update({ wali_kelas_teacher_id: null })
