@@ -208,7 +208,7 @@ export const DataKelasView: React.FC = () => {
     teachers.forEach((t) => {
       const teacherName = (t.nama || '').trim();
       const teacherNip = (t.nip || '').trim();
-      const normTugas = (t.tugasUtama || t.tugas_utama || t.jabatan || '').trim().toLowerCase();
+      const normTugas = (t.tugasUtama || t.tugas_utama || '').trim().toLowerCase();
 
       const isWaliTugasUtama =
         normTugas === 'wali kelas' ||

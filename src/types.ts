@@ -90,8 +90,6 @@ export interface Teacher {
   jenisKelamin: 'L' | 'P';
   tugasUtama?: 'Wali Kelas' | 'Guru Mapel' | string;
   tugas_utama?: string;
-  jabatan?: 'Wali Kelas' | 'Guru Mapel' | string;
-  mataPelajaran?: string;
 }
 
 export type AttendanceStatus = 'Hadir' | 'Sakit' | 'Izin' | 'Alfa' | '' | '-';

@@ -318,7 +318,6 @@ export default async function handler(req: any, res: any) {
           nip: (teacherNip || '').trim() || null,
           jenis_kelamin: 'L',
           tugas_utama: teacherType === 'GURU_MAPEL' ? 'Guru Mapel' : 'Wali Kelas',
-          mata_pelajaran: teacherType === 'GURU_MAPEL' ? teacherSubject : 'Tematik',
         }).select('id').single();
         if (teacherError || !teacherRow) throw teacherError || new Error('Gagal membuat data guru.');
         await admin.from('profiles').update({ teacher_id: teacherRow.id }).eq('id', authData.user.id);

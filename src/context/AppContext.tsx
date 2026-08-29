@@ -224,7 +224,7 @@ const dbStudent = (s: any): Student => ({
   className: s.class_name || "",
 });
 const dbTeacher = (t: any): Teacher => {
-  const tugas = t.tugas_utama || t.tugasUtama || t.jabatan || t._resolved_role || "Belum ditugaskan";
+  const tugas = t.tugas_utama || t.tugasUtama || t._resolved_role || "Belum ditugaskan";
   return {
     id: t.id,
     nama: t.nama || "",
@@ -232,8 +232,6 @@ const dbTeacher = (t: any): Teacher => {
     jenisKelamin: t.jenis_kelamin || t.jenisKelamin || "L",
     tugasUtama: tugas,
     tugas_utama: tugas,
-    jabatan: tugas,
-    mataPelajaran: t.mata_pelajaran || t.mataPelajaran || "",
   };
 };
 
@@ -2220,7 +2218,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const addTeacher = async (t: Omit<Teacher, "id">) => {
     const schoolId = currentUser?.schoolId;
     if (!schoolId) throw new Error("Sekolah aktif tidak ditemukan.");
-    const rawTugas = (t.tugasUtama || t.tugas_utama || t.jabatan || "").trim();
+    const rawTugas = (t.tugasUtama || t.tugas_utama || "").trim();
     const finalTugasUtama =
       rawTugas === "Wali Kelas"
         ? "Wali Kelas"
@@ -2235,7 +2233,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         nama: t.nama.trim(),
         nip: t.nip || null,
         jenis_kelamin: t.jenisKelamin || "L",
-        mata_pelajaran: t.mataPelajaran || null,
         tugas_utama: finalTugasUtama,
       })
       .select("*")
@@ -2249,7 +2246,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const updateTeacher = async (id: string, t: Omit<Teacher, "id">) => {
     const schoolId = currentUser?.schoolId;
     if (!schoolId) throw new Error("Sekolah aktif tidak ditemukan.");
-    const rawTugas = (t.tugasUtama || t.tugas_utama || t.jabatan || "").trim();
+    const rawTugas = (t.tugasUtama || t.tugas_utama || "").trim();
     const finalTugasUtama =
       rawTugas === "Wali Kelas"
         ? "Wali Kelas"
@@ -2263,7 +2260,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         nama: t.nama.trim(),
         nip: t.nip || null,
         jenis_kelamin: t.jenisKelamin || "L",
-        mata_pelajaran: t.mataPelajaran || null,
         tugas_utama: finalTugasUtama,
       })
       .eq("id", id)
@@ -2296,7 +2292,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         nama: t.nama.trim(),
         nip: t.nip && t.nip.trim() !== "-" ? t.nip.trim() : null,
         jenis_kelamin: t.jenisKelamin || "L",
-        mata_pelajaran: null,
         tugas_utama: t.tugasUtama || t.tugas_utama || "Belum ditugaskan",
       };
 
@@ -2316,7 +2311,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               nama: row.nama,
               jenis_kelamin: row.jenis_kelamin,
               tugas_utama: row.tugas_utama,
-              mata_pelajaran: row.mata_pelajaran,
             })
             .eq("id", existing.id);
           if (updateError) throw updateError;
@@ -2449,7 +2443,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       const academicYear = schoolProfile.tahunPelajaran || "2026/2027";
       const { data: teacherRow, error: teacherErr } = await supabase
         .from("teachers")
-        .select("id,school_id,nama,tugas_utama,mata_pelajaran")
+        .select("id,school_id,nama,tugas_utama")
         .eq("id", teacherId)
         .eq("school_id", schoolId)
         .maybeSingle();
@@ -2485,20 +2479,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         });
         if (error) throw error;
       } else if (isMapel || (mapelRows || []).length > 0) {
-        let targetSubjectIds = (mapelRows || []).map((r: any) => r.subject_id);
-        if (targetSubjectIds.length === 0) {
-          const matchedSubject = subjects.find(
-            (s) =>
-              s.teacherId === teacherId ||
-              (teacherRow.mata_pelajaran &&
-                s.name
-                  .toLowerCase()
-                  .includes(teacherRow.mata_pelajaran.toLowerCase())),
-          );
-          if (matchedSubject) {
-            targetSubjectIds = [matchedSubject.id];
-          }
-        }
+        const targetSubjectIds = (mapelRows || []).map((r: any) => r.subject_id);
         for (const subId of targetSubjectIds) {
           const { error } = await supabase.rpc("replace_subject_assignment", {
             p_school_id: schoolId,
@@ -2581,8 +2562,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           .from("teachers")
           .update({
             tugas_utama: "Wali Kelas",
-            mata_pelajaran: null,
-          })
+              })
           .eq("id", teacherId)
           .eq("school_id", schoolId);
 
@@ -2594,8 +2574,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
                   ...t,
                   tugasUtama: "Wali Kelas",
                   tugas_utama: "Wali Kelas",
-                  jabatan: "Wali Kelas",
-                  mataPelajaran: "",
                 }
               : t,
           ),
@@ -2687,7 +2665,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           .from("teachers")
           .update({
             tugas_utama: "Guru Mapel",
-            mata_pelajaran: subjectName || null,
           })
           .eq("id", teacherId)
           .eq("school_id", schoolId);
@@ -2700,8 +2677,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
                   ...t,
                   tugasUtama: "Guru Mapel",
                   tugas_utama: "Guru Mapel",
-                  jabatan: "Guru Mapel",
-                  mataPelajaran: subjectName || "",
                 }
               : t,
           ),
@@ -2738,8 +2713,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           .from("teachers")
           .update({
             tugas_utama: "Belum ditugaskan",
-            mata_pelajaran: null,
-          })
+              })
           .eq("id", teacherId)
           .eq("school_id", schoolId);
 
@@ -2751,8 +2725,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
                   ...t,
                   tugasUtama: "Belum ditugaskan",
                   tugas_utama: "Belum ditugaskan",
-                  jabatan: "Belum ditugaskan",
-                  mataPelajaran: "",
                 }
               : t,
           ),
@@ -3056,7 +3028,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         );
         const classIds = linkedClass ? [linkedClass.id] : [];
         const role: UserRole =
-          teacher.tugasUtama === "Wali Kelas" || teacher.tugas_utama === "Wali Kelas" || teacher.jabatan === "Wali Kelas" || linkedClass
+          teacher.tugasUtama === "Wali Kelas" || teacher.tugas_utama === "Wali Kelas" || linkedClass
             ? "WALI KELAS"
             : "GURU MAPEL";
 

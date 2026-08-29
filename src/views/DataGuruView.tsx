@@ -148,7 +148,7 @@ export const DataGuruView: React.FC = () => {
           badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200',
         });
       });
-    } else if ((t.tugasUtama || t.tugas_utama || t.jabatan || '').trim() === 'Wali Kelas') {
+    } else if ((t.tugasUtama || t.tugas_utama || '').trim() === 'Wali Kelas') {
       badges.push({
         type: 'Wali Kelas',
         label: 'Wali Kelas',
@@ -169,7 +169,7 @@ export const DataGuruView: React.FC = () => {
           badgeColor: 'bg-amber-50 text-amber-800 border-amber-200',
         });
       });
-    } else if ((t.tugasUtama || t.tugas_utama || t.jabatan || '').trim() === 'Guru Mapel' && badges.length === 0) {
+    } else if ((t.tugasUtama || t.tugas_utama || '').trim() === 'Guru Mapel' && badges.length === 0) {
       badges.push({
         type: 'Guru Mapel',
         label: 'Guru Mapel',
@@ -254,7 +254,7 @@ export const DataGuruView: React.FC = () => {
     // Initial state for Tugas Utama in edit modal based on assignments and current teacher role
     const homeroomClass = classes.find((c) => c.waliKelasTeacherId === t.id);
     const assignedSubject = subjects.find((s) => s.teacherId === t.id);
-    const normTugas = (t.tugasUtama || t.tugas_utama || t.jabatan || '').trim().toLowerCase();
+    const normTugas = (t.tugasUtama || t.tugas_utama || '').trim().toLowerCase();
 
     if (homeroomClass || normTugas.includes('wali')) {
       setModalRoleType('WALI_KELAS');
@@ -271,7 +271,7 @@ export const DataGuruView: React.FC = () => {
     setAssigningTeacher(t);
     const homeroomClass = classes.find((c) => c.waliKelasTeacherId === t.id);
     const assignedSubject = subjects.find((s) => s.teacherId === t.id);
-    const normTugas = (t.tugasUtama || t.tugas_utama || t.jabatan || '').trim().toLowerCase();
+    const normTugas = (t.tugasUtama || t.tugas_utama || '').trim().toLowerCase();
 
     if (homeroomClass || normTugas.includes('wali')) {
       setAssignRoleType('WALI_KELAS');

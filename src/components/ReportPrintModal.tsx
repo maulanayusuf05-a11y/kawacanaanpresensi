@@ -128,7 +128,7 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
           (t.mataPelajaran && t.mataPelajaran.toLowerCase().includes(subjectName.toLowerCase())) ||
           (t.tugasUtama && t.tugasUtama.toLowerCase().includes(subjectName.toLowerCase())) ||
           (t.tugas_utama && t.tugas_utama.toLowerCase().includes(subjectName.toLowerCase())) ||
-          (t.jabatan && t.jabatan.toLowerCase().includes(subjectName.toLowerCase())) ||
+          (false) ||
           ((t as any).specialization && (t as any).specialization.toLowerCase().includes(subjectName.toLowerCase()))
         );
         if (tMatch) {
