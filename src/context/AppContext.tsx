@@ -2457,55 +2457,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   };
   const deleteTeacher = async (id: string) => {
     try {
-      const schoolId = currentUser?.schoolId;
-      if (!schoolId) throw new Error("Sekolah aktif tidak ditemukan.");
-      const { data: teacher, error: teacherErr } = await supabase
-        .from("teachers")
-        .select("id,nama")
-        .eq("id", id)
-        .eq("school_id", schoolId)
-        .maybeSingle();
-      if (teacherErr) throw teacherErr;
-      if (!teacher) throw new Error("Guru tidak ditemukan pada sekolah aktif.");
-      const { error: clearWaliErr } = await supabase
-        .from("classes")
-        .update({ wali_kelas_teacher_id: null })
-        .eq("school_id", schoolId)
-        .eq("wali_kelas_teacher_id", id);
-      if (clearWaliErr) throw clearWaliErr;
-      const { error: staErr } = await supabase
-        .from("subject_teacher_assignments")
-        .delete()
-        .eq("school_id", schoolId)
-        .eq("teacher_id", id);
-      if (staErr) throw staErr;
-      // Hapus akun/profil melalui API bila ada; kegagalan API tidak boleh disembunyikan.
-      const linkedUser = users.find((u) => u.teacherId === id);
-      if (linkedUser) {
-        try {
-          await apiUser("delete", { userId: linkedUser.id });
-        } catch (apiErr: any) {
-          throw new Error(
-            `Data guru siap dihapus, tetapi akun login gagal dihapus: ${apiErr?.message || "kesalahan server"}`,
-          );
-        }
-      }
-      const { error: delErr } = await supabase
-        .from("teachers")
-        .delete()
-        .eq("id", id)
-        .eq("school_id", schoolId);
-      if (delErr) throw delErr;
-      setTeachers((p) => p.filter((x) => x.id !== id));
-      setClasses((p) =>
-        p.map((c) =>
-          c.waliKelasTeacherId === id
-            ? { ...c, waliKelasTeacherId: null, waliKelasName: null }
-            : c,
-        ),
-      );
-      setUsers((p) => p.filter((u) => u.teacherId !== id));
-      showToast("Data guru berhasil dihapus", "info");
+      if (!id) throw new Error("ID guru tidak valid.");
+      const { error } = await supabase.rpc("delete_teacher", {
+        p_teacher_id: id,
+      });
+      if (error) throw error;
+      await loadData(currentUser?.id);
+      showToast("Data guru berhasil dihapus", "success");
     } catch (e: any) {
       showToast(e.message || "Gagal menghapus guru.", "error");
       throw e;

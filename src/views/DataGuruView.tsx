@@ -70,6 +70,7 @@ export const DataGuruView: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [editing, setEditing] = useState<Teacher | null>(null);
   const [deleting, setDeleting] = useState<Teacher | null>(null);
+  const [isDeletingTeacher, setIsDeletingTeacher] = useState(false);
   const [open, setOpen] = useState(false);
 
   // Assignment Modal for Admin Sekolah
@@ -424,9 +425,16 @@ export const DataGuruView: React.FC = () => {
   };
 
   const removeTeacher = async () => {
-    if (!deleting) return;
-    await deleteTeacher(deleting.id);
-    setDeleting(null);
+    if (!deleting || isDeletingTeacher) return;
+    setIsDeletingTeacher(true);
+    try {
+      await deleteTeacher(deleting.id);
+      setDeleting(null);
+    } catch {
+      // Error handling and toast are handled inside deleteTeacher
+    } finally {
+      setIsDeletingTeacher(false);
+    }
   };
 
   // Download Template CSV Guru
@@ -1430,16 +1438,18 @@ export const DataGuruView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setDeleting(null)}
-                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer"
+                disabled={isDeletingTeacher}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer disabled:opacity-50"
               >
                 Batal
               </button>
               <button
                 type="button"
                 onClick={removeTeacher}
-                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition shadow-md shadow-rose-600/20 cursor-pointer"
+                disabled={isDeletingTeacher}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition shadow-md shadow-rose-600/20 cursor-pointer disabled:opacity-50"
               >
-                Ya, Hapus
+                {isDeletingTeacher ? 'Menghapus...' : 'Ya, Hapus'}
               </button>
             </div>
           </div>
