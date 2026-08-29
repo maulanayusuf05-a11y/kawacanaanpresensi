@@ -950,13 +950,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       supabase
         .from("subject_teacher_assignments")
         .select("subject_id,teacher_id,academic_year")
-        .eq("school_id", schoolId)
-        .eq("academic_year", activeAcademicYear),
+        .eq("school_id", schoolId),
       supabase
         .from("subject_class_assignments")
         .select("subject_id,class_id,academic_year")
-        .eq("school_id", schoolId)
-        .eq("academic_year", activeAcademicYear),
+        .eq("school_id", schoolId),
     ]);
     if (scopeTeacherRows.error)
       console.warn(
@@ -968,31 +966,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         "[loadData] subject_class_assignments read failed:",
         scopeClassRows.error.message,
       );
-    (scopeTeacherRows.data || []).forEach((a: any) => {
-      const ids = subjectTeacherScope.get(a.teacher_id) || [];
-      ids.push(a.subject_id);
-      subjectTeacherScope.set(a.teacher_id, ids);
-    });
-    (scopeClassRows.data || []).forEach((a: any) => {
-      const ids = subjectClassScope.get(a.subject_id) || [];
-      ids.push(a.class_id);
-      subjectClassScope.set(a.subject_id, ids);
-    });
+    (scopeTeacherRows.data || [])
+      .filter((a: any) => !a.academic_year || a.academic_year === activeAcademicYear)
+      .forEach((a: any) => {
+        const ids = subjectTeacherScope.get(a.teacher_id) || [];
+        ids.push(a.subject_id);
+        subjectTeacherScope.set(a.teacher_id, ids);
+      });
+    (scopeClassRows.data || [])
+      .filter((a: any) => !a.academic_year || a.academic_year === activeAcademicYear)
+      .forEach((a: any) => {
+        const ids = subjectClassScope.get(a.subject_id) || [];
+        ids.push(a.class_id);
+        subjectClassScope.set(a.subject_id, ids);
+      });
     // Assignment tables are the source of truth for teacher assignment role.
     const assignmentRoleByTeacher = new Map<
       string,
       "Wali Kelas" | "Guru Mapel"
     >();
     classList
-      .filter((c: any) => c.academicYear === activeAcademicYear)
       .forEach((c: any) => {
-        if (c.waliKelasTeacherId)
+        if (c.waliKelasTeacherId && (!c.academicYear || c.academicYear === activeAcademicYear))
           assignmentRoleByTeacher.set(c.waliKelasTeacherId, "Wali Kelas");
       });
-    (scopeTeacherRows.data || []).forEach((a: any) => {
-      if (!assignmentRoleByTeacher.has(a.teacher_id))
-        assignmentRoleByTeacher.set(a.teacher_id, "Guru Mapel");
-    });
+    (scopeTeacherRows.data || [])
+      .filter((a: any) => !a.academic_year || a.academic_year === activeAcademicYear)
+      .forEach((a: any) => {
+        if (!assignmentRoleByTeacher.has(a.teacher_id))
+          assignmentRoleByTeacher.set(a.teacher_id, "Guru Mapel");
+      });
     const authoritativeTeachers = baseTeachers.map((t: any) => {
       const roleFromAssignment = assignmentRoleByTeacher.get(t.id);
       const finalJabatan: "Wali Kelas" | "Guru Mapel" | "Belum ditugaskan" =

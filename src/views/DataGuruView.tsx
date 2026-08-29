@@ -109,54 +109,25 @@ export const DataGuruView: React.FC = () => {
   const [pasteText, setPasteText] = useState('');
   const [parsedTeachers, setParsedTeachers] = useState<ParsedTeacherItem[]>([]);
 
-  const baseTeacherList = useMemo(() => {
-    return teachers;
-  }, [teachers]);
-
-  const filteredTeachers = useMemo(() => {
-    const q = searchTerm.toLowerCase();
-    return baseTeacherList.filter(
-      (t) =>
-        t.nama.toLowerCase().includes(q) ||
-        t.nip.toLowerCase().includes(q) ||
-        (t.jabatan && t.jabatan.toLowerCase().includes(q)) ||
-        (t.jenisPTK && t.jenisPTK.toLowerCase().includes(q)) ||
-        (t.mataPelajaran && t.mataPelajaran.toLowerCase().includes(q))
-    );
-  }, [baseTeacherList, searchTerm]);
-
-  // Helper untuk mengecek akun guru
-  const getTeacherAccount = (t: Teacher) => {
-    const teacherNip = (t.nip || '').trim().toLowerCase();
-    const teacherName = (t.nama || '').trim().toLowerCase();
-    return users.find(
-      (u) =>
-        (teacherNip && teacherNip !== '-' && u.username.toLowerCase() === teacherNip) ||
-        u.name.trim().toLowerCase() === teacherName
-    );
-  };
-
-  const resetForm = () => {
-    setNama('');
-    setNip('');
-    setJenisKelamin('L');
-    setModalRoleType('NONE');
-    setModalWaliClassId('');
-    setModalSubjectId('');
-    setModalMapelClassIds([]);
-  };
-
   // Helper to get detailed assignment info for a teacher based on actual assignments
   const getTeacherAssignmentDetails = (t: Teacher) => {
+    if (!t) {
+      return {
+        type: 'Belum Ditugaskan' as const,
+        label: 'Belum Ditugaskan',
+        badgeColor: 'bg-slate-100 text-slate-600 border-slate-200'
+      };
+    }
+
     // 1. Cek apakah guru ditetapkan sebagai wali kelas melalui assignment kelas
-    const homeroomClass = classes.find(
-      (c) => c.waliKelasTeacherId === t.id || (c.waliKelasName && c.waliKelasName.trim().toLowerCase() === t.nama.trim().toLowerCase())
+    const homeroomClass = (classes || []).find(
+      (c) => c.waliKelasTeacherId === t.id || (c.waliKelasName && t.nama && c.waliKelasName.trim().toLowerCase() === t.nama.trim().toLowerCase())
     );
 
     if (homeroomClass) {
       return {
         type: 'Wali Kelas' as const,
-        label: `Wali Kelas ${homeroomClass.name}`,
+        label: `Wali Kelas ${homeroomClass.name || ''}`.trim(),
         className: homeroomClass.name,
         classId: homeroomClass.id,
         badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200'
@@ -164,16 +135,16 @@ export const DataGuruView: React.FC = () => {
     }
 
     // 2. Cek apakah guru memiliki assignment pada mata pelajaran
-    const assignedSubject = subjects.find((s) => s.teacherId === t.id);
+    const assignedSubject = (subjects || []).find((s) => s.teacherId === t.id);
 
     if (assignedSubject) {
       const targetNames = (assignedSubject.targetClassIds || [])
-        .map((cid) => classes.find((c) => c.id === cid)?.name || '')
+        .map((cid) => (classes || []).find((c) => c.id === cid)?.name || '')
         .filter(Boolean);
       const classText = targetNames.length > 0 ? ` (${targetNames.join(', ')})` : '';
       return {
         type: 'Guru Mapel' as const,
-        label: `${assignedSubject.name}${classText}`,
+        label: `${assignedSubject.name || 'Guru Mapel'}${classText}`,
         subjectName: assignedSubject.name,
         subjectId: assignedSubject.id,
         targetClassIds: assignedSubject.targetClassIds || [],
@@ -187,6 +158,48 @@ export const DataGuruView: React.FC = () => {
       label: 'Belum Ditugaskan',
       badgeColor: 'bg-slate-100 text-slate-600 border-slate-200'
     };
+  };
+
+  const baseTeacherList = useMemo(() => {
+    return teachers || [];
+  }, [teachers]);
+
+  const filteredTeachers = useMemo(() => {
+    const q = (searchTerm || '').trim().toLowerCase();
+    if (!q) return baseTeacherList;
+    return baseTeacherList.filter((t) => {
+      if (!t) return false;
+      const namaMatch = (t.nama || '').toLowerCase().includes(q);
+      const nipMatch = (t.nip || '').toLowerCase().includes(q);
+      const assign = getTeacherAssignmentDetails(t);
+      const roleMatch =
+        (assign.label || '').toLowerCase().includes(q) ||
+        (assign.type || '').toLowerCase().includes(q);
+      const statusMatch = (t.statusKepegawaian || '').toLowerCase().includes(q);
+      return namaMatch || nipMatch || roleMatch || statusMatch;
+    });
+  }, [baseTeacherList, searchTerm, classes, subjects]);
+
+  // Helper untuk mengecek akun guru
+  const getTeacherAccount = (t: Teacher) => {
+    if (!t) return undefined;
+    const teacherNip = (t.nip || '').trim().toLowerCase();
+    const teacherName = (t.nama || '').trim().toLowerCase();
+    return (users || []).find(
+      (u) =>
+        (teacherNip && teacherNip !== '-' && (u.username || '').toLowerCase() === teacherNip) ||
+        ((u.name || '').trim().toLowerCase() === teacherName && teacherName.length > 0)
+    );
+  };
+
+  const resetForm = () => {
+    setNama('');
+    setNip('');
+    setJenisKelamin('L');
+    setModalRoleType('NONE');
+    setModalWaliClassId('');
+    setModalSubjectId('');
+    setModalMapelClassIds([]);
   };
 
   const openAdd = () => {
