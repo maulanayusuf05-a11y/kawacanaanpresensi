@@ -234,8 +234,6 @@ const dbTeacher = (t: any): Teacher => {
     tugas_utama: tugas,
     jabatan: tugas,
     mataPelajaran: t.mata_pelajaran || t.mataPelajaran || "",
-    statusKepegawaian: t.statusKepegawaian || t.status_kepegawaian || "PNS",
-    noHp: t.no_hp || t.noHp || "",
   };
 };
 
@@ -2237,8 +2235,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         nama: t.nama.trim(),
         nip: t.nip || null,
         jenis_kelamin: t.jenisKelamin || "L",
-        status_kepegawaian: t.statusKepegawaian || null,
-        no_hp: t.noHp || null,
         mata_pelajaran: t.mataPelajaran || null,
         tugas_utama: finalTugasUtama,
       })
@@ -2267,8 +2263,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         nama: t.nama.trim(),
         nip: t.nip || null,
         jenis_kelamin: t.jenisKelamin || "L",
-        status_kepegawaian: t.statusKepegawaian || null,
-        no_hp: t.noHp || null,
         mata_pelajaran: t.mataPelajaran || null,
         tugas_utama: finalTugasUtama,
       })
@@ -2287,58 +2281,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   ) => {
     const schoolId = currentUser?.schoolId;
     if (!schoolId) throw new Error("Sekolah aktif tidak ditemukan.");
-    const payload = items.map((t) => {
-      return {
+
+    if (replaceExisting) {
+      const { error: deleteError } = await supabase
+        .from("teachers")
+        .delete()
+        .eq("school_id", schoolId);
+      if (deleteError) throw deleteError;
+    }
+
+    for (const t of items) {
+      const row = {
+        school_id: schoolId,
         nama: t.nama.trim(),
         nip: t.nip && t.nip.trim() !== "-" ? t.nip.trim() : null,
         jenis_kelamin: t.jenisKelamin || "L",
-        status_kepegawaian: t.statusKepegawaian || "PNS",
-        no_hp: t.noHp || null,
         mata_pelajaran: null,
-        tugas_utama: "Belum ditugaskan",
+        tugas_utama: t.tugasUtama || t.tugas_utama || "Belum ditugaskan",
       };
-    });
 
-    const { error } = await supabase.rpc("import_teachers_atomic", {
-      p_school_id: schoolId,
-      p_items: payload,
-      p_replace_existing: replaceExisting,
-      p_actor_user_id: currentUser?.id || null,
-    });
+      if (row.nip && !replaceExisting) {
+        const { data: existing, error: lookupError } = await supabase
+          .from("teachers")
+          .select("id")
+          .eq("school_id", schoolId)
+          .eq("nip", row.nip)
+          .maybeSingle();
+        if (lookupError) throw lookupError;
 
-    if (error) {
-      console.warn("import_teachers_atomic error, falling back to direct batch insert:", error);
-      if (replaceExisting) {
-        await supabase.from("teachers").delete().eq("school_id", schoolId);
-      }
-      for (const row of payload) {
-        if (row.nip && !replaceExisting) {
-          const { data: existing } = await supabase
+        if (existing) {
+          const { error: updateError } = await supabase
             .from("teachers")
-            .select("id")
-            .eq("school_id", schoolId)
-            .eq("nip", row.nip)
-            .maybeSingle();
-          if (existing) {
-            await supabase
-              .from("teachers")
-              .update({
-                nama: row.nama,
-                jenis_kelamin: row.jenis_kelamin,
-                status_kepegawaian: row.status_kepegawaian,
-                no_hp: row.no_hp,
-                tugas_utama: "Belum ditugaskan",
-                mata_pelajaran: null,
-              })
-              .eq("id", existing.id);
-            continue;
-          }
+            .update({
+              nama: row.nama,
+              jenis_kelamin: row.jenis_kelamin,
+              tugas_utama: row.tugas_utama,
+              mata_pelajaran: row.mata_pelajaran,
+            })
+            .eq("id", existing.id);
+          if (updateError) throw updateError;
+          continue;
         }
-        await supabase.from("teachers").insert({
-          school_id: schoolId,
-          ...row,
-        });
       }
+
+      const { error: insertError } = await supabase.from("teachers").insert(row);
+      if (insertError) throw insertError;
     }
 
     await loadData(currentUser?.id);

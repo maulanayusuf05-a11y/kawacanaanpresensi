@@ -32,8 +32,6 @@ interface ParsedTeacherItem {
   nip: string;
   jenisKelamin: 'L' | 'P';
   tugasUtama: string;
-  statusKepegawaian: string;
-  noHp: string;
   isValid: boolean;
   error?: string;
 }
@@ -211,8 +209,7 @@ export const DataGuruView: React.FC = () => {
       const roleMatch =
         (assign.label || '').toLowerCase().includes(q) ||
         (assign.type || '').toLowerCase().includes(q);
-      const statusMatch = (t.statusKepegawaian || '').toLowerCase().includes(q);
-      return namaMatch || nipMatch || roleMatch || statusMatch;
+      return namaMatch || nipMatch || roleMatch;
     });
   }, [baseTeacherList, searchTerm, classes, subjects, users]);
 
@@ -395,8 +392,6 @@ export const DataGuruView: React.FC = () => {
       tugasUtama: modalRoleType === 'WALI_KELAS' ? 'Wali Kelas' : modalRoleType === 'GURU_MAPEL' ? 'Guru Mapel' : 'Belum ditugaskan',
       tugas_utama: modalRoleType === 'WALI_KELAS' ? 'Wali Kelas' : modalRoleType === 'GURU_MAPEL' ? 'Guru Mapel' : 'Belum ditugaskan',
       mataPelajaran: '',
-      statusKepegawaian: 'PNS',
-      noHp: '',
     };
 
     try {
@@ -437,12 +432,12 @@ export const DataGuruView: React.FC = () => {
 
   // Download Template CSV Guru
   const handleDownloadTemplate = () => {
-    const header = 'NAMA GURU,NIP,JENIS KELAMIN,STATUS KEPEGAWAIAN,NO HP\n';
+    const header = 'NAMA GURU,NIP,JENIS KELAMIN,TUGAS UTAMA\n';
     const sampleRows = [
-      'Budi Santoso, S.Pd.,198503152010011012,L,PNS,081234567890',
-      'Siti Aminah, M.Pd.,199008222015022003,P,PPPK,081398765432',
-      'Rahmat Hidayat, S.Pd.,198811102012011005,L,PNS,085612345678',
-      'Dewi Lestari, S.Pd.,-,P,Honorer,087812345678',
+      'Budi Santoso, S.Pd.,198503152010011012,L,Wali Kelas',
+      'Siti Aminah, M.Pd.,199008222015022003,P,Guru Mapel',
+      'Rahmat Hidayat, S.Pd.,198811102012011005,L,Guru Mapel',
+      'Dewi Lestari, S.Pd.,-,P,Wali Kelas',
     ].join('\n');
 
     const csvContent = '\uFEFF' + header + sampleRows;
@@ -480,7 +475,6 @@ export const DataGuruView: React.FC = () => {
       firstLineLower.includes('guru') ||
       firstLineLower.includes('gender') ||
       firstLineLower.includes('jenis kelamin') ||
-      firstLineLower.includes('status') ||
       firstLineLower.includes('jabatan');
 
     const dataLines = hasHeader ? lines.slice(1) : lines;
@@ -502,33 +496,7 @@ export const DataGuruView: React.FC = () => {
         const rawNip = tokens[1] || '-';
         const rawGender = tokens[2] || 'L';
 
-        let rawStatus = 'PNS';
-        let rawNoHp = '';
-
-        if (tokens.length >= 6) {
-          rawStatus = tokens[4] || 'PNS';
-          rawNoHp = tokens[5] || '';
-        } else if (tokens.length === 5) {
-          const t3Upper = (tokens[3] || '').toUpperCase();
-          if (
-            t3Upper.includes('PNS') ||
-            t3Upper.includes('PPPK') ||
-            t3Upper.includes('HONOR') ||
-            t3Upper.includes('TETAP') ||
-            t3Upper.includes('GTT') ||
-            t3Upper.includes('KONTRAK') ||
-            t3Upper.includes('NON')
-          ) {
-            rawStatus = tokens[3];
-            rawNoHp = tokens[4] || '';
-          } else {
-            rawStatus = tokens[4] || 'PNS';
-            rawNoHp = '';
-          }
-        } else if (tokens.length === 4) {
-          rawStatus = tokens[3] || 'PNS';
-          rawNoHp = '';
-        }
+        const rawTugas = tokens[3] || 'Belum Ditugaskan';
 
         // Clean gender
         let gender: 'L' | 'P' = 'L';
@@ -565,9 +533,7 @@ export const DataGuruView: React.FC = () => {
           nama: rawNama.trim(),
           nip: cleanNip || '-',
           jenisKelamin: gender,
-          tugasUtama: 'Belum Ditugaskan',
-          statusKepegawaian: rawStatus.trim() || 'PNS',
-          noHp: rawNoHp.trim(),
+          tugasUtama: rawTugas.trim() || 'Belum Ditugaskan',
           isValid,
           error,
         });
@@ -613,11 +579,9 @@ export const DataGuruView: React.FC = () => {
       nama: t.nama,
       nip: t.nip && t.nip !== '-' ? t.nip : null,
       jenisKelamin: t.jenisKelamin,
-      tugasUtama: 'Belum ditugaskan',
-      tugas_utama: 'Belum ditugaskan',
+      tugasUtama: t.tugasUtama || 'Belum ditugaskan',
+      tugas_utama: t.tugas_utama || t.tugasUtama || 'Belum ditugaskan',
       mataPelajaran: '',
-      statusKepegawaian: t.statusKepegawaian || 'PNS',
-      noHp: t.noHp || '',
     }));
 
     await importTeachers(payload, importMode === 'replace');
@@ -712,9 +676,6 @@ export const DataGuruView: React.FC = () => {
                     <td className="py-3.5 px-4 font-semibold text-slate-400">{idx + 1}</td>
                     <td className="py-3.5 px-4">
                       <div className="font-bold text-slate-900">{t.nama}</div>
-                      <div className="text-[11px] text-slate-400 font-mono mt-0.5">
-                        {t.statusKepegawaian || 'PNS'}
-                      </div>
                     </td>
                     <td className="py-3.5 px-4 font-mono font-medium text-slate-600">{t.nip || '—'}</td>
                     <td className="py-3.5 px-4 text-center">
@@ -779,7 +740,7 @@ export const DataGuruView: React.FC = () => {
               })
             ) : (
               <tr>
-                <td colSpan={canEdit ? 7 : 6} className="py-8 text-center text-slate-400">
+                <td colSpan={canEdit ? 6 : 5} className="py-8 text-center text-slate-400">
                   Tidak ada data guru yang ditemukan
                 </td>
               </tr>
@@ -927,7 +888,7 @@ export const DataGuruView: React.FC = () => {
                 <div>
                   <h4 className="font-extrabold text-xs text-emerald-950">Gunakan Template Standar</h4>
                   <p className="text-[11px] text-emerald-800 mt-0.5">
-                    Format: <strong>NAMA GURU, NIP, JENIS KELAMIN (L/P), PENUGASAN, STATUS, NO HP</strong>
+                    Format: <strong>NAMA GURU, NIP, JENIS KELAMIN (L/P), TUGAS UTAMA</strong>
                   </p>
                 </div>
                 <button
@@ -1018,9 +979,7 @@ export const DataGuruView: React.FC = () => {
                           <th className="p-2">Nama Guru</th>
                           <th className="p-2">NIP</th>
                           <th className="p-2 text-center w-12">JK</th>
-                          <th className="p-2">Kepegawaian</th>
-                          <th className="p-2">Status Awal</th>
-                          <th className="p-2 text-center w-16">Validasi</th>
+                              <th className="p-2 text-center w-16">Validasi</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -1037,9 +996,6 @@ export const DataGuruView: React.FC = () => {
                               >
                                 {item.jenisKelamin}
                               </span>
-                            </td>
-                            <td className="p-2 text-slate-600 font-medium">
-                              {item.statusKepegawaian || 'PNS'}
                             </td>
                             <td className="p-2">
                               <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">

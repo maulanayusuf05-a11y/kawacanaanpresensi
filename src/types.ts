@@ -91,9 +91,7 @@ export interface Teacher {
   tugasUtama?: 'Wali Kelas' | 'Guru Mapel' | string;
   tugas_utama?: string;
   jabatan?: 'Wali Kelas' | 'Guru Mapel' | string;
-  noHp?: string;
   mataPelajaran?: string;
-  statusKepegawaian?: string;
 }
 
 export type AttendanceStatus = 'Hadir' | 'Sakit' | 'Izin' | 'Alfa' | '' | '-';
