@@ -229,7 +229,7 @@ const dbTeacher = (t: any): Teacher => {
     nama: t.nama || "",
     nip: t.nip || "",
     jenisKelamin: t.jenis_kelamin || t.jenisKelamin || "L",
-    jabatan: t._resolved_role || "Belum ditugaskan",
+    jabatan: t.jabatan || t._resolved_role || "Belum ditugaskan",
     jenisPTK: t.jenis_ptk || t.jenisPTK || "Belum ditugaskan",
     mataPelajaran: t.mata_pelajaran || t.mataPelajaran || "",
     statusKepegawaian: t.status_kepegawaian || t.statusKepegawaian || "PNS",
@@ -2580,6 +2580,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         if (targetClassIds && targetClassIds.length > 1) {
           throw new Error("Satu guru hanya boleh menjadi Wali Kelas untuk satu rombel pada satu tahun ajaran.");
         }
+
+        // Hapus penugasan mapel jika ada pada tahun ajaran aktif
+        await supabase
+          .from("subject_teacher_assignments")
+          .delete()
+          .eq("school_id", schoolId)
+          .eq("teacher_id", teacherId)
+          .eq("academic_year", activeAcademicYear);
+
         if (targetClassIds && targetClassIds.length > 0) {
           const targetClassId = targetClassIds[0];
           const { data: targetClass, error: targetClassError } = await supabase
@@ -2593,7 +2602,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           if (targetClass.academic_year && targetClass.academic_year !== activeAcademicYear) {
             throw new Error(`Rombel tersebut bukan bagian dari tahun ajaran aktif ${activeAcademicYear}.`);
           }
-          // Hanya lepaskan assignment Wali Kelas guru ini pada tahun ajaran aktif.
+          // Lepaskan assignment Wali Kelas guru ini pada tahun ajaran aktif.
           const { error: clearError } = await supabase
             .from("classes")
             .update({ wali_kelas_teacher_id: null })
@@ -2602,8 +2611,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             .eq("wali_kelas_teacher_id", teacherId);
           if (clearError) throw clearError;
 
-          // Satu rombel aktif hanya boleh memiliki satu wali. Assignment baru
-          // menggantikan wali sebelumnya secara eksplisit.
+          // Satu rombel aktif hanya boleh memiliki satu wali.
           const { error: assignError } = await supabase
             .from("classes")
             .update({ wali_kelas_teacher_id: teacherId })
@@ -2612,6 +2620,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             .eq("id", targetClassId);
           if (assignError) throw assignError;
         }
+
+        // Perbarui tabel teachers agar kolom STATUS PENUGASAN (ADMIN) otomatis tersimpan & terbaca
+        await supabase
+          .from("teachers")
+          .update({
+            jabatan: "Wali Kelas",
+            jenis_ptk: "Wali Kelas",
+            mata_pelajaran: null,
+          })
+          .eq("id", teacherId)
+          .eq("school_id", schoolId);
+
+        // Update state lokal teachers secara instan
+        setTeachers((prev) =>
+          prev.map((t) =>
+            t.id === teacherId
+              ? {
+                  ...t,
+                  jabatan: "Wali Kelas",
+                  jenisPTK: "Wali Kelas",
+                  mataPelajaran: "",
+                }
+              : t,
+          ),
+        );
 
         const linkedUser = users.find((u) => u.teacherId === teacherId);
         if (linkedUser) {
@@ -2622,6 +2655,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             .from("profiles")
             .update({
               role: "WALI KELAS",
+              subject_id: null,
+              subject_name: null,
               class_ids: targetClassIds || userClassIds,
             })
             .eq("id", linkedUser.id)
@@ -2633,6 +2668,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 
         if (!subjectId) throw new Error("Mata pelajaran wajib dipilih untuk assignment Guru Mapel.");
         if (!chosenSubject) throw new Error("Mata pelajaran tidak ditemukan pada sekolah aktif.");
+
+        // Lepas wali kelas jika sebelumnya ditugaskan sebagai wali kelas
+        await supabase
+          .from("classes")
+          .update({ wali_kelas_teacher_id: null })
+          .eq("school_id", schoolId)
+          .eq("academic_year", activeAcademicYear)
+          .eq("wali_kelas_teacher_id", teacherId);
+
         const uniqueTargetClassIds = [...new Set((targetClassIds || []).filter(Boolean))];
         if (uniqueTargetClassIds.length) {
           const { data: targetClasses, error: targetClassesError } = await supabase
@@ -2647,14 +2691,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           }
         }
 
-        // Assignment Guru + Mapel adalah relasi tahunan. Kita ganti hanya
-        // assignment untuk kombinasi guru-mapel-tahun ini.
+        // Assignment Guru + Mapel
         const { error: staDeleteError } = await supabase
           .from("subject_teacher_assignments")
           .delete()
           .eq("school_id", schoolId)
           .eq("teacher_id", teacherId)
-          .eq("subject_id", subjectId)
           .eq("academic_year", activeAcademicYear);
         if (staDeleteError) throw staDeleteError;
 
@@ -2668,8 +2710,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           });
         if (staErr) throw staErr;
 
-        // Selalu sinkronkan kelas. Array kosong berarti guru tidak mengajar
-        // mapel tersebut pada rombel mana pun tahun ini.
+        // Sinkronkan kelas
         const { error: scaDeleteError } = await supabase
           .from("subject_class_assignments")
           .delete()
@@ -2690,6 +2731,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             .insert(classInserts);
           if (scaInsertError) throw scaInsertError;
         }
+
+        // Perbarui tabel teachers agar kolom STATUS PENUGASAN (ADMIN) otomatis tersimpan & terbaca
+        await supabase
+          .from("teachers")
+          .update({
+            jabatan: "Guru Mapel",
+            jenis_ptk: "Guru Mapel",
+            mata_pelajaran: subjectName || null,
+          })
+          .eq("id", teacherId)
+          .eq("school_id", schoolId);
+
+        // Update state lokal teachers secara instan
+        setTeachers((prev) =>
+          prev.map((t) =>
+            t.id === teacherId
+              ? {
+                  ...t,
+                  jabatan: "Guru Mapel",
+                  jenisPTK: "Guru Mapel",
+                  mataPelajaran: subjectName || "",
+                }
+              : t,
+          ),
+        );
 
         const linkedUser = users.find((u) => u.teacherId === teacherId);
         if (linkedUser) {
@@ -2718,6 +2784,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           .eq("school_id", schoolId)
           .eq("teacher_id", teacherId)
           .eq("academic_year", activeAcademicYear);
+
+        // Perbarui tabel teachers agar kolom STATUS PENUGASAN (ADMIN) otomatis tersimpan & terbaca
+        await supabase
+          .from("teachers")
+          .update({
+            jabatan: "Belum ditugaskan",
+            jenis_ptk: "Belum ditugaskan",
+            mata_pelajaran: null,
+          })
+          .eq("id", teacherId)
+          .eq("school_id", schoolId);
+
+        // Update state lokal teachers secara instan
+        setTeachers((prev) =>
+          prev.map((t) =>
+            t.id === teacherId
+              ? {
+                  ...t,
+                  jabatan: "Belum ditugaskan",
+                  jenisPTK: "Belum ditugaskan",
+                  mataPelajaran: "",
+                }
+              : t,
+          ),
+        );
 
         const linkedUser = users.find((u) => u.teacherId === teacherId);
         if (linkedUser) {

@@ -109,7 +109,7 @@ export const DataGuruView: React.FC = () => {
   const [pasteText, setPasteText] = useState('');
   const [parsedTeachers, setParsedTeachers] = useState<ParsedTeacherItem[]>([]);
 
-  // Helper to get detailed assignment info for a teacher based on actual assignments
+  // Helper to get detailed assignment info for a teacher based on actual assignments & role
   const getTeacherAssignmentDetails = (t: Teacher) => {
     if (!t) {
       return {
@@ -118,7 +118,7 @@ export const DataGuruView: React.FC = () => {
         badgeColor: 'bg-slate-100 text-slate-600 border-slate-200',
         badges: [
           {
-            type: 'Belum Ditugaskan',
+            type: 'Belum Ditugaskan' as const,
             label: 'BELUM DITUGASKAN',
             badgeColor: 'bg-slate-100 text-slate-600 border-slate-200',
           },
@@ -134,6 +134,24 @@ export const DataGuruView: React.FC = () => {
       (s) => s.teacherId === t.id
     );
 
+    const linkedAccount = (users || []).find(
+      (u) =>
+        u.teacherId === t.id ||
+        (t.nip && t.nip !== '-' && (u.username || '').toLowerCase() === t.nip.toLowerCase()) ||
+        (u.name || '').trim().toLowerCase() === (t.nama || '').trim().toLowerCase()
+    );
+
+    const isWaliByRole =
+      (t.jabatan || '').toLowerCase().includes('wali') ||
+      (t.jenisPTK || '').toLowerCase().includes('wali') ||
+      linkedAccount?.role === 'WALI KELAS';
+
+    const isMapelByRole =
+      (t.jabatan || '').toLowerCase().includes('mapel') ||
+      (t.jenisPTK || '').toLowerCase().includes('mapel') ||
+      linkedAccount?.role === 'GURU MAPEL' ||
+      Boolean(t.mataPelajaran && t.mataPelajaran.trim());
+
     const badges: Array<{
       type: 'Wali Kelas' | 'Guru Mapel' | 'Belum Ditugaskan';
       label: string;
@@ -148,6 +166,12 @@ export const DataGuruView: React.FC = () => {
           badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200',
         });
       });
+    } else if (isWaliByRole) {
+      badges.push({
+        type: 'Wali Kelas',
+        label: 'Wali Kelas',
+        badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+      });
     }
 
     if (assignedSubjects.length > 0) {
@@ -161,6 +185,13 @@ export const DataGuruView: React.FC = () => {
           label: `${sub.name || 'Guru Mapel'}${classText}`,
           badgeColor: 'bg-amber-50 text-amber-800 border-amber-200',
         });
+      });
+    } else if (isMapelByRole && !isWaliByRole) {
+      const subjectName = t.mataPelajaran || linkedAccount?.subjectName || '';
+      badges.push({
+        type: 'Guru Mapel',
+        label: subjectName ? `Guru Mapel (${subjectName})` : 'Guru Mapel',
+        badgeColor: 'bg-amber-50 text-amber-800 border-amber-200',
       });
     }
 
@@ -198,7 +229,7 @@ export const DataGuruView: React.FC = () => {
       const statusMatch = (t.statusKepegawaian || '').toLowerCase().includes(q);
       return namaMatch || nipMatch || roleMatch || statusMatch;
     });
-  }, [baseTeacherList, searchTerm, classes, subjects]);
+  }, [baseTeacherList, searchTerm, classes, subjects, users]);
 
   // Helper untuk mengecek akun guru
   const getTeacherAccount = (t: Teacher) => {
@@ -238,20 +269,21 @@ export const DataGuruView: React.FC = () => {
     setNip(t.nip);
     setJenisKelamin(t.jenisKelamin);
 
-    // Initial state for penugasan in edit modal based purely on assignments
+    // Initial state for penugasan in edit modal based on assignments and current teacher role
     const homeroomClass = classes.find((c) => c.waliKelasTeacherId === t.id);
     const assignedSubject = subjects.find((s) => s.teacherId === t.id);
 
-    if (homeroomClass) {
+    if (homeroomClass || (t.jabatan || '').toLowerCase().includes('wali')) {
       setModalRoleType('WALI_KELAS');
-      setModalWaliClassId(homeroomClass.id);
+      setModalWaliClassId(homeroomClass ? homeroomClass.id : '');
       setModalSubjectId('');
       setModalMapelClassIds([]);
-    } else if (assignedSubject) {
+    } else if (assignedSubject || (t.jabatan || '').toLowerCase().includes('mapel') || Boolean(t.mataPelajaran)) {
       setModalRoleType('GURU_MAPEL');
       setModalWaliClassId('');
-      setModalSubjectId(assignedSubject.id);
-      setModalMapelClassIds(assignedSubject.targetClassIds || []);
+      const sub = assignedSubject || subjects.find(s => s.name.toLowerCase() === (t.mataPelajaran || '').toLowerCase());
+      setModalSubjectId(sub ? sub.id : '');
+      setModalMapelClassIds(sub?.targetClassIds || []);
     } else {
       setModalRoleType('NONE');
       setModalWaliClassId('');
@@ -267,16 +299,17 @@ export const DataGuruView: React.FC = () => {
     const homeroomClass = classes.find((c) => c.waliKelasTeacherId === t.id);
     const assignedSubject = subjects.find((s) => s.teacherId === t.id);
 
-    if (homeroomClass) {
+    if (homeroomClass || (t.jabatan || '').toLowerCase().includes('wali')) {
       setAssignRoleType('WALI_KELAS');
-      setAssignWaliClassId(homeroomClass.id);
+      setAssignWaliClassId(homeroomClass ? homeroomClass.id : '');
       setAssignSubjectId('');
       setAssignMapelClassIds([]);
-    } else if (assignedSubject) {
+    } else if (assignedSubject || (t.jabatan || '').toLowerCase().includes('mapel') || Boolean(t.mataPelajaran)) {
       setAssignRoleType('GURU_MAPEL');
       setAssignWaliClassId('');
-      setAssignSubjectId(assignedSubject.id);
-      setAssignMapelClassIds(assignedSubject.targetClassIds || []);
+      const sub = assignedSubject || subjects.find(s => s.name.toLowerCase() === (t.mataPelajaran || '').toLowerCase());
+      setAssignSubjectId(sub ? sub.id : '');
+      setAssignMapelClassIds(sub?.targetClassIds || []);
     } else {
       setAssignRoleType('NONE');
       setAssignWaliClassId('');
@@ -389,13 +422,17 @@ export const DataGuruView: React.FC = () => {
       return;
     }
 
+    const chosenSubjectName = modalRoleType === 'GURU_MAPEL' 
+      ? (subjects.find((s) => s.id === modalSubjectId)?.name || '') 
+      : '';
+
     const payload = {
       nama: nama.trim(),
       nip: nip.trim(),
       jenisKelamin,
-      jabatan: '',
-      jenisPTK: '',
-      mataPelajaran: '',
+      jabatan: modalRoleType === 'WALI_KELAS' ? 'Wali Kelas' : modalRoleType === 'GURU_MAPEL' ? 'Guru Mapel' : 'Belum ditugaskan',
+      jenisPTK: modalRoleType === 'WALI_KELAS' ? 'Wali Kelas' : modalRoleType === 'GURU_MAPEL' ? 'Guru Mapel' : 'Guru',
+      mataPelajaran: chosenSubjectName,
       statusKepegawaian: 'PNS',
       noHp: '',
     };
@@ -416,7 +453,6 @@ export const DataGuruView: React.FC = () => {
           modalRoleType,
           modalSubjectId
         );
-        await loadData(currentUser?.id);
       }
 
       setOpen(false);
