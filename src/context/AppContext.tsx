@@ -2560,22 +2560,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       const activeAcademicYear = schoolProfile.tahunPelajaran || "2026/2027";
 
       if (roleType === "WALI_KELAS") {
-        if (targetClassIds && targetClassIds.length > 0) {
-          const targetClassId = targetClassIds[0];
-          // Clear any previous wali kelas assignment for this teacher in this year
-          await supabase
+        const targetClassId = targetClassIds?.[0] || null;
+        if (!targetClassId) {
+          throw new Error("Wali Kelas harus memiliki satu rombel.");
+        }
+        // Clear any previous wali kelas assignment for this teacher in this year
+          const { error: clearWaliError } = await supabase
             .from("classes")
             .update({ wali_kelas_teacher_id: null })
             .eq("school_id", schoolId)
+            .eq("academic_year", activeAcademicYear)
             .eq("wali_kelas_teacher_id", teacherId);
+          if (clearWaliError) throw clearWaliError;
 
-          // Assign to target class
-          await supabase
+          // Assign to target class only in the active academic year.
+          const { data: assignedClass, error: assignWaliError } = await supabase
             .from("classes")
             .update({ wali_kelas_teacher_id: teacherId })
             .eq("school_id", schoolId)
-            .eq("id", targetClassId);
-        }
+            .eq("academic_year", activeAcademicYear)
+            .eq("id", targetClassId)
+            .select("id")
+            .maybeSingle();
+          if (assignWaliError) throw assignWaliError;
+          if (!assignedClass) {
+            throw new Error("Kelas wali tidak ditemukan pada tahun ajaran aktif.");
+          }
 
         const linkedUser = users.find((u) => u.teacherId === teacherId);
         if (linkedUser) {
@@ -2595,44 +2605,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         const chosenSubject = subjects.find((s) => s.id === subjectId);
         const subjectName = chosenSubject?.name || null;
 
-        if (subjectId) {
-          await supabase
-            .from("subject_teacher_assignments")
-            .delete()
-            .eq("school_id", schoolId)
-            .eq("teacher_id", teacherId)
-            .eq("subject_id", subjectId)
-            .eq("academic_year", activeAcademicYear);
-
-          const { error: staErr } = await supabase
-            .from("subject_teacher_assignments")
-            .insert({
-              school_id: schoolId,
-              subject_id: subjectId,
-              teacher_id: teacherId,
-              academic_year: activeAcademicYear,
-            });
-          if (staErr) throw staErr;
-
-          if (Array.isArray(targetClassIds) && targetClassIds.length > 0) {
-            await supabase
-              .from("subject_class_assignments")
-              .delete()
-              .eq("school_id", schoolId)
-              .eq("subject_id", subjectId)
-              .eq("academic_year", activeAcademicYear);
-
-            const classInserts = targetClassIds.map((cid) => ({
-              school_id: schoolId,
-              subject_id: subjectId,
-              class_id: cid,
-              academic_year: activeAcademicYear,
-            }));
-            await supabase
-              .from("subject_class_assignments")
-              .insert(classInserts);
-          }
+        if (!subjectId) {
+          throw new Error("Guru Mapel harus memiliki mata pelajaran.");
         }
+        const uniqueTargetClassIds = [...new Set(targetClassIds || [])];
+        if (uniqueTargetClassIds.length === 0) {
+          throw new Error("Guru Mapel harus memiliki minimal satu rombel yang diajar.");
+        }
+
+        // Validasi semua kelas berasal dari sekolah + tahun ajaran aktif.
+        const { data: validClasses, error: classCheckError } = await supabase
+          .from("classes")
+          .select("id")
+          .eq("school_id", schoolId)
+          .eq("academic_year", activeAcademicYear)
+          .in("id", uniqueTargetClassIds);
+        if (classCheckError) throw classCheckError;
+        if ((validClasses || []).length !== uniqueTargetClassIds.length) {
+          throw new Error("Ada kelas target yang tidak termasuk sekolah atau tahun ajaran aktif.");
+        }
+
+        // Gunakan RPC yang sudah menjadi jalur normal aplikasi agar assignment
+        // guru + mapel + rombel tersimpan konsisten dalam satu operasi database.
+        const { error: assignmentError } = await supabase.rpc("replace_subject_assignment", {
+          p_school_id: schoolId,
+          p_subject_id: subjectId,
+          p_teacher_id: teacherId,
+          p_class_ids: uniqueTargetClassIds,
+          p_academic_year: activeAcademicYear,
+          p_actor_user_id: currentUser?.id || null,
+        });
+        if (assignmentError) throw assignmentError;
 
         const linkedUser = users.find((u) => u.teacherId === teacherId);
         if (linkedUser) {
@@ -2648,18 +2651,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             .eq("school_id", schoolId);
         }
       } else {
-        await supabase
+        const { error: clearWaliError } = await supabase
           .from("classes")
           .update({ wali_kelas_teacher_id: null })
           .eq("school_id", schoolId)
+          .eq("academic_year", activeAcademicYear)
           .eq("wali_kelas_teacher_id", teacherId);
+        if (clearWaliError) throw clearWaliError;
 
-        await supabase
+        const { data: teacherSubjectRows, error: subjectLookupError } = await supabase
+          .from("subject_teacher_assignments")
+          .select("subject_id")
+          .eq("school_id", schoolId)
+          .eq("teacher_id", teacherId)
+          .eq("academic_year", activeAcademicYear);
+        if (subjectLookupError) throw subjectLookupError;
+
+        const teacherSubjectIds = (teacherSubjectRows || []).map((r: any) => r.subject_id);
+        if (teacherSubjectIds.length) {
+          const { error: clearSubjectClassesError } = await supabase
+            .from("subject_class_assignments")
+            .delete()
+            .eq("school_id", schoolId)
+            .eq("academic_year", activeAcademicYear)
+            .in("subject_id", teacherSubjectIds);
+          if (clearSubjectClassesError) throw clearSubjectClassesError;
+        }
+
+        const { error: clearSubjectTeacherError } = await supabase
           .from("subject_teacher_assignments")
           .delete()
           .eq("school_id", schoolId)
           .eq("teacher_id", teacherId)
           .eq("academic_year", activeAcademicYear);
+        if (clearSubjectTeacherError) throw clearSubjectTeacherError;
 
         const linkedUser = users.find((u) => u.teacherId === teacherId);
         if (linkedUser) {

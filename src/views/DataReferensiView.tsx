@@ -58,6 +58,26 @@ export const DataReferensiView: React.FC = () => {
   return (
     <div className="w-full max-w-6xl mx-auto px-4 sm:px-8 py-6 space-y-5 animate-in fade-in duration-200">
       {/* Top Bar */}
+      <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4">
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
+            <BookMarked size={17} />
+          </div>
+          <div className="min-w-0">
+            <h3 className="text-sm font-black text-slate-900">Pusat Data Referensi Sekolah</h3>
+            <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+              Urutan pengisian yang disarankan: <strong>Guru → Kelas & Wali Kelas → Siswa → Mata Pelajaran → Guru Mapel & Rombel yang diajar</strong>.
+              Kelas dan siswa terhubung lewat <strong>class_id</strong>, sedangkan Guru Mapel terhubung lewat assignment mapel + daftar rombel pada Tahun Pelajaran aktif.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-bold">
+              <span className="px-2 py-1 rounded-lg bg-white border border-indigo-100 text-indigo-700">1 guru = identitas pendidik</span>
+              <span className="px-2 py-1 rounded-lg bg-white border border-emerald-100 text-emerald-700">1 rombel = 1 wali</span>
+              <span className="px-2 py-1 rounded-lg bg-white border border-amber-100 text-amber-700">mapel = guru + rombel sasaran</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="flex items-center justify-between gap-3">
         <button
           onClick={() => setActiveView('dashboard')}

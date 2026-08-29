@@ -290,10 +290,18 @@ export const DataGuruView: React.FC = () => {
     if (!assigningTeacher) return;
     setIsSavingAssignment(true);
     try {
+      const assignmentClassIds =
+        assignRoleType === 'WALI_KELAS'
+          ? (assignWaliClassId ? [assignWaliClassId] : [])
+          : assignRoleType === 'GURU_MAPEL'
+            ? assignMapelClassIds
+            : [];
+
       await executeTeacherAssignment(
         assigningTeacher.id,
         assignRoleType,
-        assignSubjectId
+        assignSubjectId || undefined,
+        assignmentClassIds
       );
       setAssigningTeacher(null);
     } catch (err: any) {
@@ -411,10 +419,18 @@ export const DataGuruView: React.FC = () => {
 
       // If in school workspace as Admin and penugasan is configured in modal
       if (isAdmin && !isPersonalWorkspace && targetTeacherId && modalRoleType) {
+        const assignmentClassIds =
+          modalRoleType === 'WALI_KELAS'
+            ? (modalWaliClassId ? [modalWaliClassId] : [])
+            : modalRoleType === 'GURU_MAPEL'
+              ? modalMapelClassIds
+              : [];
+
         await executeTeacherAssignment(
           targetTeacherId,
           modalRoleType,
-          modalSubjectId
+          modalSubjectId || undefined,
+          assignmentClassIds
         );
         await loadData(currentUser?.id);
       }
@@ -639,7 +655,7 @@ export const DataGuruView: React.FC = () => {
             <p className="text-xs text-slate-500">
               {isPersonalWorkspace
                 ? 'Daftar data pendidik di Ruang Kerja Individu. Anda dapat menambahkan, mengedit, atau menghapus data pendidik.'
-                : 'Master pendidik sekolah. Penugasan Wali Kelas dan Guru Mapel bersifat eksklusif per tahun ajaran.'}
+                : 'Master pendidik sekolah. Penugasan ditetapkan berdasarkan Tahun Pelajaran aktif: 1 kelas = 1 Wali Kelas, dan 1 Guru Mapel = 1 Mapel + daftar rombel yang diajar.'}
             </p>
           </div>
         </div>
@@ -859,15 +875,33 @@ export const DataGuruView: React.FC = () => {
               </div>
 
               {assignRoleType === 'WALI_KELAS' && (
-                <div className="p-3.5 bg-emerald-50/70 rounded-xl border border-emerald-200 space-y-2 animate-in fade-in">
-                  <div className="flex items-start gap-2.5">
-                    <CheckCircle2 size={18} className="text-emerald-600 shrink-0 mt-0.5" />
-                    <div>
-                      <h4 className="font-bold text-emerald-950 text-xs">Peran Ditetapkan sebagai Wali Kelas</h4>
-                      <p className="text-[11px] text-emerald-800 mt-1 leading-relaxed">
-                        Guru ini akan terdaftar sebagai <strong>Wali Kelas</strong>. Penentuan rombel/nama kelas binaan dilakukan pada menu <strong>Data Kelas</strong> (cukup membuat atau memilih kelas di menu Data Kelas).
-                      </p>
-                    </div>
+                <div className="p-3.5 bg-emerald-50/70 rounded-xl border border-emerald-200 space-y-2.5 animate-in fade-in">
+                  <div>
+                    <label className="block font-bold text-emerald-950 text-xs mb-1">
+                      Pilih Rombel yang Menjadi Tanggung Jawab *
+                    </label>
+                    <select
+                      required
+                      value={assignWaliClassId}
+                      onChange={(e) => setAssignWaliClassId(e.target.value)}
+                      className="w-full px-3 py-2 border border-emerald-300 rounded-xl bg-white font-bold text-slate-800 focus:border-emerald-600 outline-none text-xs"
+                    >
+                      <option value="">-- Pilih Kelas --</option>
+                      {classes
+                        .slice()
+                        .sort((a, b) => a.grade - b.grade || a.name.localeCompare(b.name))
+                        .map((cls) => (
+                          <option key={cls.id} value={cls.id}>
+                            {cls.name} • Tingkat {cls.grade}
+                            {cls.waliKelasTeacherId && cls.waliKelasTeacherId !== assigningTeacher?.id
+                              ? ` — Wali: ${cls.waliKelasName || 'Guru lain'}`
+                              : ''}
+                          </option>
+                        ))}
+                    </select>
+                    <p className="text-[11px] text-emerald-800 mt-1.5 leading-relaxed">
+                      Sistem akan menjaga agar satu rombel hanya memiliki satu Wali Kelas pada tahun ajaran aktif.
+                    </p>
                   </div>
                 </div>
               )}
@@ -892,10 +926,38 @@ export const DataGuruView: React.FC = () => {
                       ))}
                     </select>
                   </div>
-                  <div className="flex items-start gap-2 pt-1 border-t border-amber-200/60">
-                    <Info size={15} className="text-amber-600 shrink-0 mt-0.5" />
-                    <p className="text-[11px] text-amber-800 leading-relaxed">
-                      Penetapan kelas target yang diajar oleh Guru Mapel dilakukan secara fleksibel melalui menu <strong>Data Kelas</strong>.
+                  <div className="pt-1 border-t border-amber-200/60">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block font-bold text-amber-950 text-xs">
+                        Kelas yang Diajar *
+                      </label>
+                      <div className="flex gap-2 text-[10px] font-bold">
+                        <button type="button" className="text-amber-700 hover:underline" onClick={() => setAssignMapelClassIds(classes.map((c) => c.id))}>Pilih semua</button>
+                        <button type="button" className="text-slate-500 hover:underline" onClick={() => setAssignMapelClassIds([])}>Kosongkan</button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-40 overflow-y-auto pr-1">
+                      {classes.map((cls) => {
+                        const checked = assignMapelClassIds.includes(cls.id);
+                        return (
+                          <label key={cls.id} className={`flex items-center gap-2 p-2 rounded-lg border text-[11px] font-bold cursor-pointer ${
+                            checked ? 'bg-amber-100 border-amber-400 text-amber-950' : 'bg-white border-amber-200 text-slate-600'
+                          }`}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => setAssignMapelClassIds((prev) =>
+                                e.target.checked ? [...new Set([...prev, cls.id])] : prev.filter((id) => id !== cls.id)
+                              )}
+                              className="rounded text-amber-600 focus:ring-amber-500"
+                            />
+                            <span className="truncate">{cls.name}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[11px] text-amber-800 mt-1.5 leading-relaxed">
+                      Kelas target disimpan bersama assignment Guru Mapel. Ini menjadi sumber akses guru terhadap siswa dan presensi mapel.
                     </p>
                   </div>
                 </div>
@@ -1260,9 +1322,16 @@ export const DataGuruView: React.FC = () => {
                     <CheckCircle2 size={16} className="text-emerald-600 shrink-0 mt-0.5" />
                     <div>
                       <h4 className="font-bold text-emerald-950 text-xs">Penugasan Wali Kelas</h4>
-                      <p className="text-[11px] text-emerald-800 leading-relaxed">
-                        Data guru akan terdaftar sebagai <strong>Wali Kelas</strong>. Penetapan rombel/nama kelas binaan dapat dilakukan langsung di menu <strong>Data Kelas</strong>.
-                      </p>
+                      <label className="block font-bold text-emerald-950 text-[11px] mb-1">Rombel Wali Kelas *</label>
+                      <select
+                        required
+                        value={modalWaliClassId}
+                        onChange={(e) => setModalWaliClassId(e.target.value)}
+                        className="w-full px-3 py-2 border border-emerald-300 rounded-xl bg-white font-bold text-slate-800 outline-none"
+                      >
+                        <option value="">-- Pilih Kelas --</option>
+                        {classes.map((cls) => <option key={cls.id} value={cls.id}>{cls.name} • Tingkat {cls.grade}</option>)}
+                      </select>
                     </div>
                   </div>
                 </div>
@@ -1288,11 +1357,34 @@ export const DataGuruView: React.FC = () => {
                       ))}
                     </select>
                   </div>
-                  <div className="flex items-start gap-2 pt-1 border-t border-amber-200/60">
-                    <Info size={14} className="text-amber-600 shrink-0 mt-0.5" />
-                    <p className="text-[11px] text-amber-800 leading-relaxed">
-                      Kelas-kelas target yang diajar oleh Guru Mapel ini dapat ditentukan secara lengkap di menu <strong>Data Kelas</strong>.
-                    </p>
+                  <div className="pt-1 border-t border-amber-200/60">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block font-bold text-amber-950 text-[11px]">Kelas yang Diajar *</label>
+                      <div className="flex gap-2 text-[10px] font-bold">
+                        <button type="button" className="text-amber-700 hover:underline" onClick={() => setModalMapelClassIds(classes.map((c) => c.id))}>Pilih semua</button>
+                        <button type="button" className="text-slate-500 hover:underline" onClick={() => setModalMapelClassIds([])}>Kosongkan</button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-36 overflow-y-auto pr-1">
+                      {classes.map((cls) => {
+                        const checked = modalMapelClassIds.includes(cls.id);
+                        return (
+                          <label key={cls.id} className={`flex items-center gap-2 p-2 rounded-lg border text-[10px] font-bold cursor-pointer ${
+                            checked ? 'bg-amber-100 border-amber-400 text-amber-950' : 'bg-white border-amber-200 text-slate-600'
+                          }`}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => setModalMapelClassIds((prev) =>
+                                e.target.checked ? [...new Set([...prev, cls.id])] : prev.filter((id) => id !== cls.id)
+                              )}
+                              className="rounded text-amber-600"
+                            />
+                            <span className="truncate">{cls.name}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               )}
