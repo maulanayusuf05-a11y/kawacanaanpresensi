@@ -75,61 +75,19 @@ const emptyUser=(p:any):UserAccount=>{
   };
 };
 const dbStudent=(s:any):Student=>({id:s.id,nisn:s.nisn,nama:s.nama,gender:s.gender,classId:s.class_id||null,className:s.class_name||''});
-const dbTeacher=(t:any):Teacher=>{
-  const jabRaw = String(t.jabatan || '').trim();
-  const jenisRaw = String(t.jenis_ptk || '').trim();
-  const mapelRaw = String(t.mata_pelajaran || '').trim();
-
-  let resolvedJabatan: 'Wali Kelas' | 'Guru Mapel' | 'Kepala Sekolah' | 'Guru' = 'Guru';
-  
-  if (jabRaw) {
-    if (jabRaw.toLowerCase().includes('kepala')) {
-      resolvedJabatan = 'Kepala Sekolah';
-    } else if (jabRaw.toLowerCase().includes('mapel') || jabRaw.toLowerCase().includes('mata pelajaran') || jabRaw.toLowerCase().includes('bidang studi')) {
-      resolvedJabatan = 'Guru Mapel';
-    } else if (jabRaw.toLowerCase().includes('wali') || jabRaw.toLowerCase().includes('kelas')) {
-      resolvedJabatan = 'Wali Kelas';
-    } else {
-      resolvedJabatan = jabRaw === 'Guru Mapel' ? 'Guru Mapel' : 'Wali Kelas';
-    }
-  } else if (jenisRaw) {
-    if (jenisRaw.toLowerCase().includes('kepala')) {
-      resolvedJabatan = 'Kepala Sekolah';
-    } else if (jenisRaw.toLowerCase().includes('mapel') || jenisRaw.toLowerCase().includes('mata pelajaran')) {
-      resolvedJabatan = 'Guru Mapel';
-    } else if (jenisRaw.toLowerCase().includes('wali') || jenisRaw.toLowerCase().includes('kelas')) {
-      resolvedJabatan = 'Wali Kelas';
-    } else {
-      resolvedJabatan = jenisRaw === 'Guru Mapel' ? 'Guru Mapel' : 'Wali Kelas';
-    }
-  } else if (mapelRaw) {
-    if (mapelRaw.toLowerCase().includes('kepala')) {
-      resolvedJabatan = 'Kepala Sekolah';
-    } else if (mapelRaw === 'Guru Mapel' || mapelRaw.toLowerCase() === 'guru mapel' || mapelRaw.toLowerCase().includes('mapel') || mapelRaw.toLowerCase().includes('mata pelajaran')) {
-      resolvedJabatan = 'Guru Mapel';
-    } else if (mapelRaw.toLowerCase().includes('wali') || mapelRaw.toLowerCase().includes('kelas')) {
-      resolvedJabatan = 'Wali Kelas';
-    } else if (mapelRaw && mapelRaw !== '-' && mapelRaw !== 'PNS' && mapelRaw !== 'PPPK' && mapelRaw !== 'Honorer') {
-      resolvedJabatan = 'Guru Mapel';
-    } else {
-      resolvedJabatan = 'Wali Kelas';
-    }
-  }
-
-  const finalJabatan = t.jabatan || resolvedJabatan;
-
-  return {
-    id: t.id,
-    nama: t.nama || '',
-    nip: t.nip || '',
-    jenisKelamin: t.jenis_kelamin || t.jenisKelamin || 'L',
-    jabatan: finalJabatan,
-    jenisPTK: t.jenis_ptk || t.jenisPTK || finalJabatan,
-    mataPelajaran: t.mata_pelajaran || t.mataPelajaran || finalJabatan,
-    statusKepegawaian: t.status_kepegawaian || t.statusKepegawaian || 'PNS',
-    noHp: t.no_hp || t.noHp || '',
-  };
-};
+const dbTeacher=(t:any):Teacher=>({
+  id: t.id,
+  nama: t.nama || '',
+  nip: t.nip || '',
+  jenisKelamin: t.jenis_kelamin || t.jenisKelamin || 'L',
+  // Role/assignment is resolved only from authoritative assignment tables in loadData.
+  // teachers.jabatan is legacy metadata and is never used as a source of truth.
+  jabatan: t._resolved_role || 'Belum ditugaskan',
+  jenisPTK: t.jenis_ptk || t.jenisPTK || '',
+  mataPelajaran: t.mata_pelajaran || t.mataPelajaran || '',
+  statusKepegawaian: t.status_kepegawaian || t.statusKepegawaian || 'PNS',
+  noHp: t.no_hp || t.noHp || '',
+});
 
 const dbSubject=(x:any, teacherMap?:Map<string, any>, classMap?:Map<string, any>, scheduleMap?:Map<string, any[]>):Subject=>{
   const teacher = x.teacher_id ? teacherMap?.get(x.teacher_id) : null;
@@ -506,9 +464,10 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
    
    const subjectTeacherScope = new Map<string, string[]>();
    const subjectClassScope = new Map<string, string[]>();
+   const activeAcademicYear = String(school.data?.tahun_pelajaran || baseProfile?.tahun_pelajaran || '2026/2027').trim() || '2026/2027';
    const [scopeTeacherRows, scopeClassRows] = await Promise.all([
-     supabase.from('subject_teacher_assignments').select('subject_id,teacher_id,academic_year').eq('school_id', schoolId),
-     supabase.from('subject_class_assignments').select('subject_id,class_id,academic_year').eq('school_id', schoolId),
+     supabase.from('subject_teacher_assignments').select('subject_id,teacher_id,academic_year').eq('school_id', schoolId).eq('academic_year', activeAcademicYear),
+     supabase.from('subject_class_assignments').select('subject_id,class_id,academic_year').eq('school_id', schoolId).eq('academic_year', activeAcademicYear),
    ]);
    if (scopeTeacherRows.error) throw scopeTeacherRows.error;
    if (scopeClassRows.error) throw scopeClassRows.error;
@@ -524,31 +483,35 @@ export const AppProvider:React.FC<{children:React.ReactNode}>=({children})=>{
    });
    // Assignment tables are the source of truth for teacher assignment role.
    const assignmentRoleByTeacher = new Map<string,'Wali Kelas'|'Guru Mapel'>();
-   classList.filter((c:any) => c.academicYear === (school.data?.tahun_pelajaran || baseProfile?.tahun_pelajaran || '2026/2027')).forEach((c:any) => {
+   classList.filter((c:any) => c.academicYear === activeAcademicYear).forEach((c:any) => {
      if (c.waliKelasTeacherId) assignmentRoleByTeacher.set(c.waliKelasTeacherId, 'Wali Kelas');
    });
    (scopeTeacherRows.data || []).forEach((a:any) => {
      if (!assignmentRoleByTeacher.has(a.teacher_id)) assignmentRoleByTeacher.set(a.teacher_id, 'Guru Mapel');
    });
-   const authoritativeTeachers = baseTeachers.map((t:any) => ({...t, jabatan: assignmentRoleByTeacher.get(t.id) || t.jabatan || 'Guru'}));
+   const authoritativeTeachers = baseTeachers.map((t:any) => ({...t, jabatan: assignmentRoleByTeacher.get(t.id) || 'Belum ditugaskan'}));
    setTeachers(authoritativeTeachers);
    const hydratedUsers=(allProfiles.data||[]).map((p:any)=>{
      const u=emptyUser(p);
+     const assignmentRole = u.teacherId ? assignmentRoleByTeacher.get(u.teacherId) : undefined;
+     const effectiveRole = assignmentRole || u.role;
      let ids:string[]=[];
-     if (u.role === 'WALI KELAS' && u.teacherId) {
+     if (effectiveRole === 'Wali Kelas' && u.teacherId) {
        ids = classList.filter((c:any) => c.waliKelasTeacherId === u.teacherId).map((c:any) => c.id);
-     } else if (u.role === 'GURU MAPEL' && u.teacherId) {
+     } else if (effectiveRole === 'Guru Mapel' && u.teacherId) {
        const unique = new Set<string>();
        (subjectTeacherScope.get(u.teacherId) || []).forEach((subjectId) => {
          (subjectClassScope.get(subjectId) || []).forEach((classId) => unique.add(classId));
        });
        ids = [...unique];
      }
-     return {...u,classIds:ids,classNames:ids.map((id:string)=>classList.find((c:any)=>c.id===id)?.name || '').filter(Boolean)};
+     return {...u, role: effectiveRole === 'Wali Kelas' ? 'WALI KELAS' : effectiveRole === 'Guru Mapel' ? 'GURU MAPEL' : u.role, classIds:ids,classNames:ids.map((id:string)=>classList.find((c:any)=>c.id===id)?.name || '').filter(Boolean)};
    });
    const matchedMe = hydratedUsers.find((u:any)=>u.id===baseProfile.id);
    const me={...emptyUser(hydratedBase),...(matchedMe||{}),schoolCode:authoritativeSchoolCode || (baseProfile as any)?.school_code || (baseProfile as any)?.schoolCode || null}; 
-   if (baseProfile.role === 'WALI KELAS') {
+   const myAssignmentRole = me.teacherId ? assignmentRoleByTeacher.get(me.teacherId) : undefined;
+   if (myAssignmentRole) me.role = myAssignmentRole === 'Wali Kelas' ? 'WALI KELAS' : 'GURU MAPEL';
+   if (me.role === 'WALI KELAS') {
      const myWaliClasses = classList.filter((c: any) => c.waliKelasTeacherId === me.teacherId);
      me.classIds = myWaliClasses.map((c: any) => c.id);
      me.classNames = myWaliClasses.map((c: any) => c.name);

@@ -361,10 +361,11 @@ export default async function handler(req: any, res: any) {
         .eq('owner_id', userId)
         .order('created_at', { ascending: false });
 
-      // 2. Ambil penugasan guru di tabel teachers
+      // 2. Ambil master guru hanya untuk identitas/school linkage.
+      // teachers.jabatan/jenis_ptk/mata_pelajaran TIDAK digunakan untuk menentukan role.
       const { data: teacherRecords } = await db
         .from('teachers')
-        .select('id, school_id, jabatan, jenis_ptk, mata_pelajaran')
+        .select('id, school_id')
         .eq('id', profile?.teacher_id || '00000000-0000-0000-0000-000000000000');
 
       // Kumpulkan kandidat school ID
@@ -401,32 +402,38 @@ export default async function handler(req: any, res: any) {
           school?.plan === 'guru';
 
         const teacherForSchool = (teacherRecords || []).find((t: any) => t.school_id === sId);
-        const teacherRole = teacherForSchool ? normalizeTeacherRole(teacherForSchool.jabatan) : 'OTHER';
-        const profileRole = sId === profile?.school_id ? normalizeTeacherRole(profile?.role) : 'OTHER';
-        const userRole = profileRole !== 'OTHER' ? profile?.role : (teacherRole !== 'OTHER' ? teacherRole : null);
-
-        // Role tidak boleh ditebak. Untuk workspace sekolah, role guru harus
-        // mempunyai penugasan nyata. Workspace personal tetap boleh memakai
-        // role yang telah ditetapkan pada onboarding sebelumnya.
-        if (!userRole) continue;
-        if (!isPersonal && teacherForSchool && teacherRole === 'WALI KELAS') {
+        const academicYear = String(sp?.tahun_pelajaran || '2026/2027').trim() || '2026/2027';
+        let assignmentRole: 'WALI KELAS' | 'GURU MAPEL' | 'OTHER' = 'OTHER';
+        if (!isPersonal && teacherForSchool) {
           const { data: waliAssignments } = await db
             .from('classes')
             .select('id')
             .eq('school_id', sId)
+            .eq('academic_year', academicYear)
             .eq('wali_kelas_teacher_id', teacherForSchool.id)
             .limit(1);
-          if (!waliAssignments?.length) continue;
-        }
-        if (!isPersonal && teacherForSchool && teacherRole === 'GURU MAPEL') {
+          if (waliAssignments?.length) assignmentRole = 'WALI KELAS';
+
           const { data: subjectAssignments } = await db
             .from('subject_teacher_assignments')
             .select('subject_id')
             .eq('school_id', sId)
+            .eq('academic_year', academicYear)
             .eq('teacher_id', teacherForSchool.id)
             .limit(1);
-          if (!subjectAssignments?.length) continue;
+          if (subjectAssignments?.length) {
+            if (assignmentRole === 'WALI KELAS') {
+              // Database constraints should prevent this; fail closed if legacy data violates it.
+              continue;
+            }
+            assignmentRole = 'GURU MAPEL';
+          }
         }
+
+        const profileRole = sId === profile?.school_id ? String(profile?.role || '').toUpperCase() : '';
+        const nonTeacherRole = ['SUPER_ADMIN','ADMIN','KEPALA SEKOLAH','SISWA'].includes(profileRole) ? profileRole : '';
+        const userRole = nonTeacherRole || (assignmentRole !== 'OTHER' ? assignmentRole : (isPersonal ? profileRole : null));
+        if (!userRole) continue;
 
         workspaces.push({
           id: `ws-mem-${userId}-${sId}`,
@@ -1459,8 +1466,9 @@ export default async function handler(req: any, res: any) {
             nama,
             nip,
             jenis_kelamin: jenisKelamin,
-            jabatan,
-            jenis_ptk: jabatan,
+            // Role is assignment-derived; legacy role columns are metadata only.
+            jabatan: null,
+            jenis_ptk: null,
             status_kepegawaian: statusKepegawaian,
             no_hp: noHp,
           })
@@ -1472,7 +1480,7 @@ export default async function handler(req: any, res: any) {
           return json(res, 200, {
             ok: true,
             success: true,
-            teacher: { ...updated, jabatan, jenis_ptk: jabatan },
+            teacher: { ...updated, jabatan: null, jenis_ptk: null },
             teacherId: updated.id,
           });
         }
@@ -1484,8 +1492,8 @@ export default async function handler(req: any, res: any) {
           nama,
           nip,
           jenis_kelamin: jenisKelamin,
-          jabatan,
-          jenis_ptk: jabatan,
+          jabatan: null,
+          jenis_ptk: null,
           status_kepegawaian: statusKepegawaian,
           no_hp: noHp,
           school_id: schoolId,
@@ -1498,7 +1506,7 @@ export default async function handler(req: any, res: any) {
       return json(res, 200, {
         ok: true,
         success: true,
-        teacher: { ...inserted, jabatan, jenis_ptk: jabatan },
+        teacher: { ...inserted, jabatan: null, jenis_ptk: null },
         teacherId: inserted.id,
       });
     }

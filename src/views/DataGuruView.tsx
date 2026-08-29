@@ -79,7 +79,6 @@ export const DataGuruView: React.FC = () => {
   const [nama, setNama] = useState('');
   const [nip, setNip] = useState('');
   const [jenisKelamin, setJenisKelamin] = useState<'L' | 'P'>('L');
-  const [guruType, setGuruType] = useState<'Wali Kelas' | 'Guru Mapel'>('Wali Kelas');
 
   // Import Guru Modal State
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -116,14 +115,10 @@ export const DataGuruView: React.FC = () => {
     );
   };
 
-  const defaultPersonalRole =
-    currentUser?.role === 'GURU MAPEL' ? 'Guru Mapel' : 'Wali Kelas';
-
   const resetForm = () => {
     setNama('');
     setNip('');
     setJenisKelamin('L');
-    setGuruType(isPersonalWorkspace ? defaultPersonalRole : 'Wali Kelas');
   };
 
   const openAdd = () => {
@@ -142,23 +137,8 @@ export const DataGuruView: React.FC = () => {
     setNip(t.nip);
     setJenisKelamin(t.jenisKelamin);
     
-    // Ambil penugasan jabatan sesuai data yang disimpan
-    const explicitJabatan = String(t.jabatan || t.jenisPTK || t.mataPelajaran || '').trim().toLowerCase();
-    let resolvedType: 'Wali Kelas' | 'Guru Mapel' = 'Wali Kelas';
-
-    if (explicitJabatan.includes('mapel') || explicitJabatan.includes('mata pelajaran')) {
-      resolvedType = 'Guru Mapel';
-    } else if (explicitJabatan.includes('wali') || explicitJabatan.includes('kelas')) {
-      resolvedType = 'Wali Kelas';
-    } else if (t.jabatan === 'Guru Mapel' || t.jabatan === 'Wali Kelas') {
-      resolvedType = t.jabatan;
-    } else if (t.mataPelajaran && t.mataPelajaran !== '-' && !t.mataPelajaran.toLowerCase().includes('wali')) {
-      resolvedType = 'Guru Mapel';
-    } else {
-      resolvedType = 'Wali Kelas';
-    }
-
-    setGuruType(resolvedType);
+    // Penugasan hanya dibaca dari assignment yang sudah di-hydrate oleh AppContext.
+    // teachers.jabatan/jenis_ptk/mata_pelajaran bukan sumber kebenaran role.
     setOpen(true);
   };
 
@@ -174,11 +154,11 @@ export const DataGuruView: React.FC = () => {
       (c) => c.waliKelasTeacherId === t.id || (c.waliKelasName && c.waliKelasName.trim().toLowerCase() === t.nama.trim().toLowerCase())
     );
 
-    const isWali = (t.jabatan || '').toLowerCase().includes('wali') || !!matchedClass;
+    const assignedSubject = subjects.find((sub) => sub.teacherId === t.id && (sub.targetClassIds || []).length > 0);
+    const isWali = !!matchedClass;
     setAccountUsername(defaultUsername);
     setAccountPassword('123456');
     setAccountEmail('');
-    const assignedSubject = subjects.find((sub) => sub.teacherId === t.id);
     setAccountRole(isWali ? 'WALI KELAS' : 'GURU MAPEL');
     setAccountClassId(matchedClass ? matchedClass.id : '');
     setAccountClassIds(assignedSubject?.targetClassIds || (matchedClass ? [matchedClass.id] : []));
@@ -248,28 +228,15 @@ export const DataGuruView: React.FC = () => {
       return;
     }
 
-    const targetRole = guruType === 'Wali Kelas' ? 'wali_kelas' : 'guru_mapel';
-    if (editing) {
-      const validation = validateTeacherRoleAssignment(
-        editing.id,
-        targetRole,
-        classes,
-        subjects,
-        schoolProfile.tahunPelajaran
-      );
-      if (!validation.valid) {
-        showToast(validation.errorMessage || 'Konflik peran guru terdeteksi.', 'error');
-        return;
-      }
-    }
-
     const payload = {
       nama: nama.trim(),
       nip: nip.trim(),
       jenisKelamin,
-      jabatan: guruType,
-      jenisPTK: guruType,
-      mataPelajaran: guruType,
+      // Role is intentionally not persisted on teachers. Assignments are managed
+      // through Data Kelas / Data Mapel and are the sole source of truth.
+      jabatan: '',
+      jenisPTK: '',
+      mataPelajaran: '',
       statusKepegawaian: 'PNS',
       noHp: '',
     };
@@ -524,21 +491,7 @@ export const DataGuruView: React.FC = () => {
           <tbody className="divide-y divide-slate-100 text-xs">
             {filteredTeachers.length > 0 ? (
               filteredTeachers.map((t, idx) => {
-                const explicitJabatan = String(t.jabatan || t.jenisPTK || t.mataPelajaran || '').trim().toLowerCase();
-                let displayType: 'Wali Kelas' | 'Guru Mapel' = 'Wali Kelas';
-
-                if (explicitJabatan.includes('mapel') || explicitJabatan.includes('mata pelajaran')) {
-                  displayType = 'Guru Mapel';
-                } else if (explicitJabatan.includes('wali') || explicitJabatan.includes('kelas')) {
-                  displayType = 'Wali Kelas';
-                } else if (t.jabatan === 'Guru Mapel' || t.jabatan === 'Wali Kelas') {
-                  displayType = t.jabatan;
-                } else if (t.mataPelajaran && t.mataPelajaran !== '-' && !t.mataPelajaran.toLowerCase().includes('wali')) {
-                  displayType = 'Guru Mapel';
-                } else {
-                  displayType = 'Wali Kelas';
-                }
-
+                const displayType = t.jabatan || 'Belum ditugaskan';
                 const isGuruMapel = displayType === 'Guru Mapel';
 
                 return (
@@ -902,15 +855,10 @@ export const DataGuruView: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Penugasan Jabatan</label>
-                  <select
-                    value={guruType}
-                    onChange={(e) => setGuruType(e.target.value as 'Wali Kelas' | 'Guru Mapel')}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 font-medium focus:bg-white focus:border-blue-600 outline-none"
-                  >
-                    <option value="Wali Kelas">Wali Kelas</option>
-                    <option value="Guru Mapel">Guru Mapel</option>
-                  </select>
+                  <label className="block font-bold text-slate-700 mb-1">Penugasan</label>
+                  <div className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-100 text-slate-600 font-medium">
+                    Ditentukan dari Data Kelas / Data Mapel
+                  </div>
                 </div>
               </div>
 
