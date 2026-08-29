@@ -2463,10 +2463,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       });
       if (error) throw error;
       await loadData(currentUser?.id);
-      showToast("Data guru berhasil dihapus", "success");
+      showToast("Data guru berhasil dihapus.", "success");
     } catch (e: any) {
-      showToast(e.message || "Gagal menghapus guru.", "error");
-      throw e;
+      const rawMsg = `${e?.message || ""} ${e?.details || ""} ${e?.hint || ""}`.toLowerCase();
+      const isAttendanceConflict =
+        rawMsg.includes("attendance") ||
+        rawMsg.includes("absensi") ||
+        rawMsg.includes("foreign key") ||
+        rawMsg.includes("violates foreign key") ||
+        rawMsg.includes("still referenced") ||
+        rawMsg.includes("class_id dan teacher_id") ||
+        rawMsg.includes("riwayat") ||
+        rawMsg.includes("constraint");
+
+      const friendlyMsg = isAttendanceConflict
+        ? "Guru tidak dapat dihapus karena sudah memiliki riwayat absensi. Riwayat absensi tetap dipertahankan."
+        : (e?.message || "Gagal menghapus guru.");
+
+      showToast(friendlyMsg, "error");
+      throw new Error(friendlyMsg);
     }
   };
   const assignTeacherClasses = async (
