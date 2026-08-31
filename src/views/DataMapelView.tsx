@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { Subject } from '../types';
+import { Subject, SubjectClassSchedule, Teacher } from '../types';
 import { getUserRoleScope } from '../utils/userScope';
 import { validateTeacherRoleAssignment } from '../utils/packageSystem';
 import { getFaseByClassName } from '../utils/faseKurikulum';
@@ -99,22 +99,28 @@ export const DataMapelView: React.FC = () => {
   const [acronym, setAcronym] = useState('');
   const [selectedTeacherId, setSelectedTeacherId] = useState('');
   const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
-  const [selectedDays, setSelectedDays] = useState<string[]>([]);
+  // Mapping: classId -> array of days (e.g. { 'cls-1': ['Senin'], 'cls-2': ['Rabu'] })
+  const [classSchedulesMap, setClassSchedulesMap] = useState<Record<string, string[]>>({});
 
   // Delete Confirmation Modal
   const [deletingSubject, setDeletingSubject] = useState<Subject | null>(null);
 
-  // Filter guru yang berjenis Guru Mapel berdasarkan assignment
-  const guruMapelList = useMemo(() => {
-    return teachers.filter(
-      (t) => subjects.some((s) => s.teacherId === t.id)
-    );
-  }, [teachers, subjects]);
+  // Helper untuk mengecek apakah seorang guru adalah Wali Kelas
+  const isTeacherWaliKelas = (t: Teacher) => {
+    const tugas = (t.tugasUtama || t.tugas_utama || '').toLowerCase().trim();
+    if (tugas === 'wali kelas' || tugas === 'walikelas') return true;
+    if (classes.some((c) => c.waliKelasTeacherId === t.id)) return true;
+    return false;
+  };
 
-  // Semua guru (fallback jika belum ada yang diset guru mapel)
-  const allTeacherOptions = useMemo(() => {
-    return teachers;
-  }, [teachers]);
+  // Filter guru yang berstatus Guru Mapel (WALI KELAS TIDAK DITAMPILKAN)
+  const guruMapelList = useMemo(() => {
+    return teachers.filter((t) => {
+      // WALI KELAS TIDAK BOLEH DITAMPILKAN
+      if (isTeacherWaliKelas(t)) return false;
+      return true;
+    });
+  }, [teachers, classes]);
 
   const activeFilterClass = useMemo(() => {
     if (selectedClassFilter === 'ALL') return null;
@@ -176,17 +182,25 @@ export const DataMapelView: React.FC = () => {
     setEditingSubject(null);
     setName('');
     setAcronym('');
-    // Auto-select logged-in teacher if available
-    const defaultTeacherId = currentTeacher?.id || guruMapelList[0]?.id || teachers[0]?.id || '';
+    
+    // Auto-select guru mapel yang valid (bukan wali kelas)
+    const validCurrentTeacher = currentTeacher && !isTeacherWaliKelas(currentTeacher) ? currentTeacher.id : '';
+    const defaultTeacherId = validCurrentTeacher || guruMapelList[0]?.id || '';
     setSelectedTeacherId(defaultTeacherId);
 
-    // Default kelas: jika wali kelas sedang difilter ke kelas tertentu, prioritaskan kelas tersebut
-    if (selectedClassFilter !== 'ALL') {
-      setSelectedClassIds([selectedClassFilter]);
-    } else {
-      setSelectedClassIds(classes.map((c) => c.id));
-    }
-    setSelectedDays(['Senin']);
+    // Default kelas terpilih
+    const initialClassIds = selectedClassFilter !== 'ALL'
+      ? [selectedClassFilter]
+      : classes.map((c) => c.id);
+    setSelectedClassIds(initialClassIds);
+
+    // Default jadwal: setiap kelas default ke Senin
+    const initialMap: Record<string, string[]> = {};
+    initialClassIds.forEach((cid) => {
+      initialMap[cid] = ['Senin'];
+    });
+    setClassSchedulesMap(initialMap);
+
     setOpenModal(true);
   };
 
@@ -194,66 +208,131 @@ export const DataMapelView: React.FC = () => {
     setEditingSubject(sub);
     setName(sub.name);
     setAcronym(sub.code || '');
-    setSelectedTeacherId(sub.teacherId || (currentTeacher?.id || ''));
-    setSelectedClassIds(sub.targetClassIds || []);
-    setSelectedDays(sub.scheduleDays || []);
+    setSelectedTeacherId(sub.teacherId || '');
+    const cids = sub.targetClassIds || [];
+    setSelectedClassIds(cids);
+
+    const initialMap: Record<string, string[]> = {};
+    if (sub.classSchedules && sub.classSchedules.length > 0) {
+      sub.classSchedules.forEach((cs) => {
+        initialMap[cs.classId] = cs.days || [];
+      });
+      cids.forEach((cid) => {
+        if (!initialMap[cid]) {
+          initialMap[cid] = sub.scheduleDays && sub.scheduleDays.length > 0 ? [...sub.scheduleDays] : ['Senin'];
+        }
+      });
+    } else {
+      cids.forEach((cid) => {
+        initialMap[cid] = sub.scheduleDays && sub.scheduleDays.length > 0 ? [...sub.scheduleDays] : ['Senin'];
+      });
+    }
+    setClassSchedulesMap(initialMap);
+
     setOpenModal(true);
   };
 
   const toggleClassSelection = (classId: string) => {
-    setSelectedClassIds((prev) =>
-      prev.includes(classId) ? prev.filter((id) => id !== classId) : [...prev, classId]
-    );
+    setSelectedClassIds((prev) => {
+      const exists = prev.includes(classId);
+      if (exists) {
+        return prev.filter((id) => id !== classId);
+      } else {
+        setClassSchedulesMap((m) => {
+          if (!m[classId] || m[classId].length === 0) {
+            return { ...m, [classId]: ['Senin'] };
+          }
+          return m;
+        });
+        return [...prev, classId];
+      }
+    });
   };
 
   const selectAllClasses = () => {
-    setSelectedClassIds(classes.map((c) => c.id));
+    const allIds = classes.map((c) => c.id);
+    setSelectedClassIds(allIds);
+    setClassSchedulesMap((prev) => {
+      const next = { ...prev };
+      allIds.forEach((cid) => {
+        if (!next[cid] || next[cid].length === 0) {
+          next[cid] = ['Senin'];
+        }
+      });
+      return next;
+    });
   };
 
   const clearAllClasses = () => {
     setSelectedClassIds([]);
   };
 
-  const toggleDaySelection = (day: string) => {
-    setSelectedDays((prev) =>
-      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
-    );
+  const toggleDayForClass = (classId: string, day: string) => {
+    setClassSchedulesMap((prev) => {
+      const currentDays = prev[classId] || [];
+      const nextDays = currentDays.includes(day)
+        ? currentDays.filter((d) => d !== day)
+        : [...currentDays, day];
+      return { ...prev, [classId]: nextDays };
+    });
+  };
+
+  const applyBulkDayToAllSelected = (day: string) => {
+    setClassSchedulesMap((prev) => {
+      const next = { ...prev };
+      selectedClassIds.forEach((cid) => {
+        next[cid] = [day];
+      });
+      return next;
+    });
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return showToast('Nama mata pelajaran wajib diisi', 'error');
+    if (!selectedTeacherId) {
+      return showToast('Silakan pilih Pengajar (Guru Mapel) terlebih dahulu', 'error');
+    }
+    if (!name.trim()) {
+      return showToast('Nama mata pelajaran wajib diisi', 'error');
+    }
+    if (selectedClassIds.length === 0) {
+      return showToast('Pilih minimal satu kelas yang diajar', 'error');
+    }
 
     const cleanAcronym = acronym.trim().toUpperCase() || name.slice(0, 4).toUpperCase();
-    const chosenTeacher = teachers.find((t) => t.id === selectedTeacherId) || currentTeacher;
+    const chosenTeacher = teachers.find((t) => t.id === selectedTeacherId);
     const chosenClasses = classes.filter((c) => selectedClassIds.includes(c.id));
     const targetClassNames = chosenClasses.map((c) => c.name);
 
-    const teacherIdToAssign = chosenTeacher ? chosenTeacher.id : (currentUser?.teacherId || null);
-
-    if (teacherIdToAssign) {
-      const validation = validateTeacherRoleAssignment(
-        teacherIdToAssign,
-        'guru_mapel',
-        classes,
-        subjects.filter((s) => (editingSubject ? s.id !== editingSubject.id : true)),
-        schoolProfile?.tahunPelajaran
-      );
-      if (!validation.valid) {
-        showToast(validation.errorMessage || 'Konflik peran guru terdeteksi.', 'error');
-        return;
-      }
+    if (chosenTeacher && isTeacherWaliKelas(chosenTeacher)) {
+      showToast('Guru yang dipilih berstatus Wali Kelas. Pengajar mapel harus berstatus Guru Mapel.', 'error');
+      return;
     }
+
+    const classSchedules: SubjectClassSchedule[] = selectedClassIds.map((cid) => {
+      const cls = classes.find((c) => c.id === cid);
+      const days = classSchedulesMap[cid] && classSchedulesMap[cid].length > 0
+        ? classSchedulesMap[cid]
+        : ['Senin'];
+      return {
+        classId: cid,
+        className: cls?.name || '',
+        days,
+      };
+    });
+
+    const allUniqueDays = Array.from(new Set(classSchedules.flatMap((cs) => cs.days)));
 
     const payload: Omit<Subject, 'id'> = {
       name: name.trim(),
       code: cleanAcronym,
       isSpecialized: true, // Khusus guru mapel
-      teacherId: teacherIdToAssign,
-      teacherName: chosenTeacher ? chosenTeacher.nama : (currentUser?.name || null),
+      teacherId: selectedTeacherId,
+      teacherName: chosenTeacher ? chosenTeacher.nama : null,
       targetClassIds: selectedClassIds,
       targetClassNames,
-      scheduleDays: selectedDays,
+      scheduleDays: allUniqueDays,
+      classSchedules,
     };
 
     if (editingSubject) {
@@ -557,52 +636,57 @@ export const DataMapelView: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Multi Kelas yang Diajar */}
+                  {/* Pembagian Kelas & Jadwal Hari */}
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
-                      <span>KELAS YANG DIAJAR ({sub.targetClassNames?.length || 0} KELAS)</span>
+                      <span>PEMBAGIAN KELAS & HARI ({sub.targetClassIds?.length || sub.targetClassNames?.length || 0} KELAS)</span>
                     </div>
-                    <div className="flex flex-wrap gap-1">
-                      {sub.targetClassNames && sub.targetClassNames.length > 0 ? (
-                        sub.targetClassNames.map((cName, i) => {
+                    <div className="space-y-1">
+                      {sub.targetClassIds && sub.targetClassIds.length > 0 ? (
+                        sub.targetClassIds.map((cid, i) => {
+                          const clsObj = classes.find((c) => c.id === cid);
+                          const clsName = clsObj?.name || sub.targetClassNames?.[i] || 'Kelas';
+                          const clsSched = sub.classSchedules?.find((cs) => cs.classId === cid);
+                          const days = clsSched && clsSched.days && clsSched.days.length > 0
+                            ? clsSched.days
+                            : (sub.scheduleDays || []);
                           const isCurrentActive =
-                            activeFilterClass && cName.trim().toLowerCase() === activeFilterClass.name.trim().toLowerCase();
+                            activeFilterClass && activeFilterClass.id === cid;
+
                           return (
-                            <span
-                              key={i}
-                              className={`px-2 py-0.5 rounded-md font-bold text-[10px] transition-all ${
+                            <div
+                              key={cid}
+                              className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-xs transition-all ${
                                 isCurrentActive
-                                  ? 'bg-emerald-600 text-white border border-emerald-700 shadow-xs'
-                                  : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                  ? 'bg-blue-50/80 border-blue-300 ring-1 ring-blue-500/20 shadow-2xs'
+                                  : 'bg-slate-50 border-slate-200/80'
                               }`}
                             >
-                              {cName} {isCurrentActive && '✓'}
-                            </span>
+                              <div className="flex items-center gap-1.5 font-bold text-slate-800 text-[11px]">
+                                <span className={`w-1.5 h-1.5 rounded-full ${isCurrentActive ? 'bg-blue-600' : 'bg-slate-400'}`} />
+                                <span className={isCurrentActive ? 'text-blue-900 font-extrabold' : ''}>{clsName}</span>
+                              </div>
+                              <div className="flex flex-wrap gap-1 items-center justify-end">
+                                {days.length > 0 ? (
+                                  days.map((d) => (
+                                    <span
+                                      key={d}
+                                      className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200 font-extrabold text-[10px]"
+                                    >
+                                      {d}
+                                    </span>
+                                  ))
+                                ) : (
+                                  <span className="text-[10px] text-slate-400 italic">Belum diatur</span>
+                                )}
+                              </div>
+                            </div>
                           );
                         })
                       ) : (
-                        <span className="text-[10px] text-slate-400 italic">Semua Kelas / Belum dipilih</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Jadwal Hari Pelajaran */}
-                  <div className="space-y-1.5">
-                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">
-                      JADWAL KBM (HARI)
-                    </span>
-                    <div className="flex flex-wrap items-center gap-1 text-[11px]">
-                      {sub.scheduleDays && sub.scheduleDays.length > 0 ? (
-                        sub.scheduleDays.map((d) => (
-                          <span
-                            key={d}
-                            className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 font-bold text-[10px]"
-                          >
-                            {d}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-[10px] text-slate-400 italic">Belum diatur</span>
+                        <div className="px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-[11px] text-slate-400 italic">
+                          Belum ada pembagian kelas & jadwal
+                        </div>
                       )}
                     </div>
                   </div>
@@ -714,42 +798,13 @@ export const DataMapelView: React.FC = () => {
             </div>
 
             <form onSubmit={handleSave} className="space-y-4 pt-4">
-              {/* Form 1: Nama Mapel */}
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
-                  1. NAMA MATA PELAJARAN
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Contoh: Pendidikan Jasmani, Olahraga dan Kesehatan"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-bold text-slate-900 focus:border-blue-600 focus:bg-white outline-none transition-all"
-                />
-              </div>
-
-              {/* Form 2: Akronim */}
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
-                  2. AKRONIM / KODE SINGKATAN
-                </label>
-                <input
-                  type="text"
-                  value={acronym}
-                  onChange={(e) => setAcronym(e.target.value)}
-                  placeholder="Contoh: PJOK, PABP, BING, MTK, SBdP"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-900 uppercase focus:border-blue-600 focus:bg-white outline-none transition-all"
-                />
-              </div>
-
-              {/* Form 3: Pengajar (Pilihan data guru jenis Guru Mapel) */}
+              {/* Form 1: Pengajar (Pertanyaan Pertama: Pilihan data guru jenis Guru Mapel, Wali Kelas tidak dimunculkan) */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                    3. PENGAJAR (GURU MAPEL)
+                    1. PENGAJAR (GURU MAPEL)
                   </label>
-                  {currentTeacher && (
+                  {currentTeacher && !isTeacherWaliKelas(currentTeacher) && (
                     <button
                       type="button"
                       onClick={() => setSelectedTeacherId(currentTeacher.id)}
@@ -761,131 +816,207 @@ export const DataMapelView: React.FC = () => {
                   )}
                 </div>
                 <select
+                  required
                   value={selectedTeacherId}
                   onChange={(e) => setSelectedTeacherId(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-bold text-slate-900 focus:border-blue-600 focus:bg-white outline-none transition-all cursor-pointer"
                 >
                   <option value="">-- Pilih Guru Mapel --</option>
-                  {currentTeacher && (
+                  {currentTeacher && !isTeacherWaliKelas(currentTeacher) && (
                     <option value={currentTeacher.id}>
-                      ★ {currentTeacher.nama} (Saya / Pengguna Aktif)
+                      ★ {currentTeacher.nama} (Saya / Guru Mapel Aktif)
                     </option>
                   )}
-                  {guruMapelList.length > 0 && (
-                    <optgroup label="Guru Mapel Terdaftar">
-                      {guruMapelList
-                        .filter((t) => t.id !== currentTeacher?.id)
-                        .map((t) => (
-                          <option key={t.id} value={t.id}>
-                            {t.nama} (Guru Mapel - {t.nip || 'Non-NIP'})
-                          </option>
-                        ))}
-                    </optgroup>
-                  )}
-                  <optgroup label="Semua Guru">
-                    {allTeacherOptions
-                      .filter((t) => t.id !== currentTeacher?.id)
+                  {guruMapelList.length > 0 ? (
+                    guruMapelList
+                      .filter((t) => t.id !== (currentTeacher && !isTeacherWaliKelas(currentTeacher) ? currentTeacher.id : ''))
                       .map((t) => (
                         <option key={t.id} value={t.id}>
-                          {t.nama} ({t.tugasUtama || 'Guru'})
+                          {t.nama} {t.nip ? `(NIP: ${t.nip})` : '(Guru Mapel)'}
                         </option>
-                      ))}
-                  </optgroup>
-                </select>
-                <p className="text-[10px] text-slate-400 mt-1">
-                  Data pengajar diambil dari referensi Master Data Guru berjenis Guru Mapel.
-                </p>
-              </div>
-
-              {/* Form 4: Kelas (Multi-pilih lebih dari 1 kelas dari Data Kelas) */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                    4. KELAS YANG DIAJAR (PILIH LEBIH DARI 1 KELAS)
-                  </label>
-                  <div className="flex items-center gap-2 text-[10px] font-bold">
-                    <button
-                      type="button"
-                      onClick={selectAllClasses}
-                      className="text-blue-600 hover:underline cursor-pointer"
-                    >
-                      Pilih Semua
-                    </button>
-                    <span>•</span>
-                    <button
-                      type="button"
-                      onClick={clearAllClasses}
-                      className="text-slate-400 hover:underline cursor-pointer"
-                    >
-                      Bersihkan
-                    </button>
-                  </div>
-                </div>
-
-                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl max-h-36 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {classes.length > 0 ? (
-                    classes.map((cls) => {
-                      const isSelected = selectedClassIds.includes(cls.id);
-                      return (
-                        <label
-                          key={cls.id}
-                          className={`flex items-center gap-2 p-2 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
-                            isSelected
-                              ? 'bg-blue-50 border-blue-300 text-blue-800'
-                              : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => toggleClassSelection(cls.id)}
-                            className="rounded text-blue-600 focus:ring-0 accent-blue-600"
-                          />
-                          <span>{cls.name}</span>
-                        </label>
-                      );
-                    })
+                      ))
                   ) : (
-                    <div className="col-span-3 text-slate-400 text-center py-2">
-                      Belum ada data kelas di Master Data Kelas.
-                    </div>
+                    <option value="" disabled>
+                      Tidak ada Guru Mapel tersedia (Semua guru terdaftar sebagai Wali Kelas)
+                    </option>
                   )}
-                </div>
-                <p className="text-[10px] text-slate-400 mt-1">
-                  Guru mapel dapat mengajar di banyak kelas sekaligus (Rombel).
-                </p>
+                </select>
+                {guruMapelList.length === 0 ? (
+                  <div className="p-2.5 mt-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-medium leading-relaxed">
+                    Perhatian: Belum ada guru dengan status <strong>Guru Mapel</strong> (seluruh guru terdaftar sebagai Wali Kelas). Silakan daftarkan guru baru atau ubah status tugas guru di tab <strong>Data Guru</strong>.
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Daftar di atas hanya memuat guru terdaftar sebagai <strong>Guru Mapel</strong>. Wali Kelas otomatis disembunyikan.
+                  </p>
+                )}
               </div>
 
-              {/* Form 5: Jadwal Guru Mapel */}
-              <div className="p-3.5 bg-blue-50/50 border border-blue-100 rounded-xl space-y-3">
-                <label className="block text-[10px] font-bold text-blue-900 uppercase tracking-widest">
-                  5. JADWAL GURU MAPEL (HARI MENGAJAR)
+              {/* Form 2: Nama Mapel */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                  2. NAMA MATA PELAJARAN
                 </label>
+                <input
+                  type="text"
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Contoh: Pendidikan Agama Islam dan Budi Pekerti, PJOK, Bahasa Inggris"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-bold text-slate-900 focus:border-blue-600 focus:bg-white outline-none transition-all"
+                />
+              </div>
 
+              {/* Form 3: Akronim */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                  3. AKRONIM / KODE SINGKATAN
+                </label>
+                <input
+                  type="text"
+                  value={acronym}
+                  onChange={(e) => setAcronym(e.target.value)}
+                  placeholder="Contoh: PAI, PJOK, BING, MTK, SBdP"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-900 uppercase focus:border-blue-600 focus:bg-white outline-none transition-all"
+                />
+              </div>
+
+              {/* Form 4: Pembagian Kelas & Jadwal Hari Mengajar */}
+              <div className="space-y-3 pt-1">
                 <div>
-                  <span className="text-[11px] font-bold text-slate-700 block mb-1.5">
-                    Hari Pelaksanaan KBM:
-                  </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {DAYS_LIST.map((day) => {
-                      const isChecked = selectedDays.includes(day);
-                      return (
-                        <button
-                          key={day}
-                          type="button"
-                          onClick={() => toggleDaySelection(day)}
-                          className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
-                            isChecked
-                              ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
-                          }`}
-                        >
-                          {day}
-                        </button>
-                      );
-                    })}
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                      4. PEMBAGIAN KELAS & JADWAL HARI MENGAJAR
+                    </label>
+                    <div className="flex items-center gap-2 text-[10px] font-bold">
+                      <button
+                        type="button"
+                        onClick={selectAllClasses}
+                        className="text-blue-600 hover:underline cursor-pointer"
+                      >
+                        Pilih Semua Kelas
+                      </button>
+                      <span>•</span>
+                      <button
+                        type="button"
+                        onClick={clearAllClasses}
+                        className="text-slate-400 hover:underline cursor-pointer"
+                      >
+                        Bersihkan
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
+                    Tentukan kelas yang diajar beserta jadwal hari masing-masing (contoh: <strong>Kelas 6A hari Senin</strong>, <strong>Kelas 6B hari Rabu</strong>, dll. Jadwal mata pelajaran pada hari yang sama diizinkan).
+                  </p>
+
+                  {/* Checklist Pemilihan Kelas */}
+                  <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl max-h-32 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 gap-1.5 mb-3">
+                    {classes.length > 0 ? (
+                      classes.map((cls) => {
+                        const isSelected = selectedClassIds.includes(cls.id);
+                        return (
+                          <label
+                            key={cls.id}
+                            className={`flex items-center gap-2 p-1.5 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-blue-50 border-blue-300 text-blue-800'
+                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleClassSelection(cls.id)}
+                              className="rounded text-blue-600 focus:ring-0 accent-blue-600"
+                            />
+                            <span>{cls.name}</span>
+                          </label>
+                        );
+                      })
+                    ) : (
+                      <div className="col-span-3 text-slate-400 text-center py-2 text-xs">
+                        Belum ada data kelas di Master Data Kelas.
+                      </div>
+                    )}
                   </div>
                 </div>
+
+                {/* Per-Class Day Scheduling List */}
+                {selectedClassIds.length > 0 && (
+                  <div className="p-3 bg-blue-50/40 border border-blue-100 rounded-xl space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                      <span className="text-[11px] font-extrabold text-blue-950">
+                        Atur Hari KBM untuk {selectedClassIds.length} Kelas Terpilih:
+                      </span>
+                      {/* Bulk Day Quick Actions */}
+                      <div className="flex items-center gap-1 text-[10px] text-slate-500 overflow-x-auto">
+                        <span className="text-slate-400 shrink-0 font-medium">Samakan:</span>
+                        {DAYS_LIST.map((d) => (
+                          <button
+                            key={d}
+                            type="button"
+                            onClick={() => applyBulkDayToAllSelected(d)}
+                            className="px-1.5 py-0.5 rounded bg-white hover:bg-blue-100 text-blue-700 font-bold border border-blue-200 text-[10px] shrink-0 cursor-pointer"
+                            title={`Terapkan ${d} ke seluruh kelas terpilih`}
+                          >
+                            {d}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                      {selectedClassIds.map((cid) => {
+                        const clsObj = classes.find((c) => c.id === cid);
+                        const clsName = clsObj?.name || 'Kelas';
+                        const currentDays = classSchedulesMap[cid] || [];
+
+                        return (
+                          <div
+                            key={cid}
+                            className="p-2.5 bg-white rounded-xl border border-slate-200 space-y-1.5 shadow-2xs"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-extrabold text-slate-900 text-xs">
+                                {clsName}
+                              </span>
+                              <span className="text-[10px] text-slate-500 font-medium">
+                                {currentDays.length > 0 ? (
+                                  <span className="text-blue-700 font-bold">
+                                    {currentDays.join(', ')}
+                                  </span>
+                                ) : (
+                                  <span className="text-rose-500 italic">Pilih hari</span>
+                                )}
+                              </span>
+                            </div>
+
+                            <div className="flex flex-wrap gap-1">
+                              {DAYS_LIST.map((day) => {
+                                const isChecked = currentDays.includes(day);
+                                return (
+                                  <button
+                                    key={day}
+                                    type="button"
+                                    onClick={() => toggleDayForClass(cid, day)}
+                                    className={`px-2 py-0.5 rounded-md text-[11px] font-bold border transition-all cursor-pointer ${
+                                      isChecked
+                                        ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                                    }`}
+                                  >
+                                    {day}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Action Buttons */}

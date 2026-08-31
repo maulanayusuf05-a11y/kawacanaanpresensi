@@ -105,6 +105,12 @@ export interface Student {
 
 export type AttendanceType = 'DAILY' | 'SUBJECT';
 
+export interface SubjectClassSchedule {
+  classId: string;
+  className?: string;
+  days: string[]; // e.g. ['Senin'] or ['Senin', 'Kamis']
+}
+
 export interface Subject {
   id: string;
   name: string;
@@ -115,6 +121,7 @@ export interface Subject {
   targetClassIds?: string[]; // Daftar ID kelas yang diajar
   targetClassNames?: string[]; // Daftar nama kelas yang diajar
   scheduleDays?: string[]; // Hari jadwal diajarkan (Senin, Selasa, ...)
+  classSchedules?: SubjectClassSchedule[]; // Jadwal per kelas dan hari (e.g. Kelas 6A: Senin, Kelas 6B: Rabu)
   lessonPeriod?: string; // Jam/pertemuan ke (e.g. Jam ke 1-2)
 }
 

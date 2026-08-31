@@ -176,22 +176,38 @@ export const AbsensiView: React.FC = () => {
   }, [date]);
 
   const isScheduledToday = useMemo(() => {
-    if (attendanceMode !== 'SUBJECT' || !activeSubject?.scheduleDays || activeSubject.scheduleDays.length === 0) {
+    if (attendanceMode !== 'SUBJECT' || !activeSubject) {
+      return true;
+    }
+    // Check class-specific schedule if available for the selected class
+    if (selectedClassId && activeSubject.classSchedules && activeSubject.classSchedules.length > 0) {
+      const clsSched = activeSubject.classSchedules.find((cs) => cs.classId === selectedClassId);
+      if (clsSched && clsSched.days && clsSched.days.length > 0) {
+        return clsSched.days.includes(currentDayName);
+      }
+    }
+    if (!activeSubject.scheduleDays || activeSubject.scheduleDays.length === 0) {
       return true;
     }
     return activeSubject.scheduleDays.includes(currentDayName);
-  }, [attendanceMode, activeSubject, currentDayName]);
+  }, [attendanceMode, activeSubject, selectedClassId, currentDayName]);
 
   // Auto-lock for Guru Mapel if selected day is not a scheduled teaching day
   const isLockedForGuruMapel = useMemo(() => {
     if (userScope.isGuruMapel) {
+      if (selectedClassId && activeSubject?.classSchedules && activeSubject.classSchedules.length > 0) {
+        const clsSched = activeSubject.classSchedules.find((cs) => cs.classId === selectedClassId);
+        if (clsSched && clsSched.days && clsSched.days.length > 0) {
+          return !clsSched.days.includes(currentDayName);
+        }
+      }
       if (activeSubject?.scheduleDays && activeSubject.scheduleDays.length > 0) {
         return !activeSubject.scheduleDays.includes(currentDayName);
       }
       if (currentDayName === 'Minggu') return true;
     }
     return false;
-  }, [userScope, activeSubject, currentDayName]);
+  }, [userScope, activeSubject, selectedClassId, currentDayName]);
 
   // Combined Lock Status (Locked if Holiday, Non-Effective Day, or Non-Teaching Day for Guru Mapel)
   const isDateLocked = isNonEffectiveDay || isLockedForGuruMapel;

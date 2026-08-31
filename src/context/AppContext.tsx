@@ -6,6 +6,7 @@ import {
   AttendanceStatus,
   AttendanceType,
   Subject,
+  SubjectClassSchedule,
   UserAccount,
   UserAccountInput,
   SchoolProfile,
@@ -249,6 +250,57 @@ const dbSubject = (
     .map((id: string) => classMap?.get(id)?.name || "")
     .filter(Boolean);
   const scheduleRows = scheduleMap?.get(x.id) || [];
+
+  const classDaysMap = new Map<string, Set<string>>();
+  const generalDaysSet = new Set<string>();
+  let customLessonPeriod = "";
+
+  scheduleRows.forEach((r: any) => {
+    const day = r.day_of_week;
+    const lp = r.lesson_period || "";
+    if (day) {
+      if (lp.startsWith("cls:")) {
+        const classId = lp.replace(/^cls:/, "").trim();
+        if (classId) {
+          if (!classDaysMap.has(classId)) {
+            classDaysMap.set(classId, new Set());
+          }
+          classDaysMap.get(classId)!.add(day);
+        }
+      } else {
+        generalDaysSet.add(day);
+        if (lp) customLessonPeriod = lp;
+      }
+    }
+  });
+
+  const classSchedules: SubjectClassSchedule[] = [];
+  targetClassIds.forEach((cid: string) => {
+    const clsName = classMap?.get(cid)?.name || "";
+    if (classDaysMap.has(cid)) {
+      classSchedules.push({
+        classId: cid,
+        className: clsName,
+        days: Array.from(classDaysMap.get(cid)!),
+      });
+    } else if (generalDaysSet.size > 0) {
+      classSchedules.push({
+        classId: cid,
+        className: clsName,
+        days: Array.from(generalDaysSet),
+      });
+    } else {
+      classSchedules.push({
+        classId: cid,
+        className: clsName,
+        days: [],
+      });
+    }
+  });
+
+  const allUniqueDays = new Set<string>([...generalDaysSet]);
+  classSchedules.forEach((cs) => cs.days.forEach((d) => allUniqueDays.add(d)));
+
   return {
     id: x.id,
     name: x.name,
@@ -258,9 +310,9 @@ const dbSubject = (
     teacherName: teacher?.nama || null,
     targetClassIds,
     targetClassNames,
-    scheduleDays: scheduleRows.map((r: any) => r.day_of_week).filter(Boolean),
-    lessonPeriod:
-      scheduleRows.find((r: any) => r.lesson_period)?.lesson_period || "",
+    scheduleDays: Array.from(allUniqueDays),
+    classSchedules,
+    lessonPeriod: customLessonPeriod,
   };
 };
 
@@ -3520,17 +3572,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           .insert(rows);
         if (e) throw e;
       }
-      if ((s.scheduleDays || []).length) {
-        const { error: e } = await supabase
-          .from("subject_schedule_days")
-          .insert(
-            (s.scheduleDays || []).map((day) => ({
+      const scheduleInserts: {
+        school_id: string;
+        subject_id: string;
+        day_of_week: string;
+        lesson_period: string | null;
+      }[] = [];
+
+      if (s.classSchedules && s.classSchedules.length > 0) {
+        s.classSchedules.forEach((cs) => {
+          (cs.days || []).forEach((day) => {
+            scheduleInserts.push({
               school_id: schoolId,
               subject_id: data.id,
               day_of_week: day,
-              lesson_period: s.lessonPeriod || null,
-            })),
-          );
+              lesson_period: `cls:${cs.classId}`,
+            });
+          });
+        });
+      } else if ((s.scheduleDays || []).length) {
+        (s.scheduleDays || []).forEach((day) => {
+          scheduleInserts.push({
+            school_id: schoolId,
+            subject_id: data.id,
+            day_of_week: day,
+            lesson_period: s.lessonPeriod || null,
+          });
+        });
+      }
+
+      if (scheduleInserts.length > 0) {
+        const { error: e } = await supabase
+          .from("subject_schedule_days")
+          .insert(scheduleInserts);
         if (e) throw e;
       }
       await reloadSubjects();
@@ -3613,17 +3687,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           if (e) throw e;
         }
       }
-      if ((s.scheduleDays || []).length) {
-        const { error: e } = await supabase
-          .from("subject_schedule_days")
-          .insert(
-            (s.scheduleDays || []).map((day) => ({
+      const updateScheduleInserts: {
+        school_id: string;
+        subject_id: string;
+        day_of_week: string;
+        lesson_period: string | null;
+      }[] = [];
+
+      if (s.classSchedules && s.classSchedules.length > 0) {
+        s.classSchedules.forEach((cs) => {
+          (cs.days || []).forEach((day) => {
+            updateScheduleInserts.push({
               school_id: schoolId,
               subject_id: id,
               day_of_week: day,
-              lesson_period: s.lessonPeriod || null,
-            })),
-          );
+              lesson_period: `cls:${cs.classId}`,
+            });
+          });
+        });
+      } else if ((s.scheduleDays || []).length) {
+        (s.scheduleDays || []).forEach((day) => {
+          updateScheduleInserts.push({
+            school_id: schoolId,
+            subject_id: id,
+            day_of_week: day,
+            lesson_period: s.lessonPeriod || null,
+          });
+        });
+      }
+
+      if (updateScheduleInserts.length > 0) {
+        const { error: e } = await supabase
+          .from("subject_schedule_days")
+          .insert(updateScheduleInserts);
         if (e) throw e;
       }
       await reloadSubjects();
