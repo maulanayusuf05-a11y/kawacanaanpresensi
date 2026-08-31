@@ -43,7 +43,8 @@ export const Header: React.FC = () => {
     switchToSchoolWorkspace,
     switchToPersonalWorkspace,
     setIsSelectingWorkspace,
-    openOnboarding
+    openOnboarding,
+    logout
   } = useApp();
 
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
@@ -213,11 +214,14 @@ export const Header: React.FC = () => {
     };
   }, []);
 
-  const handleLogout = () => {
-    void supabase.auth.signOut();
-    setCurrentUser(null);
-    setActiveView('login');
-    showToast('Anda telah berhasil keluar (Logout)', 'info');
+  const handleLogout = async () => {
+    setShowProfileDropdown(false);
+    try {
+      await logout();
+      showToast('Anda telah berhasil keluar (Logout)', 'info');
+    } catch (err) {
+      console.warn('Logout error:', err);
+    }
   };
 
   // Helper to extract initials (e.g. Maulana Yusuf -> MY)

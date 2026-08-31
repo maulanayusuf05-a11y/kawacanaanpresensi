@@ -142,11 +142,6 @@ export const DataKelasView: React.FC = () => {
   const [assignWaliModal, setAssignWaliModal] = useState<SchoolClass | null>(null);
   const [quickWaliId, setQuickWaliId] = useState('');
 
-  // Quick Guru Mapel Assignment Modal (for a specific Class)
-  const [classMapelModal, setClassMapelModal] = useState<SchoolClass | null>(null);
-  const [modalMapelTeacherIds, setModalMapelTeacherIds] = useState<string[]>([]);
-  const [isSavingClassMapel, setIsSavingClassMapel] = useState(false);
-
   // Guru Mapel Matrix state
   const [savingMapelTeacherId, setSavingMapelTeacherId] = useState<string | null>(null);
   const [mapelCardAssignments, setMapelCardAssignments] = useState<Record<string, string[]>>({});
@@ -199,22 +194,6 @@ export const DataKelasView: React.FC = () => {
     );
   }, [teachers, guruMapelTeacherIds, waliTeacherIds]);
 
-  // Helper untuk mendapatkan Guru Mapel yang mengajar di kelas tertentu
-  const getSubjectTeachersForClass = (classId: string) => {
-    const list: Array<{ teacherId: string; teacherName: string; subjectName: string }> = [];
-    subjects.forEach((s) => {
-      if (s.targetClassIds && s.targetClassIds.includes(classId)) {
-        const matchedT = teachers.find((t) => t.id === s.teacherId);
-        list.push({
-          teacherId: s.teacherId || '',
-          teacherName: s.teacherName || matchedT?.nama || 'Guru Mapel',
-          subjectName: s.name,
-        });
-      }
-    });
-    return list;
-  };
-
   // Calon wali kelas bersumber dari master Data Guru (teachers) dengan Tugas Utama: Wali Kelas
   const waliCandidates = useMemo(() => {
     const list: Array<{
@@ -234,11 +213,12 @@ export const DataKelasView: React.FC = () => {
 
       const isWaliTugasUtama =
         normTugas === 'wali kelas' ||
-        normTugas.includes('wali');
+        normTugas === 'walikelas' ||
+        (normTugas.includes('wali') && !normTugas.includes('mapel'));
 
       // Assignment Guru Mapel aktif adalah konflik yang harus mengalahkan
       // Tugas Utama Wali Kelas. Guru Mapel tidak boleh dipilih sebagai Wali Kelas.
-      const isActiveMapelAssignment = guruMapelTeacherIds.has(t.id);
+      const isActiveMapelAssignment = guruMapelTeacherIds.has(t.id) || normTugas === 'guru mapel' || normTugas.includes('mapel');
 
       const assignedClass = classes.find((c) => {
         if (c.waliKelasTeacherId === t.id) return true;
@@ -259,8 +239,7 @@ export const DataKelasView: React.FC = () => {
       });
     });
 
-    // Hanya guru yang benar-benar eligible sebagai Wali Kelas yang ditampilkan.
-    // Tidak ada fallback ke semua guru karena Guru Mapel harus selalu diblokir.
+    // Hanya guru yang tugas utamanya Wali Kelas yang ditampilkan.
     const sourceList = list.filter((item) => item.isWaliRole);
 
     sourceList.sort((a, b) => a.name.localeCompare(b.name));
@@ -422,55 +401,6 @@ export const DataKelasView: React.FC = () => {
     setAssignWaliModal(null);
   };
 
-  // Open Quick Guru Mapel Modal for specific class
-  const openClassMapelModal = (c: SchoolClass) => {
-    setClassMapelModal(c);
-    const assignedTeacherIds = subjects
-      .filter((s) => s.targetClassIds && s.targetClassIds.includes(c.id) && s.teacherId)
-      .map((s) => s.teacherId as string);
-    setModalMapelTeacherIds(assignedTeacherIds);
-  };
-
-  const saveClassMapelModal = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!classMapelModal) return;
-    setIsSavingClassMapel(true);
-    const targetClassId = classMapelModal.id;
-
-    try {
-      const targetClassWaliId = classMapelModal &&
-        classes.find((c) => c.id === targetClassId)?.waliKelasTeacherId;
-      if (targetClassWaliId && modalMapelTeacherIds.includes(targetClassWaliId)) {
-        throw new Error(
-          'Wali Kelas pada rombel ini tidak dapat sekaligus ditugaskan sebagai Guru Mapel.',
-        );
-      }
-
-      for (const teacher of guruMapelList) {
-        const isSelected = modalMapelTeacherIds.includes(teacher.id);
-        const teacherSubject = subjects.find((s) => s.teacherId === teacher.id);
-        const currentClassIds = teacherSubject?.targetClassIds || [];
-        let newClassIds = [...currentClassIds];
-
-        if (isSelected && !newClassIds.includes(targetClassId)) {
-          newClassIds.push(targetClassId);
-        } else if (!isSelected && newClassIds.includes(targetClassId)) {
-          newClassIds = newClassIds.filter((id) => id !== targetClassId);
-        }
-
-        if (JSON.stringify([...currentClassIds].sort()) !== JSON.stringify([...newClassIds].sort())) {
-          await assignTeacherClasses(teacher.id, newClassIds);
-        }
-      }
-      showToast(`Penugasan Guru Mapel untuk ${classMapelModal.name} berhasil disimpan`, 'success');
-      setClassMapelModal(null);
-    } catch (err: any) {
-      showToast(err.message || 'Gagal menyimpan penugasan guru mapel', 'error');
-    } finally {
-      setIsSavingClassMapel(false);
-    }
-  };
-
   // Save assignments for a specific Guru Mapel card in Tab 2
   const handleSaveMapelCard = async (teacherId: string) => {
     const selectedClassIds = mapelCardAssignments[teacherId] !== undefined
@@ -518,17 +448,17 @@ export const DataKelasView: React.FC = () => {
     showToast(`Siswa ${student.nama} dikeluarkan dari kelas`, 'info');
   };
 
-  // Download Template CSV Kelas
+  // Download Template CSV Kelas (Format: NAMA KELAS, NAMA WALI KELAS)
   const handleDownloadTemplate = () => {
-    const header = 'NAMA KELAS,TINGKAT KELAS,NAMA WALI KELAS\n';
+    const header = 'NAMA KELAS,NAMA WALI KELAS\n';
     const sampleRows = [
-      'Kelas 1A,1,Budi Santoso, S.Pd.',
-      'Kelas 1B,1,Siti Aminah, M.Pd.',
-      'Kelas 2A,2,Rahmat Hidayat, S.Pd.',
-      'Kelas 3A,3,Dewi Lestari, S.Pd.',
-      'Kelas 4A,4,',
-      'Kelas 5A,5,',
-      'Kelas 6A,6,',
+      'Kelas 1A,Budi Santoso, S.Pd.',
+      'Kelas 1B,Siti Aminah, M.Pd.',
+      'Kelas 2A,Rahmat Hidayat, S.Pd.',
+      'Kelas 3A,Dewi Lestari, S.Pd.',
+      'Kelas 4A,',
+      'Kelas 5A,',
+      'Kelas 6A,',
     ].join('\n');
 
     const csvContent = '\uFEFF' + header + sampleRows;
@@ -541,10 +471,10 @@ export const DataKelasView: React.FC = () => {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    showToast('Template file CSV Kelas berhasil diunduh. Silakan isi dan unggah kembali.', 'success');
+    showToast('Template file CSV Kelas berhasil diunduh (Format: Nama Kelas, Nama Wali Kelas).', 'success');
   };
 
-  // Parser helper function for CSV / TSV text for Classes
+  // Parser helper function for CSV / TSV text for Classes (Format: Nama Kelas, Nama Wali Kelas)
   const parseRawTextToClasses = (text: string): ParsedClassItem[] => {
     if (!text.trim()) return [];
 
@@ -581,19 +511,25 @@ export const DataKelasView: React.FC = () => {
 
       if (tokens.length >= 1 && tokens[0]) {
         const rawName = tokens[0] || '';
-        const rawGrade = tokens[1] || '';
-        const rawWali = tokens[2] || '';
-
-        // Auto determine grade
+        let rawWali = '';
         let gradeNum = 1;
-        const parsedGrade = parseInt(rawGrade, 10);
-        if (!isNaN(parsedGrade) && parsedGrade >= 1 && parsedGrade <= 12) {
-          gradeNum = parsedGrade;
+
+        // Jika user menginput 3 kolom (format legacy: Nama Kelas, Tingkat, Nama Wali)
+        if (tokens.length >= 3 && !isNaN(parseInt(tokens[1], 10))) {
+          gradeNum = parseInt(tokens[1], 10);
+          rawWali = tokens[2] || '';
         } else {
+          // Format standar: 2 Kolom (Nama Kelas, Nama Wali Kelas)
+          rawWali = tokens[1] || '';
           const matchNum = rawName.match(/\d+/);
           if (matchNum) {
             gradeNum = parseInt(matchNum[0], 10);
           }
+        }
+
+        if (gradeNum < 1 || gradeNum > 12) {
+          const matchNum = rawName.match(/\d+/);
+          gradeNum = matchNum ? parseInt(matchNum[0], 10) : 1;
         }
 
         const isValid = rawName.trim().length > 0;
@@ -799,7 +735,6 @@ export const DataKelasView: React.FC = () => {
                     <th className="py-3.5 px-4 text-center w-12">No</th>
                     <th className="py-3.5 px-4">Nama Wali Kelas</th>
                     <th className="py-3.5 px-4 font-black">Kelas & Fase</th>
-                    {!isPersonalWorkspace && <th className="py-3.5 px-4">Guru Mapel Pengajar</th>}
                     <th className="py-3.5 px-4 text-center text-blue-700">Jml L</th>
                     <th className="py-3.5 px-4 text-center text-pink-700">Jml P</th>
                     <th className="py-3.5 px-4 text-center text-slate-800">Total Siswa</th>
@@ -830,7 +765,6 @@ export const DataKelasView: React.FC = () => {
 
                       const fase = getFaseByClassName(c.name, c.grade);
                       const faseBadgeClass = getFaseBadgeColor(fase);
-                      const mapelTeachers = getSubjectTeachersForClass(c.id);
 
                       return (
                         <tr key={c.id} className="hover:bg-slate-50/80 transition-colors">
@@ -872,46 +806,6 @@ export const DataKelasView: React.FC = () => {
                               </span>
                             </div>
                           </td>
-                          {!isPersonalWorkspace && (
-                            <td className="py-3.5 px-4 max-w-xs">
-                              {mapelTeachers.length > 0 ? (
-                                <div className="flex flex-wrap items-center gap-1.5">
-                                  {mapelTeachers.map((mt, mIdx) => (
-                                    <span
-                                      key={mIdx}
-                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-100 text-[10px] font-bold text-indigo-700"
-                                      title={`${mt.subjectName} (${mt.teacherName})`}
-                                    >
-                                      <BookOpen size={10} className="text-indigo-500" />
-                                      <span>{mt.subjectName}: {mt.teacherName}</span>
-                                    </span>
-                                  ))}
-                                  {isAdmin && (
-                                    <button
-                                      type="button"
-                                      onClick={() => openClassMapelModal(c)}
-                                      className="text-[10px] font-bold text-indigo-600 hover:underline cursor-pointer"
-                                    >
-                                      + Edit
-                                    </button>
-                                  )}
-                                </div>
-                              ) : (
-                                <div className="flex items-center gap-2">
-                                  <span className="text-slate-400 italic text-[11px]">Belum ada guru mapel</span>
-                                  {isAdmin && (
-                                    <button
-                                      type="button"
-                                      onClick={() => openClassMapelModal(c)}
-                                      className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-600 hover:bg-indigo-100 text-[10px] font-bold transition-colors cursor-pointer"
-                                    >
-                                      + Tambah
-                                    </button>
-                                  )}
-                                </div>
-                              )}
-                            </td>
-                          )}
                           <td className="py-3.5 px-4 text-center font-bold text-blue-600 bg-blue-50/20">
                             {countL}
                           </td>
@@ -925,16 +819,6 @@ export const DataKelasView: React.FC = () => {
                           </td>
                           <td className="py-3.5 px-4 text-center">
                             <div className="flex items-center justify-center gap-1.5">
-                              {isAdmin && !isPersonalWorkspace && (
-                                <button
-                                  type="button"
-                                  onClick={() => openClassMapelModal(c)}
-                                  className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
-                                  title="Atur Guru Mapel Kelas Ini"
-                                >
-                                  <BookOpen size={15} />
-                                </button>
-                              )}
                               {canEditClass && (
                                 <button
                                   type="button"
@@ -983,7 +867,7 @@ export const DataKelasView: React.FC = () => {
                     })
                   ) : (
                     <tr>
-                      <td colSpan={isPersonalWorkspace ? 7 : 8} className="py-12 text-center text-slate-400">
+                      <td colSpan={7} className="py-12 text-center text-slate-400">
                         {searchTerm ? 'Tidak ada kelas yang cocok dengan pencarian.' : 'Belum ada data rombongan belajar.'}
                       </td>
                     </tr>
@@ -1037,7 +921,7 @@ export const DataKelasView: React.FC = () => {
                     Penugasan Rombongan Belajar Guru Mata Pelajaran
                   </h3>
                   <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">
-                    Centang kelas yang diampu oleh masing-masing Guru Mapel berdasarkan data rombel yang sudah diinput di Data Kelas.
+                    Hanya menampilkan guru yang tugas utamanya Guru Mapel beserta daftar kelas yang sudah diajarkannya.
                   </p>
                 </div>
               </div>
@@ -1061,7 +945,7 @@ export const DataKelasView: React.FC = () => {
                       key={teacher.id}
                       className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between space-y-4 hover:border-indigo-300 transition-all"
                     >
-                      <div>
+                      <div className="space-y-3.5">
                         {/* Header Guru */}
                         <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100">
                           <div className="flex items-center gap-3">
@@ -1078,14 +962,41 @@ export const DataKelasView: React.FC = () => {
                             </div>
                           </div>
                           <span className="px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-800 text-[11px] font-black shrink-0">
-                            {currentAssigned.length} Kelas
+                            {currentAssigned.length} Kelas Diajar
                           </span>
                         </div>
 
+                        {/* Kelas yang Sudah Diajarkan */}
+                        <div className="p-3 bg-slate-50/80 border border-slate-200/70 rounded-xl space-y-1.5">
+                          <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider block">
+                            Kelas yang Sudah Diajarkan:
+                          </span>
+                          {currentAssigned.length > 0 ? (
+                            <div className="flex flex-wrap gap-1.5">
+                              {currentAssigned.map((cid) => {
+                                const cObj = classes.find((c) => c.id === cid);
+                                return (
+                                  <span
+                                    key={cid}
+                                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-800 font-bold text-[11px]"
+                                  >
+                                    <Check size={11} className="text-indigo-600" />
+                                    {cObj ? cObj.name : 'Kelas'}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <p className="text-[11px] text-slate-400 italic">
+                              Belum ada rombel kelas yang diajarkan oleh guru ini.
+                            </p>
+                          )}
+                        </div>
+
                         {/* Checklist Pilihan Kelas */}
-                        <div className="pt-3 space-y-2">
+                        <div className="space-y-2">
                           <div className="flex items-center justify-between text-xs">
-                            <span className="font-bold text-slate-700">Pilih Kelas yang Diampu:</span>
+                            <span className="font-bold text-slate-700">Pilih / Ubah Kelas yang Diampu:</span>
                             <div className="flex items-center gap-2 text-[11px]">
                               <button
                                 type="button"
@@ -1197,7 +1108,7 @@ export const DataKelasView: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-900 text-base">Import Data Rombongan Belajar (Kelas)</h3>
-                  <p className="text-xs text-slate-500">Unggah file CSV/Excel atau tempel teks daftar rombel kelas</p>
+                  <p className="text-xs text-slate-500">Format: Nama Kelas, Nama Wali Kelas</p>
                 </div>
               </div>
               <button
@@ -1214,7 +1125,7 @@ export const DataKelasView: React.FC = () => {
                 <div>
                   <h4 className="font-extrabold text-xs text-emerald-950">Gunakan Template Standar Kelas</h4>
                   <p className="text-[11px] text-emerald-800 mt-0.5">
-                    Format: <strong>NAMA KELAS, TINGKAT KELAS (1-12), NAMA WALI KELAS</strong>
+                    Format: <strong>NAMA KELAS, NAMA WALI KELAS</strong> (Tingkat kelas otomatis ditentukan dari nama kelas)
                   </p>
                 </div>
                 <button
@@ -1264,7 +1175,7 @@ export const DataKelasView: React.FC = () => {
                     <span className="text-xs font-extrabold text-slate-700">
                       {fileName ? `File terpilih: ${fileName}` : 'Klik untuk memilih file CSV / TXT'}
                     </span>
-                    <span className="text-[11px] text-slate-400">Mendukung format file dengan pemisah koma, titik koma, atau tab</span>
+                    <span className="text-[11px] text-slate-400">Format: Nama Kelas, Nama Wali Kelas (Pemisah koma, titik koma, atau tab)</span>
                     <input
                       type="file"
                       accept=".csv, .txt, text/csv, text/plain"
@@ -1279,7 +1190,7 @@ export const DataKelasView: React.FC = () => {
                     rows={4}
                     value={pasteText}
                     onChange={(e) => handlePasteChange(e.target.value)}
-                    placeholder="Tempel data kelas dari spreadsheet Excel di sini...&#10;Contoh:&#10;Kelas 1A&#9;1&#9;Budi Santoso, S.Pd.&#10;Kelas 1B&#9;1&#9;Siti Aminah, M.Pd.&#10;Kelas 2A&#9;2&#9;Rahmat Hidayat, S.Pd."
+                    placeholder="Tempel data kelas dari spreadsheet Excel di sini...&#10;Contoh:&#10;Kelas 1A&#9;Budi Santoso, S.Pd.&#10;Kelas 1B&#9;Siti Aminah, M.Pd.&#10;Kelas 2A&#9;Rahmat Hidayat, S.Pd."
                     className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-500/10"
                   />
                 </div>
@@ -1304,7 +1215,7 @@ export const DataKelasView: React.FC = () => {
                           <th className="p-2 w-8">#</th>
                           <th className="p-2">Nama Kelas</th>
                           <th className="p-2 text-center w-20">Tingkat</th>
-                          <th className="p-2">Calon Wali Kelas</th>
+                          <th className="p-2">Nama Wali Kelas</th>
                           <th className="p-2 text-center w-20">Status</th>
                         </tr>
                       </thead>
@@ -1417,112 +1328,6 @@ export const DataKelasView: React.FC = () => {
                 </button>
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Quick Guru Mapel Assignment For Specific Class */}
-      {classMapelModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 text-slate-800 animate-in fade-in zoom-in-95 max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-black">
-                  <BookOpen size={18} />
-                </div>
-                <div>
-                  <h3 className="font-black text-slate-900 text-base">
-                    Atur Guru Mapel untuk {classMapelModal.name}
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Pilih guru mata pelajaran yang mengajar di kelas ini
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setClassMapelModal(null)}
-                className="text-slate-400 hover:text-slate-600 cursor-pointer"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <form onSubmit={saveClassMapelModal} className="space-y-4 pt-3 text-xs overflow-y-auto flex-1 pr-1">
-              <p className="text-xs font-bold text-slate-700">
-                Daftar Guru Mata Pelajaran (Data Guru):
-              </p>
-
-              {guruMapelList.length > 0 ? (
-                <div className="space-y-2">
-                  {guruMapelList.map((teacher) => {
-                    const isChecked = modalMapelTeacherIds.includes(teacher.id);
-                    const teacherSub = subjects.find((s) => s.teacherId === teacher.id);
-                    const mapelName = teacher.mataPelajaran || teacherSub?.name || 'Mata Pelajaran';
-
-                    return (
-                      <label
-                        key={teacher.id}
-                        className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${
-                          isChecked
-                            ? 'bg-indigo-50 border-indigo-400 ring-1 ring-indigo-400/30 text-indigo-950'
-                            : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setModalMapelTeacherIds((prev) => [...prev, teacher.id]);
-                              } else {
-                                setModalMapelTeacherIds((prev) => prev.filter((id) => id !== teacher.id));
-                              }
-                            }}
-                            className="rounded text-indigo-600 focus:ring-indigo-500"
-                          />
-                          <div>
-                            <p className="font-extrabold text-xs text-slate-900">
-                              {teacher.nama}
-                            </p>
-                            <p className="text-[11px] text-slate-500">
-                              Mapel: <span className="font-bold text-indigo-600">{mapelName}</span> • NIP: {teacher.nip || '-'}
-                            </p>
-                          </div>
-                        </div>
-                        {isChecked && (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-black bg-indigo-600 text-white">
-                            Mengajar
-                          </span>
-                        )}
-                      </label>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-xs text-slate-400 italic py-4 text-center">
-                  Belum ada data Guru Mapel di Data Referensi Guru.
-                </p>
-              )}
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setClassMapelModal(null)}
-                  className="px-4 py-2 text-slate-600 font-bold hover:bg-slate-100 rounded-xl cursor-pointer"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSavingClassMapel}
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-md transition-all cursor-pointer"
-                >
-                  {isSavingClassMapel ? 'Menyimpan...' : 'Simpan Penugasan Mapel'}
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}

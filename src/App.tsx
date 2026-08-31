@@ -156,10 +156,10 @@ const MainAppContent: React.FC = () => {
 
   // Pastikan landing page tertutup jika ada session OAuth atau user masuk Onboarding/Login
   React.useEffect(() => {
-    if (isOnboarding || isSelectingWorkspace || currentUser) {
+    if (isOnboarding || isSelectingWorkspace || currentUser || activeView === 'login') {
       setShowLanding(false);
     }
-  }, [isOnboarding, isSelectingWorkspace, currentUser]);
+  }, [isOnboarding, isSelectingWorkspace, currentUser, activeView]);
   const isSetupPage = new URLSearchParams(window.location.search).get('page') === 'setup';
 
   if (isSetupPage && !currentUser) return <SetupSuperAdminView />;

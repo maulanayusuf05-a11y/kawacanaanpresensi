@@ -817,18 +817,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const logout = async () => {
+    // Invalidate any in-flight data loading requests
+    loadRequestRef.current++;
+
     try {
       clearSessionTimers();
       localStorage.removeItem(CACHE_USER_SESSION_KEY);
       localStorage.removeItem(CACHE_LAST_VIEW_KEY);
+      localStorage.removeItem(SESSION_LAST_ACTIVE_KEY);
+      localStorage.removeItem(SESSION_LOGIN_TIME_KEY);
+      localStorage.removeItem("kawacanaan_last_workspace_id");
+      
+      // Clean all user-specific and sb- token keys from localStorage
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith("kawacanaan_last_workspace_id_") || key.startsWith("sb-") || key.includes("supabase.auth.token"))) {
+          localStorage.removeItem(key);
+        }
+      }
     } catch (_) {}
-    await supabase.auth.signOut();
+
+    // Eksekusi Supabase Auth signOut() resmi dan tunggu hingga selesai
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.warn("[logout] supabase.auth.signOut error:", err);
+    }
+
+    // Verifikasi resmi bahwa Supabase session benar-benar sudah null / tidak tersedia
+    try {
+      const { data: verifySession } = await supabase.auth.getSession();
+      if (verifySession?.session) {
+        console.warn("[logout] Session still active after signOut, forcing cleanup...");
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const key = localStorage.key(i);
+          if (key && (key.startsWith("sb-") || key.includes("supabase.auth.token"))) {
+            localStorage.removeItem(key);
+          }
+        }
+      }
+    } catch (_) {}
+
+    // Reset seluruh state aplikasi ke null dan default
     setCurrentUser(null);
     setUserWorkspaces([]);
     setActiveWorkspace(null);
     setIsOnboarding(false);
     setIsSelectingWorkspace(false);
     setIsAuthChecking(false);
+    setRegistrationRequired(false);
+    setPasswordRecovery(false);
     activeViewRef.current = "login";
     setActiveViewState("login");
     setStudents([]);
