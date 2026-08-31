@@ -6,14 +6,12 @@ interface HeroSectionProps {
   onOpenRegister: () => void;
   onOpenLogin: () => void;
   lang: 'ID' | 'EN';
-  isLoggedIn?: boolean;
 }
 
 export const HeroSection: React.FC<HeroSectionProps> = ({ 
   onOpenRegister, 
   onOpenLogin,
-  lang,
-  isLoggedIn = false
+  lang 
 }) => {
   return (
     <section 
@@ -83,14 +81,14 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                 <ArrowRight className="w-4 h-4 shrink-0" />
               </button>
 
-              {/* Secondary Border Button: MASUK KE SISTEM / BUKA DASHBOARD */}
+              {/* Secondary Border Button: MASUK KE SISTEM */}
               <button
                 type="button"
                 id="btn-hero-login"
                 onClick={onOpenLogin}
                 className="w-full sm:w-auto border border-slate-300 bg-white hover:bg-indigo-50 text-slate-900 px-6 sm:px-8 py-3.5 sm:py-4 text-xs sm:text-sm font-bold uppercase tracking-widest hover:border-indigo-600 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-2xs rounded"
               >
-                <span>{isLoggedIn ? (lang === 'ID' ? 'BUKA DASHBOARD' : 'OPEN DASHBOARD') : (lang === 'ID' ? 'MASUK KE SISTEM' : 'ENTER SYSTEM')}</span>
+                <span>{lang === 'ID' ? 'MASUK KE SISTEM' : 'ENTER SYSTEM'}</span>
                 <ArrowRight className="w-4 h-4 shrink-0" />
               </button>
 
