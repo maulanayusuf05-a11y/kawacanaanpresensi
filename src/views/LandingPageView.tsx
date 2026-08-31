@@ -29,17 +29,9 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({ onEnterSystem 
     setIsRegisterOpen(true);
   };
 
-  // Membuka login sistem presensi sekolah dasar di tab baru agar landing page tetap aktif
+  // Membuka login sistem presensi sekolah dasar
   const handleOpenLogin = () => {
-    try {
-      const newTab = window.open('/?page=login', '_blank');
-      if (!newTab || newTab.closed || typeof newTab.closed === 'undefined') {
-        // Fallback jika browser memblokir popup
-        onEnterSystem();
-      }
-    } catch (_) {
-      onEnterSystem();
-    }
+    onEnterSystem();
   };
 
   const handleOpenLegal = (tab: LegalTabType) => {

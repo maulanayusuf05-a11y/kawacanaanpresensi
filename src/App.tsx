@@ -154,12 +154,58 @@ const MainAppContent: React.FC = () => {
     return params.get('page') !== 'login' && params.get('page') !== 'setup' && !hasAuthHash;
   });
 
-  // Pastikan landing page tertutup jika ada session OAuth atau user masuk Onboarding/Login
+  // Pastikan landing page tertutup jika user sudah login, sedang onboarding, memilih workspace, atau recovery password
   React.useEffect(() => {
-    if (isOnboarding || isSelectingWorkspace || currentUser || activeView === 'login') {
+    if (isOnboarding || isSelectingWorkspace || currentUser || passwordRecovery) {
       setShowLanding(false);
     }
-  }, [isOnboarding, isSelectingWorkspace, currentUser, activeView]);
+  }, [isOnboarding, isSelectingWorkspace, currentUser, passwordRecovery]);
+
+  // Handle browser back / forward navigation (PopState)
+  React.useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const hash = window.location.hash || '';
+      const hasAuthHash =
+        hash.includes('access_token=') ||
+        hash.includes('refresh_token=') ||
+        hash.includes('error=') ||
+        hash.includes('error_description=') ||
+        hash.includes('type=recovery') ||
+        hash.includes('type=signup') ||
+        hash.includes('type=invite');
+
+      if (!currentUser && !hasPersistedAuthToken() && params.get('page') !== 'login' && params.get('page') !== 'setup' && !hasAuthHash) {
+        setShowLanding(true);
+      } else if (params.get('page') === 'login') {
+        setShowLanding(false);
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [currentUser]);
+
+  const handleEnterSystem = () => {
+    setShowLanding(false);
+    setActiveView('login');
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('page', 'login');
+      window.history.pushState(null, '', url.toString());
+    } catch (_) {}
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleBackToLanding = () => {
+    setShowLanding(true);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('page');
+      window.history.pushState(null, '', url.pathname + (url.search ? url.search : ''));
+    } catch (_) {}
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const isSetupPage = new URLSearchParams(window.location.search).get('page') === 'setup';
 
   if (isSetupPage && !currentUser) return <SetupSuperAdminView />;
@@ -197,11 +243,11 @@ const MainAppContent: React.FC = () => {
   }
 
   if (showLanding && !currentUser) {
-    return <LandingPageView onEnterSystem={() => { setShowLanding(false); setActiveView('login'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />;
+    return <LandingPageView onEnterSystem={handleEnterSystem} />;
   }
 
   if (!currentUser || activeView === 'login') {
-    return <LoginView />;
+    return <LoginView onBackToLanding={handleBackToLanding} />;
   }
 
   // Wajib ganti password sebelum akses lain mana pun — berlaku untuk semua role.

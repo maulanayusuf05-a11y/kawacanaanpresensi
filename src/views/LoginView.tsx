@@ -21,7 +21,11 @@ import {
   AlertCircle,
 } from 'lucide-react';
 
-export const LoginView: React.FC = () => {
+interface LoginViewProps {
+  onBackToLanding?: () => void;
+}
+
+export const LoginView: React.FC<LoginViewProps> = ({ onBackToLanding }) => {
   const {
     showToast,
     schoolProfile,
@@ -212,12 +216,30 @@ export const LoginView: React.FC = () => {
         </div>
 
         {/* Right Side: Clean White Login Card */}
-        <div className="w-full flex justify-center lg:justify-center flex-1">
+        <div className="w-full flex flex-col items-center justify-center flex-1">
+          {onBackToLanding && (
+            <div className="w-full max-w-[400px] sm:max-w-[440px] mb-3 flex items-center justify-start">
+              <button
+                type="button"
+                id="btn-back-to-landing"
+                onClick={onBackToLanding}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/80 hover:bg-white border border-slate-200/80 text-slate-600 hover:text-blue-700 text-xs font-bold transition-all shadow-2xs hover:shadow-sm cursor-pointer group"
+              >
+                <ArrowLeft size={14} className="group-hover:-translate-x-0.5 transition-transform" />
+                <span>Kembali ke Beranda</span>
+              </button>
+            </div>
+          )}
+
           <div className="w-full max-w-[400px] sm:max-w-[440px] bg-white rounded-3xl p-7 sm:p-8 shadow-xl shadow-slate-200/80 border border-slate-200/90 transition-all text-slate-800">
             
             {/* Top Brand Header inside Card */}
             <div className="flex flex-col items-center justify-center mb-6 text-center">
-              <div className="mb-2">
+              <div 
+                className={`mb-2 ${onBackToLanding ? 'cursor-pointer hover:opacity-90 transition-opacity' : ''}`}
+                onClick={onBackToLanding ? onBackToLanding : undefined}
+                title={onBackToLanding ? 'Kembali ke Beranda' : undefined}
+              >
                 <KawacanaanEmblem size={68} />
               </div>
               <h2 className="text-xl sm:text-2xl font-black tracking-widest text-slate-900 uppercase">
