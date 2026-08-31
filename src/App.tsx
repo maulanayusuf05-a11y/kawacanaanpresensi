@@ -42,6 +42,13 @@ const VIEW_ACCESS: Record<ActiveView, UserRole[] | 'all'> = {
 
 const defaultViewForRole = (role: UserRole): ActiveView => role === 'SUPER_ADMIN' ? 'superadmin' : (role === 'SISWA' ? 'portal-siswa' : 'dashboard');
 
+const isAllowedForRole = (view: ActiveView, role: UserRole): boolean => {
+  const allowed = VIEW_ACCESS[view];
+  if (!allowed) return false;
+  if (allowed === 'all') return true;
+  return allowed.includes(role);
+};
+
 const ToastContainer: React.FC = () => {
   const { toasts, removeToast } = useApp();
 
@@ -136,40 +143,120 @@ const MainAppContent: React.FC = () => {
     loadUserDataAfterOnboarding,
     isAuthChecking
   } = useApp();
-  const [showLanding, setShowLanding] = React.useState(() => {
-    if (typeof window === 'undefined') return true;
-    const params = new URLSearchParams(window.location.search);
-    const hash = window.location.hash || '';
-    const hasAuthHash =
-      hash.includes('access_token=') ||
-      hash.includes('refresh_token=') ||
-      hash.includes('error=') ||
-      hash.includes('error_description=') ||
-      hash.includes('type=recovery') ||
-      hash.includes('type=signup') ||
-      hash.includes('type=invite');
 
-    if (hasPersistedAuthToken()) return false;
-
-    return params.get('page') !== 'login' && params.get('page') !== 'setup' && !hasAuthHash;
+  // Track browser URL path and query parameters
+  const [currentPath, setCurrentPath] = React.useState<string>(() => {
+    if (typeof window === 'undefined') return '/';
+    return window.location.pathname.toLowerCase().replace(/\/+$/, '') || '/';
   });
 
-  // Pastikan landing page tertutup jika ada session OAuth atau user masuk Onboarding/Login
+  const [currentSearch, setCurrentSearch] = React.useState<string>(() => {
+    if (typeof window === 'undefined') return '';
+    return window.location.search;
+  });
+
+  // Browser navigation listener (Back / Forward button support)
   React.useEffect(() => {
-    if (isOnboarding || isSelectingWorkspace || currentUser || activeView === 'login') {
-      setShowLanding(false);
+    const handlePopState = () => {
+      const path = window.location.pathname.toLowerCase().replace(/\/+$/, '') || '/';
+      setCurrentPath(path);
+      setCurrentSearch(window.location.search);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const navigateTo = React.useCallback((path: string, replace = false) => {
+    if (typeof window === 'undefined') return;
+    if (replace) {
+      window.history.replaceState(null, '', path);
+    } else {
+      window.history.pushState(null, '', path);
     }
-  }, [isOnboarding, isSelectingWorkspace, currentUser, activeView]);
-  const isSetupPage = new URLSearchParams(window.location.search).get('page') === 'setup';
+    const cleanPath = window.location.pathname.toLowerCase().replace(/\/+$/, '') || '/';
+    setCurrentPath(cleanPath);
+    setCurrentSearch(window.location.search);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  const searchParams = React.useMemo(() => new URLSearchParams(currentSearch), [currentSearch]);
+  const pageParam = searchParams.get('page')?.toLowerCase();
+  const hash = typeof window !== 'undefined' ? window.location.hash || '' : '';
+
+  const hasRecoveryHash =
+    hash.includes('type=recovery') ||
+    hash.includes('type=signup') ||
+    hash.includes('type=invite') ||
+    (hash.includes('access_token=') && hash.includes('type=recovery'));
+
+  const isResetPassword = currentPath === '/reset-password' || hasRecoveryHash || passwordRecovery;
+  const isSetupPage = currentPath === '/setup' || pageParam === 'setup';
+  const isLoginPage = currentPath === '/login' || pageParam === 'login' || activeView === 'login';
+  const isLandingPage = currentPath === '/' && !pageParam && !isLoginPage && !isSetupPage && !isResetPassword;
+
+  // ROUTE GUARD 1: User is already logged in and navigates to /login
+  // Redirect logged-in user to /dashboard (or role default view)
+  React.useEffect(() => {
+    if (currentUser && (currentPath === '/login' || pageParam === 'login')) {
+      const initialView = defaultViewForRole(currentUser.role);
+      setActiveView(initialView);
+      navigateTo(`/${initialView}`, true);
+    }
+  }, [currentUser, currentPath, pageParam, navigateTo, setActiveView]);
+
+  // ROUTE GUARD 2: User is NOT logged in and tries to access /dashboard or any private route
+  // Redirect unauthenticated user to /login
+  React.useEffect(() => {
+    if (!isAuthChecking && !currentUser) {
+      const isPrivatePath = 
+        currentPath === '/dashboard' ||
+        currentPath === '/portal-siswa' ||
+        currentPath === '/superadmin' ||
+        currentPath === '/data-referensi' ||
+        currentPath === '/data-pengguna' ||
+        currentPath === '/kalender-akademik' ||
+        currentPath === '/absensi' ||
+        currentPath === '/rekapitulasi' ||
+        currentPath === '/laporan' ||
+        currentPath === '/pengaturan';
+
+      if (isPrivatePath) {
+        showToast('Halaman dashboard bersifat privat. Silakan login terlebih dahulu.', 'info');
+        setActiveView('login');
+        navigateTo('/login', true);
+      }
+    }
+  }, [isAuthChecking, currentUser, currentPath, navigateTo, setActiveView, showToast]);
+
+  // Sync activeView with path for authenticated user when URL matches known views
+  React.useEffect(() => {
+    if (currentUser) {
+      const viewMap: Record<string, ActiveView> = {
+        '/dashboard': 'dashboard',
+        '/portal-siswa': 'portal-siswa',
+        '/superadmin': 'superadmin',
+        '/data-referensi': 'data-referensi',
+        '/data-pengguna': 'data-pengguna',
+        '/kalender-akademik': 'kalender-akademik',
+        '/absensi': 'absensi',
+        '/rekapitulasi': 'rekapitulasi',
+        '/laporan': 'laporan',
+        '/pengaturan': 'pengaturan',
+      };
+      const matched = viewMap[currentPath];
+      if (matched && matched !== activeView && isAllowedForRole(matched, currentUser.role)) {
+        setActiveView(matched);
+      }
+    }
+  }, [currentUser, currentPath, activeView, setActiveView]);
 
   if (isSetupPage && !currentUser) return <SetupSuperAdminView />;
 
-  if (passwordRecovery) {
+  if (isResetPassword) {
     return <ResetPasswordView />;
   }
 
   // Jika sedang memeriksa sesi auth dan profil pengguna belum ter-hydrate, tampilkan skeleton loading
-  // Jangan pernah menampilkan LoginView saat reload di dashboard / halaman lain
   if (isAuthChecking && !currentUser) {
     return <AppAuthLoadingSkeleton />;
   }
@@ -196,12 +283,40 @@ const MainAppContent: React.FC = () => {
     );
   }
 
-  if (showLanding && !currentUser) {
-    return <LandingPageView onEnterSystem={() => { setShowLanding(false); setActiveView('login'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />;
+  // 1. LANDING PAGE (/) - Publicly accessible without login. User is never redirected to /login when opening /
+  if (isLandingPage && !currentUser) {
+    return (
+      <LandingPageView 
+        onEnterSystem={() => {
+          setActiveView('login');
+          navigateTo('/login');
+        }} 
+      />
+    );
   }
 
-  if (!currentUser || activeView === 'login') {
-    return <LoginView />;
+  // If logged-in user visits landing page (/), allow viewing it or navigating to /dashboard
+  if (isLandingPage && currentUser) {
+    return (
+      <LandingPageView 
+        onEnterSystem={() => {
+          const target = defaultViewForRole(currentUser.role);
+          setActiveView(target);
+          navigateTo(`/${target}`);
+        }} 
+      />
+    );
+  }
+
+  // 2. LOGIN PAGE (/login) - Only for authentication when user is not logged in
+  if (!currentUser || isLoginPage) {
+    return (
+      <LoginView 
+        onBackToLanding={() => {
+          navigateTo('/');
+        }} 
+      />
+    );
   }
 
   // Wajib ganti password sebelum akses lain mana pun — berlaku untuk semua role.
@@ -219,8 +334,7 @@ const MainAppContent: React.FC = () => {
     }
   }
 
-  // Defense-in-depth: jangan pernah render view yang perannya tidak diizinkan,
-  // apa pun cara `activeView` bisa berubah.
+  // Defense-in-depth: jangan pernah render view yang perannya tidak diizinkan
   const allowedRoles = VIEW_ACCESS[activeView];
   const isAllowed = allowedRoles === 'all' || allowedRoles.includes(currentUser.role);
 
@@ -230,6 +344,7 @@ const MainAppContent: React.FC = () => {
     setTimeout(() => {
       showToast('Anda tidak memiliki akses ke halaman tersebut.', 'error');
       setActiveView(fallback);
+      navigateTo(`/${fallback}`, true);
     }, 0);
     return (
       <div className="min-h-screen bg-[#F8FAFC] flex flex-col antialiased">

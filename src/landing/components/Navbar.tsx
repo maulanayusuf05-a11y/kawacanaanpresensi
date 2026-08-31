@@ -7,13 +7,15 @@ interface NavbarProps {
   onOpenRegister: () => void;
   lang: 'ID' | 'EN';
   setLang: (lang: 'ID' | 'EN') => void;
+  isLoggedIn?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ 
   onOpenLogin, 
   onOpenRegister,
   lang,
-  setLang 
+  setLang,
+  isLoggedIn = false
 }) => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -147,14 +149,14 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             </div>
 
-            {/* Login Button - Editorial Slate/Indigo Style */}
+            {/* Login / Dashboard Button - Editorial Slate/Indigo Style */}
             <button
               type="button"
               id="btn-navbar-login"
               onClick={onOpenLogin}
               className="px-5 py-2.5 bg-slate-900 hover:bg-indigo-600 active:scale-95 text-white text-xs font-bold uppercase tracking-widest transition-all cursor-pointer shadow-sm rounded"
             >
-              <span>{lang === 'ID' ? 'Masuk' : 'Sign In'}</span>
+              <span>{isLoggedIn ? (lang === 'ID' ? 'Buka Dashboard' : 'Dashboard') : (lang === 'ID' ? 'Masuk' : 'Sign In')}</span>
             </button>
           </div>
 
@@ -188,7 +190,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={onOpenLogin}
               className="px-3 py-1.5 sm:px-4 sm:py-2 bg-slate-900 hover:bg-indigo-600 text-white text-xs font-bold uppercase tracking-wider rounded transition-all cursor-pointer"
             >
-              {lang === 'ID' ? 'Masuk' : 'Sign In'}
+              {isLoggedIn ? (lang === 'ID' ? 'Dashboard' : 'Dashboard') : (lang === 'ID' ? 'Masuk' : 'Sign In')}
             </button>
             <button
               type="button"

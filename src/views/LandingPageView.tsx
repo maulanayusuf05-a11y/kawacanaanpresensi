@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useApp } from '../context/AppContext';
 import { Navbar } from '../landing/components/Navbar';
 import { HeroSection } from '../landing/components/HeroSection';
 import { FeaturesSection } from '../landing/components/FeaturesSection';
@@ -18,6 +19,7 @@ interface LandingPageViewProps {
 }
 
 export const LandingPageView: React.FC<LandingPageViewProps> = ({ onEnterSystem }) => {
+  const { currentUser } = useApp();
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState<'free' | 'teacher' | 'school'>('free');
   const [isLegalOpen, setIsLegalOpen] = useState(false);
@@ -29,17 +31,8 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({ onEnterSystem 
     setIsRegisterOpen(true);
   };
 
-  // Membuka login sistem presensi sekolah dasar di tab baru agar landing page tetap aktif
   const handleOpenLogin = () => {
-    try {
-      const newTab = window.open('/?page=login', '_blank');
-      if (!newTab || newTab.closed || typeof newTab.closed === 'undefined') {
-        // Fallback jika browser memblokir popup
-        onEnterSystem();
-      }
-    } catch (_) {
-      onEnterSystem();
-    }
+    onEnterSystem();
   };
 
   const handleOpenLegal = (tab: LegalTabType) => {
@@ -54,6 +47,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({ onEnterSystem 
         onOpenRegister={() => handleOpenRegister('free')}
         lang={lang}
         setLang={setLang}
+        isLoggedIn={!!currentUser}
       />
 
       <main className="relative">
@@ -61,6 +55,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({ onEnterSystem 
           onOpenRegister={() => handleOpenRegister('free')}
           onOpenLogin={handleOpenLogin}
           lang={lang}
+          isLoggedIn={!!currentUser}
         />
         <FeaturesSection lang={lang} />
         <AdvantagesSection lang={lang} onOpenRegister={() => handleOpenRegister('school')} />

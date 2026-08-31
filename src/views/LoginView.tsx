@@ -19,9 +19,14 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
+  Home,
 } from 'lucide-react';
 
-export const LoginView: React.FC = () => {
+interface LoginViewProps {
+  onBackToLanding?: () => void;
+}
+
+export const LoginView: React.FC<LoginViewProps> = ({ onBackToLanding }) => {
   const {
     showToast,
     schoolProfile,
@@ -216,7 +221,18 @@ export const LoginView: React.FC = () => {
           <div className="w-full max-w-[400px] sm:max-w-[440px] bg-white rounded-3xl p-7 sm:p-8 shadow-xl shadow-slate-200/80 border border-slate-200/90 transition-all text-slate-800">
             
             {/* Top Brand Header inside Card */}
-            <div className="flex flex-col items-center justify-center mb-6 text-center">
+            <div className="flex flex-col items-center justify-center mb-6 text-center relative">
+              {onBackToLanding && (
+                <button
+                  type="button"
+                  id="btn-back-to-landing"
+                  onClick={onBackToLanding}
+                  className="self-start inline-flex items-center gap-1 text-[11px] font-bold text-slate-400 hover:text-indigo-600 mb-2 transition-colors cursor-pointer"
+                >
+                  <ArrowLeft size={13} />
+                  <span>Ke Beranda</span>
+                </button>
+              )}
               <div className="mb-2">
                 <KawacanaanEmblem size={68} />
               </div>
