@@ -957,8 +957,7 @@ export default async function handler(req: any, res: any) {
           nama: fullName,
           nip,
           jenisKelamin: gender,
-          jabatan: role === 'WALI KELAS' ? 'Wali Kelas' : 'Guru Mapel',
-          mataPelajaran: role === 'GURU MAPEL' ? String(body.subjectName || 'Guru Mapel') : 'Wali Kelas',
+          tugasUtama: role === 'WALI KELAS' ? 'Wali Kelas' : String(body.subjectName || 'Guru Mapel'),
         });
 
         if (mode !== 'personal' && role === 'WALI KELAS') {
