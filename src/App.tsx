@@ -191,8 +191,8 @@ const MainAppContent: React.FC = () => {
 
   const isResetPassword = currentPath === '/reset-password' || hasRecoveryHash || passwordRecovery;
   const isSetupPage = currentPath === '/setup' || pageParam === 'setup';
-  const isLoginPage = currentPath === '/login' || pageParam === 'login' || activeView === 'login';
-  const isLandingPage = currentPath === '/' && !pageParam && !isLoginPage && !isSetupPage && !isResetPassword;
+  const isLoginPage = currentPath === '/login' || pageParam === 'login';
+  const isLandingPage = (currentPath === '/' || !currentPath) && !pageParam && !isSetupPage && !isResetPassword;
 
   // ROUTE GUARD 1: User is already logged in and navigates to /login
   // Redirect logged-in user to /dashboard (or role default view)
@@ -310,13 +310,7 @@ const MainAppContent: React.FC = () => {
 
   // 2. LOGIN PAGE (/login) - Only for authentication when user is not logged in
   if (!currentUser || isLoginPage) {
-    return (
-      <LoginView 
-        onBackToLanding={() => {
-          navigateTo('/');
-        }} 
-      />
-    );
+    return <LoginView />;
   }
 
   // Wajib ganti password sebelum akses lain mana pun — berlaku untuk semua role.
