@@ -3206,7 +3206,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         }
       }
 
-      // 2. Data Guru
+      // 2. Data Guru & Tenaga Kependidikan
       for (const teacher of teachers) {
         const teacherName = teacher.nama.trim();
         const teacherUsername = sanitizeUsername(
@@ -3220,18 +3220,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               (u.role === "WALI KELAS" || u.role === "GURU MAPEL")),
         );
 
-        const linkedClass = classes.find(
+        // Cari assignment Wali Kelas
+        const linkedHomeroom = classes.find(
           (c) =>
             c.waliKelasTeacherId === teacher.id ||
             (c.waliKelasName &&
-              c.waliKelasName.trim().toLowerCase() ===
-                teacherName.toLowerCase()),
+              c.waliKelasName.trim().toLowerCase() === teacherName.toLowerCase()),
         );
-        const classIds = linkedClass ? [linkedClass.id] : [];
-        const role: UserRole =
-          teacher.tugasUtama === "Wali Kelas" || teacher.tugas_utama === "Wali Kelas" || linkedClass
-            ? "WALI KELAS"
-            : "GURU MAPEL";
+
+        // Cari assignment Guru Mapel
+        const teacherSubjects = subjects.filter(
+          (s) =>
+            s.teacherId === teacher.id ||
+            (s.teacherName && s.teacherName.trim().toLowerCase() === teacherName.toLowerCase()),
+        );
+
+        const isWali = (teacher.tugasUtama === "Wali Kelas" || teacher.tugas_utama === "Wali Kelas" || !!linkedHomeroom);
+        const isMapel = (teacher.tugasUtama === "Guru Mapel" || teacher.tugas_utama === "Guru Mapel" || teacherSubjects.length > 0);
+
+        let role: UserRole = isWali ? "WALI KELAS" : (isMapel ? "GURU MAPEL" : "GURU MAPEL");
+        if (existing && (existing.role === "WALI KELAS" || existing.role === "GURU MAPEL")) {
+          role = existing.role;
+        }
+
+        let classIds: string[] = [];
+        let assignmentDescription = "";
+
+        if (isWali && linkedHomeroom) {
+          classIds = [linkedHomeroom.id];
+          assignmentDescription = `Wali Kelas ${linkedHomeroom.name}`;
+        } else if (teacherSubjects.length > 0) {
+          const mapelNames = teacherSubjects.map(s => s.name).join(", ");
+          const targetClassIds: string[] = Array.from(new Set(teacherSubjects.flatMap(s => (s.targetClassIds || []) as string[])));
+          classIds = targetClassIds;
+          const targetClassNames = targetClassIds
+            .map(cid => classes.find(c => c.id === cid)?.name || "")
+            .filter(Boolean);
+          const classSuffix = targetClassNames.length > 0 ? ` (${targetClassNames.join(", ")})` : "";
+          assignmentDescription = `${mapelNames}${classSuffix}`;
+        } else {
+          assignmentDescription = teacher.tugasUtama || teacher.tugas_utama || "Tenaga Pendidik";
+        }
 
         if (!existing) {
           const password = generateRandomPassword(8);
@@ -3242,16 +3271,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               password,
               role,
               classIds,
+              subjectId: teacherSubjects[0]?.id || null,
+              subjectName: teacherSubjects[0]?.name || null,
             });
             const createdTeacherId = res?.teacherId;
-            if (createdTeacherId && linkedClass) {
+            if (createdTeacherId && linkedHomeroom) {
               await supabase
                 .from("classes")
                 .update({ wali_kelas_teacher_id: createdTeacherId })
-                .eq("id", linkedClass.id);
+                .eq("id", linkedHomeroom.id);
               setClasses((prev) =>
                 prev.map((c) =>
-                  c.id === linkedClass.id
+                  c.id === linkedHomeroom.id
                     ? {
                         ...c,
                         waliKelasTeacherId: createdTeacherId,
@@ -3267,7 +3298,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               password,
               role,
               category: "GURU",
-              className: linkedClass?.name,
+              className: assignmentDescription,
               status: "CREATED",
             });
           } catch (err: any) {
@@ -3276,7 +3307,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               username: teacherUsername,
               role,
               category: "GURU",
-              className: linkedClass?.name,
+              className: assignmentDescription,
               status: "SKIPPED",
               error: err?.message,
             });
@@ -3293,9 +3324,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               name: existing.name,
               username: existing.username,
               password: newPassword,
-              role: existing.role,
+              role: existing.role || role,
               category: "GURU",
-              className: existing.classNames?.join(", ") || linkedClass?.name,
+              className: assignmentDescription || existing.classNames?.join(", "),
               status: "UPDATED",
             });
           } catch (err: any) {
@@ -3303,12 +3334,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               id: existing.id,
               name: existing.name,
               username: existing.username,
-              role: existing.role,
+              role: existing.role || role,
               category: "GURU",
+              className: assignmentDescription,
               status: "SKIPPED",
               error: err?.message,
             });
           }
+        } else {
+          // If not resetting passwords, still list existing account in results for visibility
+          results.push({
+            id: existing.id,
+            name: existing.name,
+            username: existing.username,
+            password: existing.password || "Tersimpan",
+            role: existing.role || role,
+            category: "GURU",
+            className: assignmentDescription || existing.classNames?.join(", "),
+            status: "ACTIVE" as any,
+          });
         }
       }
 

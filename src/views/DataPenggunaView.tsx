@@ -46,7 +46,8 @@ export const DataPenggunaView: React.FC = () => {
   } = useApp();
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'administrator' | 'guru' | 'siswa'>('administrator');
+  const [activeTab, setActiveTab] = useState<'administrator' | 'guru' | 'siswa'>('guru');
+  const [guruSubFilter, setGuruSubFilter] = useState<'ALL' | 'WALI_KELAS' | 'GURU_MAPEL' | 'KEPALA_SEKOLAH'>('ALL');
   const [pageSize, setPageSize] = useState<number>(10);
   const [currentPage, setCurrentPage] = useState<number>(1);
 
@@ -55,13 +56,14 @@ export const DataPenggunaView: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generateProgress, setGenerateProgress] = useState(0);
   const [generateStatusMessage, setGenerateStatusMessage] = useState('');
-  const [generateResetExisting, setGenerateResetExisting] = useState(false);
+  const [generateResetExisting, setGenerateResetExisting] = useState(true);
   const [generatedResults, setGeneratedResults] = useState<GeneratedAccountResult[] | null>(null);
   const [resultFilterTab, setResultFilterTab] = useState<'ALL' | 'GURU' | 'SISWA' | 'KEPALA SEKOLAH'>('ALL');
   const [resultSearchTerm, setResultSearchTerm] = useState('');
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [showMainExportMenu, setShowMainExportMenu] = useState(false);
 
   // Edit User Modal State
   const [editUser, setEditUser] = useState<UserAccount | null>(null);
@@ -92,57 +94,203 @@ export const DataPenggunaView: React.FC = () => {
     return false;
   };
 
+  // Helper to resolve detailed Hak Akses & Penugasan (Wali Kelas / Guru Mapel / Kepala Sekolah)
+  const getUserAssignmentDetails = (u: UserAccount) => {
+    if (u.role === 'ADMIN') {
+      return {
+        type: 'ADMIN' as const,
+        roleLabel: 'ADMINISTRATOR',
+        badgeColor: 'bg-purple-50 text-purple-700 border-purple-200',
+        assignmentText: 'Akses Penuh Pengelolaan Sistem & Data',
+        classes: [],
+        subjects: [],
+        matchedTeacher: null,
+      };
+    }
+    if (u.role === 'SISWA') {
+      const s = students.find((st) => st.id === u.studentId || st.nisn === u.username);
+      const className = s?.className || (u.classIds && u.classIds.length > 0 ? (classes.find(c => c.id === u.classIds![0])?.name || '') : '');
+      return {
+        type: 'SISWA' as const,
+        roleLabel: 'SISWA',
+        badgeColor: 'bg-slate-100 text-slate-700 border-slate-200',
+        assignmentText: className ? `Rombel: ${className}` : 'Peserta Didik',
+        classes: className ? [className] : [],
+        subjects: [],
+        matchedTeacher: null,
+      };
+    }
+    if (u.role === 'KEPALA SEKOLAH') {
+      return {
+        type: 'KEPALA_SEKOLAH' as const,
+        roleLabel: 'KEPALA SEKOLAH',
+        badgeColor: 'bg-sky-50 text-sky-700 border-sky-200',
+        assignmentText: 'Pimpinan Satuan Pendidikan (Seluruh Rombel)',
+        classes: ['Semua Rombel'],
+        subjects: [],
+        matchedTeacher: null,
+      };
+    }
+
+    // Match teacher from master teachers list
+    const matchedTeacher = teachers.find(
+      (t) =>
+        (u.teacherId && t.id === u.teacherId) ||
+        (t.nip && t.nip !== '-' && u.username && t.nip.toLowerCase() === u.username.toLowerCase()) ||
+        (t.nama && u.name && t.nama.trim().toLowerCase() === u.name.trim().toLowerCase())
+    );
+
+    // Homeroom assignments
+    const homeroomClasses = classes.filter(
+      (c) =>
+        (matchedTeacher && c.waliKelasTeacherId === matchedTeacher.id) ||
+        (u.teacherId && c.waliKelasTeacherId === u.teacherId) ||
+        (c.waliKelasName && c.waliKelasName.trim().toLowerCase() === u.name.trim().toLowerCase()) ||
+        (u.role === 'WALI KELAS' && u.classIds && u.classIds.includes(c.id))
+    );
+
+    // Subject teacher assignments
+    const teacherSubjects = subjects.filter(
+      (s) =>
+        (matchedTeacher && s.teacherId === matchedTeacher.id) ||
+        (u.teacherId && s.teacherId === u.teacherId) ||
+        (s.teacherName && s.teacherName.trim().toLowerCase() === u.name.trim().toLowerCase()) ||
+        (u.subjectId && s.id === u.subjectId)
+    );
+
+    const isWali =
+      homeroomClasses.length > 0 ||
+      u.role === 'WALI KELAS' ||
+      (matchedTeacher && (matchedTeacher.tugasUtama === 'Wali Kelas' || matchedTeacher.tugas_utama === 'Wali Kelas'));
+
+    const isMapel =
+      teacherSubjects.length > 0 ||
+      u.role === 'GURU MAPEL' ||
+      (matchedTeacher && (matchedTeacher.tugasUtama === 'Guru Mapel' || matchedTeacher.tugas_utama === 'Guru Mapel'));
+
+    if (isWali && !isMapel) {
+      const classNames = homeroomClasses.map((c) => c.name).filter(Boolean);
+      const classList = classNames.length > 0 ? classNames : (u.classNames && u.classNames.length > 0 ? u.classNames : []);
+      const assignedClassStr = classList.length > 0 ? classList.join(', ') : '';
+      return {
+        type: 'WALI_KELAS' as const,
+        roleLabel: 'WALI KELAS',
+        badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+        assignmentText: assignedClassStr ? `Wali Kelas ${assignedClassStr}` : 'Wali Kelas (Belum Dipetakan)',
+        classes: classList,
+        subjects: [],
+        matchedTeacher,
+      };
+    }
+
+    if (isMapel) {
+      const mapelNames = teacherSubjects.map((s) => s.name).filter(Boolean);
+      let targetClassNames: string[] = [];
+      teacherSubjects.forEach((s) => {
+        (s.targetClassIds || []).forEach((cid) => {
+          const c = classes.find((cl) => cl.id === cid);
+          if (c?.name && !targetClassNames.includes(c.name)) targetClassNames.push(c.name);
+        });
+      });
+      if (targetClassNames.length === 0 && u.classNames && u.classNames.length > 0) {
+        targetClassNames = u.classNames;
+      }
+      const mapelStr = mapelNames.length > 0 ? mapelNames.join(', ') : (u.subjectName || 'Guru Mapel');
+      const classStr = targetClassNames.length > 0 ? ` (${targetClassNames.join(', ')})` : '';
+
+      return {
+        type: 'GURU_MAPEL' as const,
+        roleLabel: 'GURU MAPEL',
+        badgeColor: 'bg-indigo-50 text-indigo-800 border-indigo-200',
+        assignmentText: `${mapelStr}${classStr}`,
+        classes: targetClassNames,
+        subjects: mapelNames.length > 0 ? mapelNames : (u.subjectName ? [u.subjectName] : []),
+        matchedTeacher,
+      };
+    }
+
+    return {
+      type: 'GURU_MAPEL' as const,
+      roleLabel: u.role || 'GURU',
+      badgeColor: 'bg-blue-50 text-blue-700 border-blue-200',
+      assignmentText: u.classNames && u.classNames.length > 0 ? `Rombel: ${u.classNames.join(', ')}` : 'Tenaga Pendidik',
+      classes: u.classNames || [],
+      subjects: u.subjectName ? [u.subjectName] : [],
+      matchedTeacher,
+    };
+  };
+
+  // Summary counts for Guru & KS
+  const teacherStats = useMemo(() => {
+    const teacherUsers = users.filter(
+      (u) => u.role === 'WALI KELAS' || u.role === 'GURU MAPEL' || u.role === 'KEPALA SEKOLAH'
+    );
+    let countWali = 0;
+    let countMapel = 0;
+    let countKepsek = 0;
+
+    teacherUsers.forEach((u) => {
+      const details = getUserAssignmentDetails(u);
+      if (details.type === 'WALI_KELAS') countWali++;
+      else if (details.type === 'GURU_MAPEL') countMapel++;
+      else if (details.type === 'KEPALA_SEKOLAH') countKepsek++;
+    });
+
+    // Count teachers in master data without user account
+    const unlinkedTeachers = teachers.filter(
+      (t) =>
+        !users.some(
+          (u) =>
+            (u.teacherId && u.teacherId === t.id) ||
+            (t.nip && t.nip !== '-' && u.username.toLowerCase() === t.nip.toLowerCase()) ||
+            (t.nama && u.name.trim().toLowerCase() === t.nama.trim().toLowerCase())
+        )
+    );
+
+    return {
+      total: teacherUsers.length,
+      wali: countWali,
+      mapel: countMapel,
+      kepsek: countKepsek,
+      unlinkedCount: unlinkedTeachers.length,
+    };
+  }, [users, teachers, classes, subjects]);
+
   const filteredUsers = useMemo(() => {
     return users.filter((u) => {
       const isTeacherRole = u.role === 'WALI KELAS' || u.role === 'GURU MAPEL' || u.role === 'KEPALA SEKOLAH';
       const matchesTab =
         activeTab === 'siswa' ? u.role === 'SISWA' : activeTab === 'administrator' ? u.role === 'ADMIN' : isTeacherRole;
+
+      if (!matchesTab) return false;
+
+      // Sub-filter for Guru & KS tab
+      if (activeTab === 'guru' && guruSubFilter !== 'ALL') {
+        const details = getUserAssignmentDetails(u);
+        if (guruSubFilter === 'WALI_KELAS' && details.type !== 'WALI_KELAS') return false;
+        if (guruSubFilter === 'GURU_MAPEL' && details.type !== 'GURU_MAPEL') return false;
+        if (guruSubFilter === 'KEPALA_SEKOLAH' && details.type !== 'KEPALA_SEKOLAH') return false;
+      }
+
       const q = searchTerm.toLowerCase();
-      return matchesTab && (u.name.toLowerCase().includes(q) || u.username.toLowerCase().includes(q));
+      if (!q) return true;
+
+      const details = getUserAssignmentDetails(u);
+      return (
+        u.name.toLowerCase().includes(q) ||
+        u.username.toLowerCase().includes(q) ||
+        details.assignmentText.toLowerCase().includes(q) ||
+        details.classes.some((c) => c.toLowerCase().includes(q)) ||
+        details.subjects.some((s) => s.toLowerCase().includes(q))
+      );
     });
-  }, [users, searchTerm, activeTab]);
+  }, [users, searchTerm, activeTab, guruSubFilter, classes, subjects, teachers, students]);
 
   const totalPages = Math.ceil(filteredUsers.length / pageSize) || 1;
   const startIndex = (currentPage - 1) * pageSize;
   const currentUsers = filteredUsers.slice(startIndex, startIndex + pageSize);
 
   const isTeacherRole = (role: UserRole) => role === 'WALI KELAS' || role === 'GURU MAPEL';
-
-  const getRoleBadge = (u: UserAccount) => {
-    switch (u.role) {
-      case 'ADMIN':
-        return (
-          <span className="px-3 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-purple-50 text-purple-700 border border-purple-200">
-            ADMIN
-          </span>
-        );
-      case 'KEPALA SEKOLAH':
-        return (
-          <span className="px-3 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-sky-50 text-sky-700 border border-sky-200">
-            KEPALA SEKOLAH
-          </span>
-        );
-      case 'WALI KELAS':
-        return (
-          <span className="px-3 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-blue-50 text-blue-700 border border-blue-200">
-            WALI KELAS
-          </span>
-        );
-      case 'GURU MAPEL':
-        return (
-          <span className="px-3 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">
-            GURU MAPEL
-          </span>
-        );
-      case 'SISWA':
-      default:
-        return (
-          <span className="px-3 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-slate-100 text-slate-700 border border-slate-200">
-            SISWA
-          </span>
-        );
-    }
-  };
 
   const openEditUser = (u: UserAccount) => {
     setEditUser(u);
@@ -244,26 +392,15 @@ export const DataPenggunaView: React.FC = () => {
   // Helper to map UserAccount[] to GeneratedAccountResult[] for PDF export
   const mapUsersToExportAccounts = (userList: UserAccount[]): GeneratedAccountResult[] => {
     return userList.map((u) => {
+      const details = getUserAssignmentDetails(u);
       let category: 'ADMIN' | 'GURU' | 'SISWA' | 'KEPALA SEKOLAH' = 'ADMIN';
-      let className = '';
 
       if (u.role === 'SISWA') {
         category = 'SISWA';
-        const s = students.find((st) => st.id === u.studentId || st.nisn === u.username);
-        className = s?.className || '';
-        if (!className && u.classIds && u.classIds.length > 0) {
-          const c = classes.find((cl) => cl.id === u.classIds![0]);
-          className = c?.name || '';
-        }
       } else if (u.role === 'KEPALA SEKOLAH') {
         category = 'KEPALA SEKOLAH';
       } else if (u.role === 'WALI KELAS' || u.role === 'GURU MAPEL') {
         category = 'GURU';
-        if (u.classIds && u.classIds.length > 0) {
-          className = u.classIds
-            .map((cid) => classes.find((c) => c.id === cid)?.name || cid)
-            .join(', ');
-        }
       } else {
         category = 'ADMIN';
       }
@@ -271,8 +408,6 @@ export const DataPenggunaView: React.FC = () => {
       let pwdDisplay = u.password || '';
       if (isGoogleUser(u)) {
         pwdDisplay = 'Google SSO';
-      } else if (!pwdDisplay) {
-        pwdDisplay = 'Tersimpan (Aman)';
       }
 
       return {
@@ -282,28 +417,29 @@ export const DataPenggunaView: React.FC = () => {
         password: pwdDisplay,
         role: u.role,
         category,
-        className,
+        className: details.assignmentText || details.classes.join(', ') || '-',
         status: 'ACTIVE' as any,
       };
     });
   };
 
-  // Export PDF handler from Generated Results Modal (Guru / Siswa)
-  const handleExportGeneratedPDF = async (scope: 'GURU' | 'SISWA') => {
-    if (!generatedResults || generatedResults.length === 0) {
-      showToast('Tidak ada data akun hasil generate untuk diekspor.', 'error');
-      return;
-    }
-
+  // Unified Export PDF handler (Guru / Siswa)
+  const handleExportPDF = async (scope: 'GURU' | 'SISWA') => {
     setIsExportingPdf(true);
     setShowExportMenu(false);
+    setShowMainExportMenu(false);
     try {
       let targetAccounts: GeneratedAccountResult[] = [];
       let filterCategory = 'ALL';
       let docTitle = 'DAFTAR HASIL GENERATE AKUN PENGGUNA & PASSWORD RESMI';
 
+      // Gunakan generatedResults jika tersedia, atau fallback ke seluruh user aktif
+      const sourceList = generatedResults && generatedResults.length > 0
+        ? generatedResults
+        : mapUsersToExportAccounts(users);
+
       if (scope === 'GURU') {
-        targetAccounts = generatedResults.filter(
+        targetAccounts = sourceList.filter(
           (r) =>
             r.category === 'GURU' ||
             r.category === 'KEPALA SEKOLAH' ||
@@ -312,13 +448,13 @@ export const DataPenggunaView: React.FC = () => {
             r.role === 'KEPALA SEKOLAH'
         );
         filterCategory = 'GURU';
-        docTitle = 'DAFTAR HASIL GENERATE AKUN GURU, PENDIDIK & KEPALA SEKOLAH';
+        docTitle = 'DAFTAR AKUN GURU (WALI KELAS & GURU MAPEL) & KEPALA SEKOLAH';
       } else if (scope === 'SISWA') {
-        targetAccounts = generatedResults.filter(
+        targetAccounts = sourceList.filter(
           (r) => r.category === 'SISWA' || r.role === 'SISWA'
         );
         filterCategory = 'SISWA';
-        docTitle = 'DAFTAR HASIL GENERATE AKUN PESERTA DIDIK (SISWA)';
+        docTitle = 'DAFTAR AKUN PESERTA DIDIK (SISWA)';
       }
 
       if (targetAccounts.length === 0) {
@@ -399,6 +535,78 @@ export const DataPenggunaView: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Main Header Export PDF Dropdown */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowMainExportMenu((prev) => !prev)}
+              disabled={isExportingPdf}
+              className="px-3.5 py-2.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              title="Cetak & Export Dokumen PDF Akun Pengguna (Guru / Siswa) dengan Kop Surat Resmi"
+              id="btn-main-export-pdf"
+            >
+              {isExportingPdf ? (
+                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Printer size={15} />
+              )}
+              <span>Export PDF</span>
+              <ChevronDown size={13} className={`transition-transform duration-200 ${showMainExportMenu ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showMainExportMenu && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setShowMainExportMenu(false)}
+                />
+                <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-slate-200 py-2 z-50 animate-in fade-in zoom-in-95 text-slate-800">
+                  <div className="px-3.5 py-1.5 border-b border-slate-100 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
+                    Pilihan Cetak Dokumen PDF Resmi
+                  </div>
+                  
+                  <button
+                    type="button"
+                    onClick={() => handleExportPDF('GURU')}
+                    className="w-full px-3.5 py-2.5 text-left hover:bg-rose-50/80 flex items-center gap-3 transition-colors cursor-pointer group"
+                    id="btn-main-export-pdf-guru"
+                  >
+                    <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors shadow-xs">
+                      <GraduationCap size={16} />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-slate-900 group-hover:text-rose-700">
+                        Export PDF Akun Guru & KS
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-medium">
+                        Cetak Akun Wali Kelas, Guru Mapel, dan KS ({teacherStats.total} akun)
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleExportPDF('SISWA')}
+                    className="w-full px-3.5 py-2.5 text-left hover:bg-rose-50/80 flex items-center gap-3 transition-colors cursor-pointer group"
+                    id="btn-main-export-pdf-siswa"
+                  >
+                    <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 group-hover:bg-emerald-600 group-hover:text-white transition-colors shadow-xs">
+                      <Users size={16} />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-slate-900 group-hover:text-rose-700">
+                        Export PDF Akun Siswa
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-medium">
+                        Cetak Akun Peserta Didik ({users.filter(u => u.role === 'SISWA').length} akun)
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
           <button
             onClick={() => setIsGenerateModalOpen(true)}
             id="btn-generate-akun"
@@ -406,7 +614,7 @@ export const DataPenggunaView: React.FC = () => {
             title="Generate semua akun pengguna otomatis dari data referensi Guru & Siswa dengan password yang diacak"
           >
             <Sparkles size={15} />
-            <span>Generate</span>
+            <span>Generate Akun & Password</span>
           </button>
         </div>
       </div>
@@ -419,9 +627,8 @@ export const DataPenggunaView: React.FC = () => {
         <div className="space-y-0.5">
           <p className="font-bold text-blue-950">Struktur Peran Pengguna & Pembuatan Akun:</p>
           <p className="text-blue-800 leading-relaxed">
-            • <b>Administrator</b>: Akses penuh ke seluruh konfigurasi, master data, dan akun pengguna.<br />
-            • <b>Guru</b>: Terdiri dari <span className="font-bold text-blue-950">Guru Wali Kelas</span> (1 kelas binaan) dan <span className="font-bold text-blue-950">Guru Mapel</span> (beberapa rombel kelas).<br />
-            • <b>Generate Akun</b>: Membuat akun & password acak otomatis dari data referensi, serta dilengkapi dengan fitur <b>Export PDF resmi</b> ber-kop surat pada jendela hasil generate.
+            • <b>Guru & KS</b>: Terdiri dari <span className="font-bold text-blue-950">Wali Kelas</span> (berhak input kehadiran 1 rombel binaan), <span className="font-bold text-blue-950">Guru Mapel</span> (berhak mengajar beberapa rombel), dan <span className="font-bold text-blue-950">Kepala Sekolah</span>.<br />
+            • <b>Export PDF</b>: Hasil generate dan printout akun mencantumkan <b>password acak</b> asli yang dapat langsung dibagikan kepada guru dan siswa.
           </p>
         </div>
       </div>
@@ -429,29 +636,90 @@ export const DataPenggunaView: React.FC = () => {
       {/* Table Container Card */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
         {/* Tab Pengguna */}
-        <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl w-fit border border-slate-200">
-          <button
-            type="button"
-            onClick={() => { setActiveTab('administrator'); setCurrentPage(1); }}
-            className={`px-5 py-2 rounded-lg text-xs font-extrabold transition-all ${activeTab === 'administrator' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-          >
-            Administrator
-          </button>
-          <button
-            type="button"
-            onClick={() => { setActiveTab('guru'); setCurrentPage(1); }}
-            className={`px-5 py-2 rounded-lg text-xs font-extrabold transition-all ${activeTab === 'guru' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-          >
-            Guru & KS
-          </button>
-          <button
-            type="button"
-            onClick={() => { setActiveTab('siswa'); setCurrentPage(1); }}
-            className={`px-5 py-2 rounded-lg text-xs font-extrabold transition-all ${activeTab === 'siswa' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-          >
-            Siswa
-          </button>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl w-fit border border-slate-200">
+            <button
+              type="button"
+              onClick={() => { setActiveTab('administrator'); setCurrentPage(1); }}
+              className={`px-5 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${activeTab === 'administrator' ? 'bg-white text-purple-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+            >
+              Administrator ({users.filter(u => u.role === 'ADMIN').length})
+            </button>
+            <button
+              type="button"
+              onClick={() => { setActiveTab('guru'); setCurrentPage(1); }}
+              className={`px-5 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${activeTab === 'guru' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+            >
+              Guru & KS ({teacherStats.total})
+            </button>
+            <button
+              type="button"
+              onClick={() => { setActiveTab('siswa'); setCurrentPage(1); }}
+              className={`px-5 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${activeTab === 'siswa' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+            >
+              Siswa ({users.filter(u => u.role === 'SISWA').length})
+            </button>
+          </div>
+
+          {activeTab === 'guru' && (
+            <div className="flex items-center gap-1.5 p-1 bg-slate-50 rounded-xl border border-slate-200 text-xs overflow-x-auto">
+              <button
+                type="button"
+                onClick={() => { setGuruSubFilter('ALL'); setCurrentPage(1); }}
+                className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  guruSubFilter === 'ALL' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-200/60'
+                }`}
+              >
+                Semua ({teacherStats.total})
+              </button>
+              <button
+                type="button"
+                onClick={() => { setGuruSubFilter('WALI_KELAS'); setCurrentPage(1); }}
+                className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  guruSubFilter === 'WALI_KELAS' ? 'bg-emerald-600 text-white shadow-xs' : 'text-emerald-800 hover:bg-emerald-50'
+                }`}
+              >
+                Wali Kelas ({teacherStats.wali})
+              </button>
+              <button
+                type="button"
+                onClick={() => { setGuruSubFilter('GURU_MAPEL'); setCurrentPage(1); }}
+                className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  guruSubFilter === 'GURU_MAPEL' ? 'bg-indigo-600 text-white shadow-xs' : 'text-indigo-800 hover:bg-indigo-50'
+                }`}
+              >
+                Guru Mapel ({teacherStats.mapel})
+              </button>
+              <button
+                type="button"
+                onClick={() => { setGuruSubFilter('KEPALA_SEKOLAH'); setCurrentPage(1); }}
+                className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  guruSubFilter === 'KEPALA_SEKOLAH' ? 'bg-sky-600 text-white shadow-xs' : 'text-sky-800 hover:bg-sky-50'
+                }`}
+              >
+                Kepala Sekolah ({teacherStats.kepsek})
+              </button>
+            </div>
+          )}
         </div>
+
+        {/* Unlinked Master Teachers Warning */}
+        {activeTab === 'guru' && teacherStats.unlinkedCount > 0 && (
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between gap-3 text-xs text-amber-900">
+            <div className="flex items-center gap-2">
+              <Sparkles size={16} className="text-amber-600 shrink-0" />
+              <span>
+                Terdapat <b>{teacherStats.unlinkedCount} guru</b> di Data Referensi yang belum memiliki akun login.
+              </span>
+            </div>
+            <button
+              onClick={() => setIsGenerateModalOpen(true)}
+              className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg transition-colors shrink-0 cursor-pointer"
+            >
+              Generate Sekarang
+            </button>
+          </div>
+        )}
 
         {/* Controls */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -464,7 +732,7 @@ export const DataPenggunaView: React.FC = () => {
                 setSearchTerm(e.target.value);
                 setCurrentPage(1);
               }}
-              placeholder="Cari Username atau Nama..."
+              placeholder="Cari Username, Nama, atau Penugasan..."
               className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-500/10 transition-all"
             />
           </div>
@@ -495,83 +763,106 @@ export const DataPenggunaView: React.FC = () => {
               <tr className="border-b border-slate-200 text-[10px] font-bold text-blue-700 uppercase tracking-widest bg-blue-50/60">
                 <th className="py-3.5 px-4 w-12 rounded-l-xl">NO</th>
                 <th className="py-3.5 px-4">NAMA PENGGUNA</th>
-                <th className="py-3.5 px-4 w-48">USERNAME</th>
-                <th className="py-3.5 px-4 text-center w-44">PASSWORD</th>
-                <th className="py-3.5 px-4 text-center w-44">HAK AKSES</th>
+                <th className="py-3.5 px-4 w-44">USERNAME</th>
+                <th className="py-3.5 px-4 text-center w-36">AUTH / PASSWORD</th>
+                <th className="py-3.5 px-4">HAK AKSES / PENUGASAN</th>
                 <th className="py-3.5 px-4 text-center w-28 rounded-r-xl">AKSI</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
               {currentUsers.length > 0 ? (
-                currentUsers.map((u, idx) => (
-                  <tr key={u.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="py-3.5 px-4 font-semibold text-slate-400">
-                      {startIndex + idx + 1}
-                    </td>
-                    <td className="py-3.5 px-4 font-bold text-slate-900">{u.name}</td>
-                    <td className="py-3.5 px-4 font-mono font-medium text-slate-600">{u.username}</td>
-                    <td className="py-3.5 px-4 text-center">
-                      {isGoogleUser(u) ? (
-                        <span
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100/90 border border-slate-200 text-slate-800 text-xs font-bold shadow-2xs hover:bg-slate-200/80 transition-all select-none"
-                          title="Akun ini terdaftar / masuk menggunakan Akun Google (SSO)"
-                        >
-                          <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24">
-                            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
-                            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
-                          </svg>
-                          <span className="font-extrabold text-[11px] text-slate-800 tracking-tight">Google</span>
-                        </span>
-                      ) : (
-                        <span
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50/90 border border-emerald-200/80 text-emerald-900 text-xs font-bold shadow-2xs hover:bg-emerald-100/80 transition-all select-none"
-                          title="Akun ini menggunakan Auth Sistem (Username & Password)"
-                        >
-                          <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 109 113" fill="none">
-                            <path d="M63.7076 110.284C60.848 113.885 55.0502 111.902 54.9854 107.307L53.9726 35.6662H97.7446C104.912 35.6662 108.823 44.0532 104.148 49.9406L63.7076 110.284Z" fill="#3ECF8E"/>
-                            <path d="M45.297 2.71599C48.1566 -0.885444 53.9544 1.09789 54.0192 5.69264L54.5884 77.3338H11.2554C4.08838 77.3338 0.177372 68.9468 4.85237 63.0594L45.297 2.71599Z" fill="#249361"/>
-                          </svg>
-                          <span className="font-extrabold text-[11px] text-emerald-950 tracking-tight">Terenkripsi</span>
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-3.5 px-4 text-center">{getRoleBadge(u)}</td>
-                    <td className="py-3.5 px-4 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
-                        <button
-                          onClick={() => openEditUser(u)}
-                          className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                          title="Edit Data & Username Pengguna"
-                          id={`btn-edit-user-${u.id}`}
-                        >
-                          <Edit2 size={14} />
-                        </button>
-                        <button
-                          onClick={() => {
-                            setTargetPasswordUser(u);
-                            setNewPassword(u.password || '');
-                            setShowModalPassword(true);
-                          }}
-                          className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
-                          title="Ubah Password"
-                          id={`btn-change-password-${u.id}`}
-                        >
-                          <Key size={14} />
-                        </button>
-                        <button
-                          onClick={() => setUserToDelete(u)}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                          title="Hapus Akun"
-                          id={`btn-delete-user-${u.id}`}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                currentUsers.map((u, idx) => {
+                  const details = getUserAssignmentDetails(u);
+                  return (
+                    <tr key={u.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="py-3.5 px-4 font-semibold text-slate-400">
+                        {startIndex + idx + 1}
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <div className="font-bold text-slate-900">{u.name}</div>
+                        {u.email && (
+                          <div className="text-[11px] text-slate-400 font-normal">{u.email}</div>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4 font-mono font-bold text-blue-600 text-xs">
+                        {u.username}
+                      </td>
+                      <td className="py-3.5 px-4 text-center">
+                        {isGoogleUser(u) ? (
+                          <span
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100/90 border border-slate-200 text-slate-800 text-xs font-bold shadow-2xs hover:bg-slate-200/80 transition-all select-none"
+                            title="Akun ini terdaftar / masuk menggunakan Akun Google (SSO)"
+                          >
+                            <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24">
+                              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                            </svg>
+                            <span className="font-extrabold text-[11px] text-slate-800 tracking-tight">Google SSO</span>
+                          </span>
+                        ) : (
+                          <span
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50/90 border border-emerald-200/80 text-emerald-900 text-xs font-bold shadow-2xs hover:bg-emerald-100/80 transition-all select-none"
+                            title="Akun menggunakan password sistem yang terenkripsi"
+                          >
+                            <Lock size={12} className="text-emerald-700" />
+                            <span className="font-extrabold text-[11px] text-emerald-950 tracking-tight">Sistem</span>
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <div className="flex flex-col gap-1 items-start">
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase border ${details.badgeColor}`}>
+                            {details.roleLabel}
+                          </span>
+                          <div className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                            {details.type === 'WALI_KELAS' ? (
+                              <GraduationCap size={13} className="text-emerald-600 shrink-0" />
+                            ) : details.type === 'GURU_MAPEL' ? (
+                              <BookOpen size={13} className="text-indigo-600 shrink-0" />
+                            ) : details.type === 'KEPALA_SEKOLAH' ? (
+                              <ShieldCheck size={13} className="text-sky-600 shrink-0" />
+                            ) : null}
+                            <span>{details.assignmentText}</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-4 text-center">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => openEditUser(u)}
+                            className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                            title="Edit Data & Username Pengguna"
+                            id={`btn-edit-user-${u.id}`}
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setTargetPasswordUser(u);
+                              setNewPassword(u.password || '');
+                              setShowModalPassword(true);
+                            }}
+                            className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                            title="Ubah Password"
+                            id={`btn-change-password-${u.id}`}
+                          >
+                            <Key size={14} />
+                          </button>
+                          <button
+                            onClick={() => setUserToDelete(u)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title="Hapus Akun"
+                            id={`btn-delete-user-${u.id}`}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               ) : (
                 <tr>
                   <td colSpan={6} className="text-center py-12 text-slate-400 font-medium">
@@ -1091,7 +1382,7 @@ export const DataPenggunaView: React.FC = () => {
                         
                         <button
                           type="button"
-                          onClick={() => handleExportGeneratedPDF('GURU')}
+                          onClick={() => handleExportPDF('GURU')}
                           className="w-full px-3.5 py-2.5 text-left hover:bg-rose-50/80 flex items-center gap-3 transition-colors cursor-pointer group"
                           id="btn-export-pdf-guru"
                         >
@@ -1100,17 +1391,17 @@ export const DataPenggunaView: React.FC = () => {
                           </div>
                           <div>
                             <div className="text-xs font-bold text-slate-900 group-hover:text-rose-700">
-                              Export PDF Guru
+                              Export PDF Guru & KS
                             </div>
                             <div className="text-[10px] text-slate-500 font-medium">
-                              Cetak Akun Guru & Tendik ({generatedResults?.filter(r => r.category === 'GURU' || r.category === 'KEPALA SEKOLAH' || r.role === 'GURU MAPEL' || r.role === 'WALI KELAS' || r.role === 'KEPALA SEKOLAH').length || 0} akun)
+                              Cetak Akun Guru Wali Kelas, Guru Mapel & KS ({generatedResults?.filter(r => r.category === 'GURU' || r.category === 'KEPALA SEKOLAH' || r.role === 'GURU MAPEL' || r.role === 'WALI KELAS' || r.role === 'KEPALA SEKOLAH').length || 0} akun)
                             </div>
                           </div>
                         </button>
 
                         <button
                           type="button"
-                          onClick={() => handleExportGeneratedPDF('SISWA')}
+                          onClick={() => handleExportPDF('SISWA')}
                           className="w-full px-3.5 py-2.5 text-left hover:bg-rose-50/80 flex items-center gap-3 transition-colors cursor-pointer group"
                           id="btn-export-pdf-siswa"
                         >

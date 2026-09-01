@@ -166,23 +166,29 @@ export const exportGeneratedAccountsPdf = async ({
 
     let penugasan = acc.className || '-';
     if (acc.category === 'KEPALA SEKOLAH' || acc.role === 'KEPALA SEKOLAH') {
-      penugasan = 'Pimpinan Sekolah';
+      penugasan = 'Pimpinan Satuan Pendidikan (Semua Rombel)';
     } else if (acc.category === 'ADMIN' || acc.role === 'ADMIN') {
-      penugasan = 'Pengelola Sistem';
+      penugasan = 'Pengelola Data & Sistem IT';
     }
 
     const statusLabel =
       acc.status === 'CREATED'
         ? 'Baru Dibuat'
         : acc.status === 'UPDATED'
-        ? 'Password Direset'
+        ? 'Password Baru'
         : 'Aktif';
+
+    // Prioritize actual generated/randomized password string
+    const rawPassword = (acc.password || '').trim();
+    const displayPassword = rawPassword && rawPassword !== 'Tersimpan (Aman)' && rawPassword !== '***'
+      ? rawPassword
+      : (rawPassword || '-');
 
     return [
       index + 1,
       acc.name || '-',
       acc.username || '-',
-      acc.password || 'Tersimpan (Aman)',
+      displayPassword,
       roleLabel,
       penugasan,
       statusLabel,
@@ -197,9 +203,9 @@ export const exportGeneratedAccountsPdf = async ({
         'NO',
         'NAMA PENGGUNA',
         'USERNAME / NISN',
-        'PASSWORD',
+        'PASSWORD ACAK',
         'HAK AKSES',
-        'KELAS / PENUGASAN',
+        'ROMBEL / PENUGASAN',
         'STATUS',
       ],
     ],
@@ -225,13 +231,13 @@ export const exportGeneratedAccountsPdf = async ({
       fillColor: [248, 250, 252], // slate-50
     },
     columnStyles: {
-      0: { halign: 'center', cellWidth: 10 },
+      0: { halign: 'center', cellWidth: 9 },
       1: { halign: 'left', fontStyle: 'bold', cellWidth: 42 },
       2: { halign: 'left', font: 'courier', fontStyle: 'bold', cellWidth: 32 },
-      3: { halign: 'left', font: 'courier', cellWidth: 28 },
-      4: { halign: 'center', cellWidth: 26 },
-      5: { halign: 'left', cellWidth: 26 },
-      6: { halign: 'center', cellWidth: 18 },
+      3: { halign: 'center', font: 'courier', fontStyle: 'bold', cellWidth: 28 },
+      4: { halign: 'center', cellWidth: 24 },
+      5: { halign: 'left', cellWidth: 30 },
+      6: { halign: 'center', cellWidth: 17 },
     },
     didDrawPage: (data) => {
       // Header for page 2+
