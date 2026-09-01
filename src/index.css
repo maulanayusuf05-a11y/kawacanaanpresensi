@@ -113,3 +113,112 @@
 .font-serif-display {
   font-family: 'Playfair Display', Georgia, serif;
 }
+
+/* ==========================================================================
+   Educational Book Loader & Soft Blue-Green Animations
+   ========================================================================== */
+@keyframes bookFloatSoft {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-5px) rotate(-0.5deg);
+  }
+}
+
+@keyframes pageTurnSlow1 {
+  0%, 10% {
+    transform: perspective(700px) rotateY(0deg);
+    background-color: #F0FDF4;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  }
+  48%, 52% {
+    background-color: #E0F2FE;
+    box-shadow: -4px 6px 12px rgba(14, 165, 233, 0.15);
+  }
+  90%, 100% {
+    transform: perspective(700px) rotateY(-180deg);
+    background-color: #ECFDF5;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  }
+}
+
+@keyframes pageTurnSlow2 {
+  0%, 25% {
+    transform: perspective(700px) rotateY(0deg);
+    background-color: #F8FAFC;
+  }
+  60%, 65% {
+    background-color: #DCFCE7;
+    box-shadow: -4px 6px 12px rgba(16, 185, 129, 0.15);
+  }
+  95%, 100% {
+    transform: perspective(700px) rotateY(-180deg);
+    background-color: #F0FDF4;
+  }
+}
+
+@keyframes pageTurnSlow3 {
+  0%, 40% {
+    transform: perspective(700px) rotateY(0deg);
+    background-color: #F0F9FF;
+  }
+  75%, 80% {
+    background-color: #E0F2FE;
+  }
+  98%, 100% {
+    transform: perspective(700px) rotateY(-180deg);
+    background-color: #F8FAFC;
+  }
+}
+
+@keyframes softAuraPulse {
+  0%, 100% {
+    transform: scale(0.92);
+    opacity: 0.35;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 0.75;
+  }
+}
+
+@keyframes progressShimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(250%);
+  }
+}
+
+.animate-book-float {
+  animation: bookFloatSoft 3.6s ease-in-out infinite;
+}
+
+.animate-page-turn-1 {
+  transform-origin: left center;
+  animation: pageTurnSlow1 2.8s cubic-bezier(0.45, 0.05, 0.25, 0.95) infinite;
+  backface-visibility: hidden;
+}
+
+.animate-page-turn-2 {
+  transform-origin: left center;
+  animation: pageTurnSlow2 2.8s cubic-bezier(0.45, 0.05, 0.25, 0.95) 0.4s infinite;
+  backface-visibility: hidden;
+}
+
+.animate-page-turn-3 {
+  transform-origin: left center;
+  animation: pageTurnSlow3 2.8s cubic-bezier(0.45, 0.05, 0.25, 0.95) 0.8s infinite;
+  backface-visibility: hidden;
+}
+
+.animate-soft-aura {
+  animation: softAuraPulse 3s ease-in-out infinite;
+}
+
+.animate-shimmer-progress {
+  animation: progressShimmer 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+

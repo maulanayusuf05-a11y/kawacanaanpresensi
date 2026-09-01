@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { Student } from '../types';
 import { getFaseByClassName, getFaseBadgeColor, formatClassDisplay } from '../utils/faseKurikulum';
+import { BookLoadingModal, BookVisual } from '../components/BookLoader';
 import {
   Users,
   Search,
@@ -140,6 +141,11 @@ export const DataSiswaView: React.FC = () => {
   const [parsedStudents, setParsedStudents] = useState<ParsedStudentItem[]>([]);
   const [fileName, setFileName] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Progressive Book Loading for Student Import
+  const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
+  const [importStatusMessage, setImportStatusMessage] = useState('');
 
   // Available classes: integrated from onboarding registration / workspace classes
   const availableClasses = useMemo(() => {
@@ -498,60 +504,87 @@ export const DataSiswaView: React.FC = () => {
       }
     }
 
-    const currentClasses = [...classes];
-    const createdClassMap = new Map<string, string>();
+    // Launch calm progressive book loader
+    setIsImporting(true);
+    setImportProgress(15);
+    setImportStatusMessage(`Membaca dan memvalidasi ${validOnes.length} baris data siswa...`);
 
-    const payload: Array<{ nisn: string; nama: string; gender: 'L' | 'P'; classId: string | null }> = [];
+    try {
+      await new Promise((res) => setTimeout(res, 400));
+      setImportProgress(40);
+      setImportStatusMessage('Memetakan rombel belajar dan memverifikasi NISN siswa...');
 
-    for (const s of validOnes) {
-      let targetClassId = s.matchedClassId || null;
+      const currentClasses = [...classes];
+      const createdClassMap = new Map<string, string>();
 
-      if (!targetClassId && s.classNameInput && isAdmin) {
-        const inputClean = s.classNameInput.trim();
-        if (createdClassMap.has(inputClean.toLowerCase())) {
-          targetClassId = createdClassMap.get(inputClean.toLowerCase()) || null;
-        } else {
-          const existing = findMatchingClass(inputClean, currentClasses);
-          if (existing) {
-            targetClassId = existing.id;
+      const payload: Array<{ nisn: string; nama: string; gender: 'L' | 'P'; classId: string | null }> = [];
+
+      for (const s of validOnes) {
+        let targetClassId = s.matchedClassId || null;
+
+        if (!targetClassId && s.classNameInput && isAdmin) {
+          const inputClean = s.classNameInput.trim();
+          if (createdClassMap.has(inputClean.toLowerCase())) {
+            targetClassId = createdClassMap.get(inputClean.toLowerCase()) || null;
           } else {
-            const matchNum = inputClean.match(/\d+/);
-            const autoGrade = matchNum ? parseInt(matchNum[0], 10) : 1;
-            try {
-              await addClass({
-                name: inputClean,
-                grade: autoGrade,
-                academicYear: schoolProfile?.tahunPelajaran || '2026/2027',
-                waliKelasTeacherId: null,
-                waliKelasName: null,
-              });
-              const newlyAdded = classes.find((c) => c.name.trim().toLowerCase() === inputClean.toLowerCase());
-              if (newlyAdded) {
-                targetClassId = newlyAdded.id;
-                createdClassMap.set(inputClean.toLowerCase(), newlyAdded.id);
-              }
-            } catch (_) {}
+            const existing = findMatchingClass(inputClean, currentClasses);
+            if (existing) {
+              targetClassId = existing.id;
+            } else {
+              const matchNum = inputClean.match(/\d+/);
+              const autoGrade = matchNum ? parseInt(matchNum[0], 10) : 1;
+              try {
+                await addClass({
+                  name: inputClean,
+                  grade: autoGrade,
+                  academicYear: schoolProfile?.tahunPelajaran || '2026/2027',
+                  waliKelasTeacherId: null,
+                  waliKelasName: null,
+                });
+                const newlyAdded = classes.find((c) => c.name.trim().toLowerCase() === inputClean.toLowerCase());
+                if (newlyAdded) {
+                  targetClassId = newlyAdded.id;
+                  createdClassMap.set(inputClean.toLowerCase(), newlyAdded.id);
+                }
+              } catch (_) {}
+            }
           }
         }
+
+        if (!targetClassId) {
+          targetClassId = selectedImportClassId || availableClasses[0]?.id || classes[0]?.id || null;
+        }
+
+        payload.push({
+          nisn: s.nisn,
+          nama: s.nama,
+          gender: s.gender,
+          classId: targetClassId,
+        });
       }
 
-      if (!targetClassId) {
-        targetClassId = selectedImportClassId || availableClasses[0]?.id || classes[0]?.id || null;
-      }
+      setImportProgress(75);
+      setImportStatusMessage('Menyimpan data siswa ke database presensi sekolah...');
+      await new Promise((res) => setTimeout(res, 400));
 
-      payload.push({
-        nisn: s.nisn,
-        nama: s.nama,
-        gender: s.gender,
-        classId: targetClassId,
-      });
+      await importStudents(payload, importMode === 'replace');
+
+      setImportProgress(100);
+      setImportStatusMessage('Selesai! Seluruh data siswa berhasil diperbarui.');
+      await new Promise((res) => setTimeout(res, 350));
+
+      setIsImportModalOpen(false);
+      setParsedStudents([]);
+      setPasteText('');
+      setFileName('');
+      showToast(`Berhasil mengimpor ${payload.length} data siswa.`);
+    } catch (err: any) {
+      showToast(err?.message || 'Gagal memproses import data siswa', 'error');
+    } finally {
+      setIsImporting(false);
+      setImportProgress(0);
+      setImportStatusMessage('');
     }
-
-    await importStudents(payload, importMode === 'replace');
-    setIsImportModalOpen(false);
-    setParsedStudents([]);
-    setPasteText('');
-    setFileName('');
   };
 
   const validCount = parsedStudents.filter((p) => p.isValid).length;
@@ -950,7 +983,7 @@ export const DataSiswaView: React.FC = () => {
                 {importTab === 'file' ? (
                   <div
                     onClick={() => fileInputRef.current?.click()}
-                    className="border-2 border-dashed border-slate-300 hover:border-emerald-500 bg-slate-50/70 hover:bg-emerald-50/30 rounded-2xl p-6 text-center cursor-pointer transition-all space-y-2 group"
+                    className="border-2 border-dashed border-blue-200 hover:border-emerald-500 bg-gradient-to-b from-blue-50/30 to-emerald-50/20 hover:bg-emerald-50/40 rounded-2xl p-6 text-center cursor-pointer transition-all space-y-3 group"
                   >
                     <input
                       ref={fileInputRef}
@@ -959,8 +992,8 @@ export const DataSiswaView: React.FC = () => {
                       onChange={handleFileUpload}
                       className="hidden"
                     />
-                    <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto group-hover:scale-105 transition-transform shadow-xs">
-                      <Upload size={24} />
+                    <div className="flex justify-center py-1">
+                      <BookVisual size="sm" showGlow={true} />
                     </div>
                     <div>
                       <p className="text-xs font-bold text-slate-800">
@@ -970,7 +1003,7 @@ export const DataSiswaView: React.FC = () => {
                           'Klik di sini untuk memilih file (.csv / .txt) dari komputer'
                         )}
                       </p>
-                      <p className="text-[11px] text-slate-400 mt-0.5">
+                      <p className="text-[11px] text-slate-500 mt-0.5">
                         Mendukung file hasil ekspor Excel (CSV UTF-8) atau teks dengan pemisah koma / titik koma / tab
                       </p>
                     </div>
@@ -1315,6 +1348,16 @@ export const DataSiswaView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Modern Book Loading Modal for Import Data Siswa */}
+      <BookLoadingModal
+        isOpen={isImporting}
+        title="Mengimpor Data Siswa..."
+        subtitle="Sistem sedang memproses berkas, memvalidasi NISN, dan menyusun rombel belajar."
+        badgeText="PROSES IMPORT DATA SISWA"
+        progress={importProgress}
+        statusMessage={importStatusMessage}
+      />
     </div>
   );
 };
