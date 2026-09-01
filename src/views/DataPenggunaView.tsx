@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { UserAccount, UserRole, GeneratedAccountResult } from '../types';
+import { UserAccount, UserRole, UserAccountInput, GeneratedAccountResult } from '../types';
 import { exportGeneratedAccountsPdf } from '../utils/exportGeneratedAccountsPdf';
 import { BookLoadingModal } from '../components/BookLoader';
 import {
@@ -25,6 +25,13 @@ import {
   EyeOff,
   ChevronDown,
   Printer,
+  Plus,
+  Download,
+  Share2,
+  Lock,
+  Filter,
+  CheckCircle2,
+  RefreshCw,
 } from 'lucide-react';
 
 export const DataPenggunaView: React.FC = () => {
@@ -37,6 +44,7 @@ export const DataPenggunaView: React.FC = () => {
     subjects,
     schoolProfile,
     systemConfig,
+    addUser,
     deleteUser,
     updateUser,
     generateAccountsFromReferences,
@@ -46,8 +54,10 @@ export const DataPenggunaView: React.FC = () => {
   } = useApp();
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'administrator' | 'guru' | 'siswa'>('guru');
+  const [activeTab, setActiveTab] = useState<'all' | 'administrator' | 'guru' | 'siswa'>('guru');
   const [guruSubFilter, setGuruSubFilter] = useState<'ALL' | 'WALI_KELAS' | 'GURU_MAPEL' | 'KEPALA_SEKOLAH'>('ALL');
+  const [siswaClassFilter, setSiswaClassFilter] = useState<string>('ALL');
+  const [authFilter, setAuthFilter] = useState<'ALL' | 'GOOGLE' | 'PASSWORD'>('ALL');
   const [pageSize, setPageSize] = useState<number>(10);
   const [currentPage, setCurrentPage] = useState<number>(1);
 
@@ -61,9 +71,25 @@ export const DataPenggunaView: React.FC = () => {
   const [resultFilterTab, setResultFilterTab] = useState<'ALL' | 'GURU' | 'SISWA' | 'KEPALA SEKOLAH'>('ALL');
   const [resultSearchTerm, setResultSearchTerm] = useState('');
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [copiedUserId, setCopiedUserId] = useState<string | null>(null);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showMainExportMenu, setShowMainExportMenu] = useState(false);
+
+  // Add User Modal State
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [addName, setAddName] = useState('');
+  const [addEmail, setAddEmail] = useState('');
+  const [addUsername, setAddUsername] = useState('');
+  const [addPassword, setAddPassword] = useState('');
+  const [addRole, setAddRole] = useState<UserRole>('WALI KELAS');
+  const [addStudentId, setAddStudentId] = useState('');
+  const [addTeacherType, setAddTeacherType] = useState<'wali_kelas' | 'guru_mapel'>('wali_kelas');
+  const [addSingleClassId, setAddSingleClassId] = useState('');
+  const [addClassIds, setAddClassIds] = useState<string[]>([]);
+  const [addSubjectId, setAddSubjectId] = useState('');
+  const [showAddPassword, setShowAddPassword] = useState(true);
+  const [isSubmittingAdd, setIsSubmittingAdd] = useState(false);
 
   // Edit User Modal State
   const [editUser, setEditUser] = useState<UserAccount | null>(null);
@@ -75,6 +101,7 @@ export const DataPenggunaView: React.FC = () => {
   const [editTeacherType, setEditTeacherType] = useState<'wali_kelas' | 'guru_mapel'>('wali_kelas');
   const [editSingleClassId, setEditSingleClassId] = useState('');
   const [editClassIds, setEditClassIds] = useState<string[]>([]);
+  const [editSubjectId, setEditSubjectId] = useState('');
 
   // Change Password Modal State
   const [targetPasswordUser, setTargetPasswordUser] = useState<UserAccount | null>(null);
@@ -84,8 +111,19 @@ export const DataPenggunaView: React.FC = () => {
   // Delete User Confirmation State
   const [userToDelete, setUserToDelete] = useState<UserAccount | null>(null);
 
+  // Random Password Generator Helper
+  const generateRandomPassword = (length = 8): string => {
+    const chars = 'abcdefghjkmnpqrstuvwxyz23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+    let result = '';
+    for (let i = 0; i < length; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  };
+
   // Password Display Check
-  const isGoogleUser = (u: UserAccount): boolean => {
+  const isGoogleUser = (u: UserAccount | null | undefined): boolean => {
+    if (!u) return false;
     if (u.isGoogleAuth === true || u.authProvider === 'google' || (u as any).provider === 'google') return true;
     const email = (u.email || '').trim().toLowerCase();
     if (email.endsWith('@gmail.com') || email.endsWith('@googlemail.com') || email.includes('belajar.id') || email.includes('google')) {
@@ -95,8 +133,28 @@ export const DataPenggunaView: React.FC = () => {
   };
 
   // Helper to resolve detailed Hak Akses & Penugasan (Wali Kelas / Guru Mapel / Kepala Sekolah)
-  const getUserAssignmentDetails = (u: UserAccount) => {
-    if (u.role === 'ADMIN') {
+  const getUserAssignmentDetails = (u: UserAccount | null | undefined) => {
+    if (!u) {
+      return {
+        type: 'ADMIN' as const,
+        roleLabel: 'PENGGUNA',
+        badgeColor: 'bg-slate-100 text-slate-700 border-slate-200',
+        assignmentText: '-',
+        classes: [],
+        subjects: [],
+        matchedTeacher: null,
+      };
+    }
+
+    const safeClasses = classes || [];
+    const safeTeachers = teachers || [];
+    const safeStudents = students || [];
+    const safeSubjects = subjects || [];
+
+    const uName = (u.name || '').trim().toLowerCase();
+    const uUsername = (u.username || '').trim().toLowerCase();
+
+    if (u.role === 'ADMIN' || u.role === 'SUPER_ADMIN') {
       return {
         type: 'ADMIN' as const,
         roleLabel: 'ADMINISTRATOR',
@@ -108,8 +166,8 @@ export const DataPenggunaView: React.FC = () => {
       };
     }
     if (u.role === 'SISWA') {
-      const s = students.find((st) => st.id === u.studentId || st.nisn === u.username);
-      const className = s?.className || (u.classIds && u.classIds.length > 0 ? (classes.find(c => c.id === u.classIds![0])?.name || '') : '');
+      const s = safeStudents.find((st) => st && (st.id === u.studentId || (st.nisn && uUsername && String(st.nisn).trim().toLowerCase() === uUsername)));
+      const className = s?.className || (u.classIds && u.classIds.length > 0 ? (safeClasses.find(c => c && c.id === u.classIds![0])?.name || '') : '');
       return {
         type: 'SISWA' as const,
         roleLabel: 'SISWA',
@@ -133,43 +191,46 @@ export const DataPenggunaView: React.FC = () => {
     }
 
     // Match teacher from master teachers list
-    const matchedTeacher = teachers.find(
+    const matchedTeacher = safeTeachers.find(
       (t) =>
-        (u.teacherId && t.id === u.teacherId) ||
-        (t.nip && t.nip !== '-' && u.username && t.nip.toLowerCase() === u.username.toLowerCase()) ||
-        (t.nama && u.name && t.nama.trim().toLowerCase() === u.name.trim().toLowerCase())
+        t &&
+        ((u.teacherId && t.id === u.teacherId) ||
+        (t.nip && t.nip !== '-' && uUsername && String(t.nip).trim().toLowerCase() === uUsername) ||
+        (t.nama && uName && String(t.nama).trim().toLowerCase() === uName))
     );
 
     // Homeroom assignments
-    const homeroomClasses = classes.filter(
+    const homeroomClasses = safeClasses.filter(
       (c) =>
-        (matchedTeacher && c.waliKelasTeacherId === matchedTeacher.id) ||
+        c &&
+        ((matchedTeacher && c.waliKelasTeacherId === matchedTeacher.id) ||
         (u.teacherId && c.waliKelasTeacherId === u.teacherId) ||
-        (c.waliKelasName && c.waliKelasName.trim().toLowerCase() === u.name.trim().toLowerCase()) ||
-        (u.role === 'WALI KELAS' && u.classIds && u.classIds.includes(c.id))
+        (c.waliKelasName && uName && String(c.waliKelasName).trim().toLowerCase() === uName) ||
+        (u.role === 'WALI KELAS' && u.classIds && u.classIds.includes(c.id)))
     );
 
     // Subject teacher assignments
-    const teacherSubjects = subjects.filter(
+    const teacherSubjects = safeSubjects.filter(
       (s) =>
-        (matchedTeacher && s.teacherId === matchedTeacher.id) ||
+        s &&
+        ((matchedTeacher && s.teacherId === matchedTeacher.id) ||
         (u.teacherId && s.teacherId === u.teacherId) ||
-        (s.teacherName && s.teacherName.trim().toLowerCase() === u.name.trim().toLowerCase()) ||
-        (u.subjectId && s.id === u.subjectId)
+        (s.teacherName && uName && String(s.teacherName).trim().toLowerCase() === uName) ||
+        (u.subjectId && s.id === u.subjectId))
     );
 
     const isWali =
       homeroomClasses.length > 0 ||
       u.role === 'WALI KELAS' ||
-      (matchedTeacher && (matchedTeacher.tugasUtama === 'Wali Kelas' || matchedTeacher.tugas_utama === 'Wali Kelas'));
+      (matchedTeacher && (matchedTeacher.tugasUtama === 'Wali Kelas' || (matchedTeacher as any).tugas_utama === 'Wali Kelas'));
 
     const isMapel =
       teacherSubjects.length > 0 ||
       u.role === 'GURU MAPEL' ||
-      (matchedTeacher && (matchedTeacher.tugasUtama === 'Guru Mapel' || matchedTeacher.tugas_utama === 'Guru Mapel'));
+      (matchedTeacher && (matchedTeacher.tugasUtama === 'Guru Mapel' || (matchedTeacher as any).tugas_utama === 'Guru Mapel'));
 
     if (isWali && !isMapel) {
-      const classNames = homeroomClasses.map((c) => c.name).filter(Boolean);
+      const classNames = homeroomClasses.map((c) => c?.name).filter(Boolean);
       const classList = classNames.length > 0 ? classNames : (u.classNames && u.classNames.length > 0 ? u.classNames : []);
       const assignedClassStr = classList.length > 0 ? classList.join(', ') : '';
       return {
@@ -184,11 +245,11 @@ export const DataPenggunaView: React.FC = () => {
     }
 
     if (isMapel) {
-      const mapelNames = teacherSubjects.map((s) => s.name).filter(Boolean);
+      const mapelNames = teacherSubjects.map((s) => s?.name).filter(Boolean);
       let targetClassNames: string[] = [];
       teacherSubjects.forEach((s) => {
-        (s.targetClassIds || []).forEach((cid) => {
-          const c = classes.find((cl) => cl.id === cid);
+        (s?.targetClassIds || []).forEach((cid) => {
+          const c = safeClasses.find((cl) => cl && cl.id === cid);
           if (c?.name && !targetClassNames.includes(c.name)) targetClassNames.push(c.name);
         });
       });
@@ -220,47 +281,97 @@ export const DataPenggunaView: React.FC = () => {
     };
   };
 
-  // Summary counts for Guru & KS
-  const teacherStats = useMemo(() => {
-    const teacherUsers = users.filter(
-      (u) => u.role === 'WALI KELAS' || u.role === 'GURU MAPEL' || u.role === 'KEPALA SEKOLAH'
-    );
+  // Summary counts for Guru & KS & All
+  const stats = useMemo(() => {
+    let countAdmin = 0;
     let countWali = 0;
     let countMapel = 0;
     let countKepsek = 0;
+    let countSiswa = 0;
+    let countGoogle = 0;
+    let countPassword = 0;
 
-    teacherUsers.forEach((u) => {
-      const details = getUserAssignmentDetails(u);
-      if (details.type === 'WALI_KELAS') countWali++;
-      else if (details.type === 'GURU_MAPEL') countMapel++;
-      else if (details.type === 'KEPALA_SEKOLAH') countKepsek++;
+    const userList = users || [];
+    const teacherList = teachers || [];
+    const studentList = students || [];
+
+    userList.forEach((u) => {
+      if (!u) return;
+      if (isGoogleUser(u)) countGoogle++;
+      else countPassword++;
+
+      if (u.role === 'ADMIN' || u.role === 'SUPER_ADMIN') {
+        countAdmin++;
+      } else if (u.role === 'SISWA') {
+        countSiswa++;
+      } else {
+        const details = getUserAssignmentDetails(u);
+        if (details.type === 'WALI_KELAS') countWali++;
+        else if (details.type === 'GURU_MAPEL') countMapel++;
+        else if (details.type === 'KEPALA_SEKOLAH') countKepsek++;
+        else countMapel++;
+      }
     });
 
     // Count teachers in master data without user account
-    const unlinkedTeachers = teachers.filter(
+    const unlinkedTeachers = teacherList.filter(
       (t) =>
-        !users.some(
+        t &&
+        !userList.some(
           (u) =>
-            (u.teacherId && u.teacherId === t.id) ||
-            (t.nip && t.nip !== '-' && u.username.toLowerCase() === t.nip.toLowerCase()) ||
-            (t.nama && u.name.trim().toLowerCase() === t.nama.trim().toLowerCase())
+            u &&
+            ((u.teacherId && u.teacherId === t.id) ||
+            (t.nip && t.nip !== '-' && u.username && String(u.username).trim().toLowerCase() === String(t.nip).trim().toLowerCase()) ||
+            (t.nama && u.name && String(u.name).trim().toLowerCase() === String(t.nama).trim().toLowerCase()))
+        )
+    );
+
+    // Count students in master data without user account
+    const unlinkedStudents = studentList.filter(
+      (s) =>
+        s &&
+        !userList.some(
+          (u) =>
+            u &&
+            ((u.studentId && u.studentId === s.id) ||
+            (s.nisn && s.nisn !== '-' && u.username && String(u.username).trim().toLowerCase() === String(s.nisn).trim().toLowerCase()) ||
+            (s.nama && u.name && String(u.name).trim().toLowerCase() === String(s.nama).trim().toLowerCase()))
         )
     );
 
     return {
-      total: teacherUsers.length,
+      total: userList.length,
+      admin: countAdmin,
+      guruKsTotal: countWali + countMapel + countKepsek,
       wali: countWali,
       mapel: countMapel,
       kepsek: countKepsek,
-      unlinkedCount: unlinkedTeachers.length,
+      siswa: countSiswa,
+      google: countGoogle,
+      password: countPassword,
+      unlinkedTeachersCount: unlinkedTeachers.length,
+      unlinkedStudentsCount: unlinkedStudents.length,
     };
-  }, [users, teachers, classes, subjects]);
+  }, [users, teachers, classes, subjects, students]);
 
+  // Filtered Users List
   const filteredUsers = useMemo(() => {
-    return users.filter((u) => {
+    const userList = users || [];
+    const safeClasses = classes || [];
+    const safeStudents = students || [];
+
+    return userList.filter((u) => {
+      if (!u) return false;
       const isTeacherRole = u.role === 'WALI KELAS' || u.role === 'GURU MAPEL' || u.role === 'KEPALA SEKOLAH';
-      const matchesTab =
-        activeTab === 'siswa' ? u.role === 'SISWA' : activeTab === 'administrator' ? u.role === 'ADMIN' : isTeacherRole;
+      
+      let matchesTab = true;
+      if (activeTab === 'administrator') {
+        matchesTab = u.role === 'ADMIN' || u.role === 'SUPER_ADMIN';
+      } else if (activeTab === 'guru') {
+        matchesTab = isTeacherRole;
+      } else if (activeTab === 'siswa') {
+        matchesTab = u.role === 'SISWA';
+      }
 
       if (!matchesTab) return false;
 
@@ -272,25 +383,138 @@ export const DataPenggunaView: React.FC = () => {
         if (guruSubFilter === 'KEPALA_SEKOLAH' && details.type !== 'KEPALA_SEKOLAH') return false;
       }
 
-      const q = searchTerm.toLowerCase();
+      // Filter for Siswa tab by Class
+      if (activeTab === 'siswa' && siswaClassFilter !== 'ALL') {
+        const s = safeStudents.find((st) => st && (st.id === u.studentId || (st.nisn && u.username && String(st.nisn).trim().toLowerCase() === String(u.username).trim().toLowerCase())));
+        const className = s?.className || (u.classIds && u.classIds.length > 0 ? (safeClasses.find(c => c && c.id === u.classIds![0])?.name || '') : '');
+        if (className !== siswaClassFilter) return false;
+      }
+
+      // Filter by Auth Type
+      if (authFilter === 'GOOGLE' && !isGoogleUser(u)) return false;
+      if (authFilter === 'PASSWORD' && isGoogleUser(u)) return false;
+
+      // Search Query
+      const q = (searchTerm || '').trim().toLowerCase();
       if (!q) return true;
 
       const details = getUserAssignmentDetails(u);
-      return (
-        u.name.toLowerCase().includes(q) ||
-        u.username.toLowerCase().includes(q) ||
-        details.assignmentText.toLowerCase().includes(q) ||
-        details.classes.some((c) => c.toLowerCase().includes(q)) ||
-        details.subjects.some((s) => s.toLowerCase().includes(q))
-      );
+      const nameMatch = (u.name || '').toLowerCase().includes(q);
+      const usernameMatch = (u.username || '').toLowerCase().includes(q);
+      const emailMatch = (u.email || '').toLowerCase().includes(q);
+      const assignMatch = (details.assignmentText || '').toLowerCase().includes(q);
+      const classMatch = (details.classes || []).some((c) => c && String(c).toLowerCase().includes(q));
+      const subjectMatch = (details.subjects || []).some((s) => s && String(s).toLowerCase().includes(q));
+
+      return nameMatch || usernameMatch || emailMatch || assignMatch || classMatch || subjectMatch;
     });
-  }, [users, searchTerm, activeTab, guruSubFilter, classes, subjects, teachers, students]);
+  }, [users, searchTerm, activeTab, guruSubFilter, siswaClassFilter, authFilter, classes, subjects, teachers, students]);
 
   const totalPages = Math.ceil(filteredUsers.length / pageSize) || 1;
   const startIndex = (currentPage - 1) * pageSize;
   const currentUsers = filteredUsers.slice(startIndex, startIndex + pageSize);
 
   const isTeacherRole = (role: UserRole) => role === 'WALI KELAS' || role === 'GURU MAPEL';
+
+  // Open Add User Modal with default values
+  const openAddUser = () => {
+    setAddName('');
+    setAddEmail('');
+    setAddUsername('');
+    setAddPassword(generateRandomPassword(8));
+    setAddRole('WALI KELAS');
+    setAddTeacherType('wali_kelas');
+    setAddSingleClassId(classes[0]?.id || '');
+    setAddClassIds(classes.length > 0 ? [classes[0].id] : []);
+    setAddSubjectId(subjects[0]?.id || '');
+    setAddStudentId('');
+    setShowAddPassword(true);
+    setIsAddModalOpen(true);
+  };
+
+  // Handle Quick Select Master Teacher for Adding User
+  const handleSelectTeacherForAdd = (teacherId: string) => {
+    const t = teachers.find((tc) => tc.id === teacherId);
+    if (!t) return;
+    setAddName(t.nama);
+    setAddUsername(t.nip && t.nip !== '-' ? t.nip.replace(/\s+/g, '') : t.nama.toLowerCase().replace(/[^a-z0-9]/g, ''));
+    if (t.tugasUtama === 'Wali Kelas' || t.tugas_utama === 'Wali Kelas') {
+      setAddRole('WALI KELAS');
+      setAddTeacherType('wali_kelas');
+      const cls = classes.find((c) => c.waliKelasTeacherId === t.id);
+      if (cls) setAddSingleClassId(cls.id);
+    } else if (t.tugasUtama === 'Guru Mapel' || t.tugas_utama === 'Guru Mapel') {
+      setAddRole('GURU MAPEL');
+      setAddTeacherType('guru_mapel');
+      const sub = subjects.find((s) => s.teacherId === t.id);
+      if (sub) {
+        setAddSubjectId(sub.id);
+        if (sub.targetClassIds && sub.targetClassIds.length > 0) {
+          setAddClassIds(sub.targetClassIds);
+        }
+      }
+    }
+  };
+
+  // Handle Quick Select Master Student for Adding User
+  const handleSelectStudentForAdd = (studentId: string) => {
+    const s = students.find((st) => st.id === studentId);
+    if (!s) return;
+    setAddName(s.nama);
+    setAddUsername(s.nisn && s.nisn !== '-' ? s.nisn.trim() : s.nama.toLowerCase().replace(/[^a-z0-9]/g, ''));
+    setAddRole('SISWA');
+    setAddStudentId(s.id);
+  };
+
+  // Submit Add User
+  const handleAddSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!addName.trim() || !addUsername.trim() || !addPassword.trim()) {
+      showToast('Mohon lengkapi Nama, Username, dan Password', 'warning');
+      return;
+    }
+
+    // Check duplicate username
+    const exists = users.some((u) => u.username.toLowerCase() === addUsername.trim().toLowerCase());
+    if (exists) {
+      showToast(`Username "${addUsername.trim()}" sudah digunakan oleh akun lain.`, 'error');
+      return;
+    }
+
+    setIsSubmittingAdd(true);
+    try {
+      let targetClasses: string[] = [];
+      let targetSubjectName = '';
+      if (isTeacherRole(addRole)) {
+        if (addTeacherType === 'wali_kelas') {
+          targetClasses = addSingleClassId ? [addSingleClassId] : [];
+        } else {
+          targetClasses = addClassIds;
+          const sub = subjects.find((s) => s.id === addSubjectId);
+          if (sub) targetSubjectName = sub.name;
+        }
+      }
+
+      const input: UserAccountInput = {
+        name: addName.trim(),
+        email: addEmail.trim() || null,
+        username: addUsername.trim(),
+        password: addPassword.trim(),
+        role: addRole,
+        studentId: addRole === 'SISWA' ? (addStudentId || null) : null,
+        classIds: targetClasses,
+        subjectId: addRole === 'GURU MAPEL' ? (addSubjectId || null) : null,
+        subjectName: targetSubjectName || null,
+      };
+
+      await addUser(input);
+      setIsAddModalOpen(false);
+    } catch (err: any) {
+      // Toast already shown in AppContext
+    } finally {
+      setIsSubmittingAdd(false);
+    }
+  };
 
   const openEditUser = (u: UserAccount) => {
     setEditUser(u);
@@ -299,6 +523,7 @@ export const DataPenggunaView: React.FC = () => {
     setEditUsername(u.username);
     setEditRole(u.role);
     setEditStudentId(u.studentId || '');
+    setEditSubjectId(u.subjectId || '');
 
     const existingClassIds = u.classIds || [];
     if (existingClassIds.length === 1) {
@@ -332,6 +557,7 @@ export const DataPenggunaView: React.FC = () => {
       role: editRole,
       studentId: editRole === 'SISWA' ? (editStudentId || null) : null,
       classIds: isTeacherRole(editRole) ? targetClasses : [],
+      subjectId: editRole === 'GURU MAPEL' ? (editSubjectId || null) : null,
     });
 
     setEditUser(null);
@@ -348,6 +574,11 @@ export const DataPenggunaView: React.FC = () => {
 
   const handleConfirmDelete = () => {
     if (!userToDelete) return;
+    if (currentUser && currentUser.id === userToDelete.id) {
+      showToast('Anda tidak dapat menghapus akun Anda sendiri yang sedang aktif.', 'error');
+      setUserToDelete(null);
+      return;
+    }
     deleteUser(userToDelete.id);
     setUserToDelete(null);
   };
@@ -387,6 +618,53 @@ export const DataPenggunaView: React.FC = () => {
     navigator.clipboard.writeText(pwd);
     setCopiedIndex(idx);
     setTimeout(() => setCopiedIndex(null), 2000);
+  };
+
+  // Quick Copy Account Credential Message
+  const handleCopyCredentialMessage = (u: UserAccount) => {
+    const details = getUserAssignmentDetails(u);
+    const pwd = u.password || (isGoogleUser(u) ? 'Gunakan Tombol Masuk dengan Google' : 'Hubungi Admin');
+    const schoolName = schoolProfile?.namaSekolah || 'SEKOLAH';
+    const msg = `*KREDENSIAL LOGIN APLIKASI PRESENSI ${schoolName}*\n----------------------------------------\nNama: ${u.name || '-'}\nPeran / Hak Akses: ${details.roleLabel} (${details.assignmentText})\nUsername: ${u.username || '-'}\nPassword: ${pwd}\n----------------------------------------\nSilakan simpan dan jaga kerahasiaan akun ini.`;
+    navigator.clipboard.writeText(msg);
+    setCopiedUserId(u.id);
+    showToast(`Format kredensial login untuk ${u.name || u.username} telah disalin ke clipboard`, 'success');
+    setTimeout(() => setCopiedUserId(null), 2500);
+  };
+
+  // Export Users to CSV / Spreadsheet
+  const handleExportCSV = () => {
+    if (filteredUsers.length === 0) {
+      showToast('Tidak ada data pengguna yang sesuai untuk diekspor.', 'warning');
+      return;
+    }
+
+    const headers = ['No', 'Nama Pengguna', 'Username', 'Password', 'Email', 'Hak Akses', 'Penugasan/Kelas', 'Metode Auth'];
+    const rows = filteredUsers.map((u, idx) => {
+      const details = getUserAssignmentDetails(u);
+      const authType = isGoogleUser(u) ? 'Google SSO' : 'Password Sistem';
+      return [
+        idx + 1,
+        `"${(u.name || '').replace(/"/g, '""')}"`,
+        `"${(u.username || '').replace(/"/g, '""')}"`,
+        `"${(u.password || '-').replace(/"/g, '""')}"`,
+        `"${(u.email || '-').replace(/"/g, '""')}"`,
+        `"${details.roleLabel}"`,
+        `"${(details.assignmentText || '-').replace(/"/g, '""')}"`,
+        `"${authType}"`,
+      ];
+    });
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Data_Pengguna_${schoolProfile?.namaSekolah || 'Sekolah'}_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast('Data pengguna berhasil diekspor ke format CSV / Spreadsheet', 'success');
   };
 
   // Helper to map UserAccount[] to GeneratedAccountResult[] for PDF export
@@ -433,7 +711,6 @@ export const DataPenggunaView: React.FC = () => {
       let filterCategory = 'ALL';
       let docTitle = 'DAFTAR HASIL GENERATE AKUN PENGGUNA & PASSWORD RESMI';
 
-      // Gunakan generatedResults jika tersedia, atau fallback ke seluruh user aktif
       const sourceList = generatedResults && generatedResults.length > 0
         ? generatedResults
         : mapUsersToExportAccounts(users);
@@ -486,8 +763,9 @@ export const DataPenggunaView: React.FC = () => {
   };
 
   const filteredGeneratedResults = useMemo(() => {
-    if (!generatedResults) return [];
+    if (!generatedResults || !Array.isArray(generatedResults)) return [];
     return generatedResults.filter((r) => {
+      if (!r) return false;
       const matchTab =
         resultFilterTab === 'ALL'
           ? true
@@ -496,20 +774,20 @@ export const DataPenggunaView: React.FC = () => {
           : resultFilterTab === 'SISWA'
           ? r.category === 'SISWA'
           : r.category === 'KEPALA SEKOLAH';
-      const q = resultSearchTerm.toLowerCase();
+      const q = (resultSearchTerm || '').trim().toLowerCase();
       const matchSearch =
         !q ||
-        r.name.toLowerCase().includes(q) ||
-        r.username.toLowerCase().includes(q) ||
-        (r.className && r.className.toLowerCase().includes(q));
+        (r.name || '').toLowerCase().includes(q) ||
+        (r.username || '').toLowerCase().includes(q) ||
+        ((r.className || '').toLowerCase().includes(q));
       return matchTab && matchSearch;
     });
   }, [generatedResults, resultFilterTab, resultSearchTerm]);
 
   return (
-    <div className="w-full max-w-6xl mx-auto px-4 sm:px-8 py-6 space-y-6 animate-in fade-in duration-200">
-      {/* Top Bar */}
-      <div>
+    <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 animate-in fade-in duration-200">
+      {/* Top Bar Navigation */}
+      <div className="flex items-center justify-between">
         <button
           onClick={() => setActiveView('dashboard')}
           className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-xs cursor-pointer"
@@ -518,39 +796,61 @@ export const DataPenggunaView: React.FC = () => {
           <ArrowLeft size={14} />
           <span>Dashboard</span>
         </button>
+
+        <div className="text-xs font-bold text-slate-500 flex items-center gap-2">
+          <School size={14} className="text-blue-600" />
+          <span>{schoolProfile?.namaSekolah || 'Sistem Sekolah'}</span>
+        </div>
       </div>
 
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center shadow-xs">
-            <UserCheck size={22} />
+      {/* Header & Main Actions */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
+        <div className="flex items-center gap-3.5">
+          <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20 shrink-0">
+            <UserCheck size={26} />
           </div>
           <div>
-            <h1 className="text-xl sm:text-2xl font-black text-slate-900">Data Pengguna</h1>
-            <p className="text-xs sm:text-sm text-slate-500">
-              Kelola akun login (Administrator, Guru Wali Kelas / Mapel, Kepala Sekolah, dan Siswa).
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Data Pengguna & Hak Akses</h1>
+              <span className="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 text-xs font-extrabold">
+                {stats.total} Akun
+              </span>
+            </div>
+            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+              Kelola kredensial login, hak akses rombel, dan cetak dokumen kredensial resmi.
             </p>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Main Header Export PDF Dropdown */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Add User Manual Button */}
+          <button
+            type="button"
+            onClick={openAddUser}
+            id="btn-add-user"
+            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-md shadow-blue-500/20 transition-all flex items-center gap-2 cursor-pointer"
+            title="Tambah akun pengguna baru secara manual"
+          >
+            <Plus size={16} />
+            <span>Tambah Pengguna</span>
+          </button>
+
+          {/* Export Dropdown (PDF & CSV) */}
           <div className="relative">
             <button
               type="button"
               onClick={() => setShowMainExportMenu((prev) => !prev)}
               disabled={isExportingPdf}
-              className="px-3.5 py-2.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-              title="Cetak & Export Dokumen PDF Akun Pengguna (Guru / Siswa) dengan Kop Surat Resmi"
-              id="btn-main-export-pdf"
+              className="px-3.5 py-2.5 bg-white hover:bg-slate-50 active:scale-95 text-slate-700 font-extrabold text-xs rounded-xl border border-slate-200 shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              title="Export atau Cetak Dokumen PDF / Spreadsheet CSV"
+              id="btn-main-export-menu"
             >
               {isExportingPdf ? (
-                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <div className="w-3.5 h-3.5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
               ) : (
-                <Printer size={15} />
+                <Download size={15} className="text-slate-600" />
               )}
-              <span>Export PDF</span>
+              <span>Export & Cetak</span>
               <ChevronDown size={13} className={`transition-transform duration-200 ${showMainExportMenu ? 'rotate-180' : ''}`} />
             </button>
 
@@ -562,24 +862,24 @@ export const DataPenggunaView: React.FC = () => {
                 />
                 <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-slate-200 py-2 z-50 animate-in fade-in zoom-in-95 text-slate-800">
                   <div className="px-3.5 py-1.5 border-b border-slate-100 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
-                    Pilihan Cetak Dokumen PDF Resmi
+                    Pilihan Ekspor & Cetak Resmi
                   </div>
                   
                   <button
                     type="button"
                     onClick={() => handleExportPDF('GURU')}
-                    className="w-full px-3.5 py-2.5 text-left hover:bg-rose-50/80 flex items-center gap-3 transition-colors cursor-pointer group"
+                    className="w-full px-3.5 py-2.5 text-left hover:bg-blue-50/80 flex items-center gap-3 transition-colors cursor-pointer group"
                     id="btn-main-export-pdf-guru"
                   >
                     <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors shadow-xs">
                       <GraduationCap size={16} />
                     </div>
                     <div>
-                      <div className="text-xs font-bold text-slate-900 group-hover:text-rose-700">
-                        Export PDF Akun Guru & KS
+                      <div className="text-xs font-bold text-slate-900 group-hover:text-blue-700">
+                        Cetak PDF Akun Guru & KS
                       </div>
                       <div className="text-[10px] text-slate-500 font-medium">
-                        Cetak Akun Wali Kelas, Guru Mapel, dan KS ({teacherStats.total} akun)
+                        Kop Surat Resmi ({stats.guruKsTotal} akun)
                       </div>
                     </div>
                   </button>
@@ -587,18 +887,39 @@ export const DataPenggunaView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleExportPDF('SISWA')}
-                    className="w-full px-3.5 py-2.5 text-left hover:bg-rose-50/80 flex items-center gap-3 transition-colors cursor-pointer group"
+                    className="w-full px-3.5 py-2.5 text-left hover:bg-emerald-50/80 flex items-center gap-3 transition-colors cursor-pointer group"
                     id="btn-main-export-pdf-siswa"
                   >
                     <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 group-hover:bg-emerald-600 group-hover:text-white transition-colors shadow-xs">
                       <Users size={16} />
                     </div>
                     <div>
-                      <div className="text-xs font-bold text-slate-900 group-hover:text-rose-700">
-                        Export PDF Akun Siswa
+                      <div className="text-xs font-bold text-slate-900 group-hover:text-emerald-700">
+                        Cetak PDF Akun Siswa
                       </div>
                       <div className="text-[10px] text-slate-500 font-medium">
-                        Cetak Akun Peserta Didik ({users.filter(u => u.role === 'SISWA').length} akun)
+                        Kop Surat Resmi ({stats.siswa} akun)
+                      </div>
+                    </div>
+                  </button>
+
+                  <div className="my-1 border-t border-slate-100" />
+
+                  <button
+                    type="button"
+                    onClick={handleExportCSV}
+                    className="w-full px-3.5 py-2.5 text-left hover:bg-slate-100 flex items-center gap-3 transition-colors cursor-pointer group"
+                    id="btn-main-export-csv"
+                  >
+                    <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center shrink-0 group-hover:bg-slate-700 group-hover:text-white transition-colors shadow-xs">
+                      <FileText size={16} />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-slate-900 group-hover:text-slate-900">
+                        Download CSV / Spreadsheet
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-medium">
+                        Seluruh akun yang sedang difilter ({filteredUsers.length} baris)
                       </div>
                     </div>
                   </button>
@@ -607,11 +928,12 @@ export const DataPenggunaView: React.FC = () => {
             )}
           </div>
 
+          {/* Generate Accounts Button */}
           <button
             onClick={() => setIsGenerateModalOpen(true)}
             id="btn-generate-akun"
-            className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
-            title="Generate semua akun pengguna otomatis dari data referensi Guru & Siswa dengan password yang diacak"
+            className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-md shadow-amber-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+            title="Generate semua akun otomatis dari data referensi Guru & Siswa dengan password yang diacak"
           >
             <Sparkles size={15} />
             <span>Generate Akun & Password</span>
@@ -619,109 +941,255 @@ export const DataPenggunaView: React.FC = () => {
         </div>
       </div>
 
-      {/* Info Banner on User & Password Policy */}
-      <div className="p-3.5 sm:p-4 bg-blue-50/80 border border-blue-200 rounded-2xl flex items-start gap-3 text-xs text-blue-900">
-        <div className="p-1 rounded-lg bg-blue-100 text-blue-700 shrink-0 mt-0.5">
-          <UserCheck size={16} />
+      {/* Interactive Statistics Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3.5">
+        <div
+          onClick={() => { setActiveTab('all'); setCurrentPage(1); }}
+          className={`p-4 rounded-2xl border transition-all cursor-pointer ${
+            activeTab === 'all'
+              ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-500/20 scale-[1.02]'
+              : 'bg-white text-slate-800 border-slate-200 hover:border-blue-300 hover:bg-slate-50/80 shadow-xs'
+          }`}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <span className={`text-[10px] font-black uppercase tracking-wider ${activeTab === 'all' ? 'text-blue-100' : 'text-slate-400'}`}>
+              Total Pengguna
+            </span>
+            <Users size={16} className={activeTab === 'all' ? 'text-blue-200' : 'text-blue-600'} />
+          </div>
+          <div className="text-2xl font-black">{stats.total}</div>
+          <div className={`text-[11px] mt-0.5 font-medium ${activeTab === 'all' ? 'text-blue-100' : 'text-slate-500'}`}>
+            Semua Peran & Hak Akses
+          </div>
         </div>
-        <div className="space-y-0.5">
-          <p className="font-bold text-blue-950">Struktur Peran Pengguna & Pembuatan Akun:</p>
-          <p className="text-blue-800 leading-relaxed">
-            • <b>Guru & KS</b>: Terdiri dari <span className="font-bold text-blue-950">Wali Kelas</span> (berhak input kehadiran 1 rombel binaan), <span className="font-bold text-blue-950">Guru Mapel</span> (berhak mengajar beberapa rombel), dan <span className="font-bold text-blue-950">Kepala Sekolah</span>.<br />
-            • <b>Export PDF</b>: Hasil generate dan printout akun mencantumkan <b>password acak</b> asli yang dapat langsung dibagikan kepada guru dan siswa.
-          </p>
+
+        <div
+          onClick={() => { setActiveTab('administrator'); setCurrentPage(1); }}
+          className={`p-4 rounded-2xl border transition-all cursor-pointer ${
+            activeTab === 'administrator'
+              ? 'bg-purple-700 text-white border-purple-700 shadow-md shadow-purple-500/20 scale-[1.02]'
+              : 'bg-white text-slate-800 border-slate-200 hover:border-purple-300 hover:bg-purple-50/30 shadow-xs'
+          }`}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <span className={`text-[10px] font-black uppercase tracking-wider ${activeTab === 'administrator' ? 'text-purple-100' : 'text-purple-600'}`}>
+              Administrator
+            </span>
+            <ShieldCheck size={16} className={activeTab === 'administrator' ? 'text-purple-200' : 'text-purple-600'} />
+          </div>
+          <div className="text-2xl font-black">{stats.admin}</div>
+          <div className={`text-[11px] mt-0.5 font-medium ${activeTab === 'administrator' ? 'text-purple-100' : 'text-slate-500'}`}>
+            Akses Pengaturan & Master
+          </div>
+        </div>
+
+        <div
+          onClick={() => { setActiveTab('guru'); setGuruSubFilter('ALL'); setCurrentPage(1); }}
+          className={`p-4 rounded-2xl border transition-all cursor-pointer ${
+            activeTab === 'guru'
+              ? 'bg-blue-700 text-white border-blue-700 shadow-md shadow-blue-500/20 scale-[1.02]'
+              : 'bg-white text-slate-800 border-slate-200 hover:border-blue-300 hover:bg-blue-50/30 shadow-xs'
+          }`}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <span className={`text-[10px] font-black uppercase tracking-wider ${activeTab === 'guru' ? 'text-blue-100' : 'text-blue-600'}`}>
+              Guru & KS
+            </span>
+            <GraduationCap size={16} className={activeTab === 'guru' ? 'text-blue-200' : 'text-blue-600'} />
+          </div>
+          <div className="text-2xl font-black">{stats.guruKsTotal}</div>
+          <div className={`text-[11px] mt-0.5 font-medium ${activeTab === 'guru' ? 'text-blue-100' : 'text-slate-500'}`}>
+            {stats.wali} Wali • {stats.mapel} Mapel • {stats.kepsek} KS
+          </div>
+        </div>
+
+        <div
+          onClick={() => { setActiveTab('siswa'); setCurrentPage(1); }}
+          className={`p-4 rounded-2xl border transition-all cursor-pointer ${
+            activeTab === 'siswa'
+              ? 'bg-emerald-700 text-white border-emerald-700 shadow-md shadow-emerald-500/20 scale-[1.02]'
+              : 'bg-white text-slate-800 border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/30 shadow-xs'
+          }`}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <span className={`text-[10px] font-black uppercase tracking-wider ${activeTab === 'siswa' ? 'text-emerald-100' : 'text-emerald-600'}`}>
+              Peserta Didik
+            </span>
+            <Users size={16} className={activeTab === 'siswa' ? 'text-emerald-200' : 'text-emerald-600'} />
+          </div>
+          <div className="text-2xl font-black">{stats.siswa}</div>
+          <div className={`text-[11px] mt-0.5 font-medium ${activeTab === 'siswa' ? 'text-emerald-100' : 'text-slate-500'}`}>
+            Tersebar di {classes.length} Rombel
+          </div>
+        </div>
+
+        <div className="col-span-2 sm:col-span-4 lg:col-span-1 p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+              Metode Login
+            </span>
+            <Lock size={15} className="text-slate-400" />
+          </div>
+          <div className="flex items-center justify-between text-xs font-bold pt-1">
+            <span className="text-emerald-700 flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
+              Sistem: {stats.password}
+            </span>
+            <span className="text-blue-700 flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
+              Google: {stats.google}
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Table Container Card */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
-        {/* Tab Pengguna */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl w-fit border border-slate-200">
+      {/* Unlinked Master Data Notice */}
+      {(stats.unlinkedTeachersCount > 0 || stats.unlinkedStudentsCount > 0) && (
+        <div className="p-4 bg-amber-50/90 border border-amber-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900 shadow-xs">
+          <div className="flex items-start sm:items-center gap-2.5">
+            <Sparkles size={18} className="text-amber-600 shrink-0 mt-0.5 sm:mt-0" />
+            <div>
+              <span className="font-bold text-amber-950">Sinkronisasi Data Referensi:</span>{' '}
+              <span>
+                Terdapat{' '}
+                {stats.unlinkedTeachersCount > 0 && <b>{stats.unlinkedTeachersCount} Guru</b>}
+                {stats.unlinkedTeachersCount > 0 && stats.unlinkedStudentsCount > 0 && ' dan '}
+                {stats.unlinkedStudentsCount > 0 && <b>{stats.unlinkedStudentsCount} Siswa</b>} yang belum memiliki akun login.
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={() => setIsGenerateModalOpen(true)}
+            className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-xs transition-colors shrink-0 cursor-pointer flex items-center justify-center gap-1.5"
+          >
+            <RefreshCw size={13} />
+            <span>Sinkronkan / Generate</span>
+          </button>
+        </div>
+      )}
+
+      {/* Main Table Container Card */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-6 space-y-6">
+        {/* Navigation Tabs & Subfilters */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+          {/* Main Tabs */}
+          <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl w-fit border border-slate-200 overflow-x-auto">
+            <button
+              type="button"
+              onClick={() => { setActiveTab('all'); setCurrentPage(1); }}
+              className={`px-4 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === 'all' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              Semua ({stats.total})
+            </button>
             <button
               type="button"
               onClick={() => { setActiveTab('administrator'); setCurrentPage(1); }}
-              className={`px-5 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${activeTab === 'administrator' ? 'bg-white text-purple-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+              className={`px-4 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === 'administrator' ? 'bg-white text-purple-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+              }`}
             >
-              Administrator ({users.filter(u => u.role === 'ADMIN').length})
+              Administrator ({stats.admin})
             </button>
             <button
               type="button"
               onClick={() => { setActiveTab('guru'); setCurrentPage(1); }}
-              className={`px-5 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${activeTab === 'guru' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+              className={`px-4 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === 'guru' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+              }`}
             >
-              Guru & KS ({teacherStats.total})
+              Guru & KS ({stats.guruKsTotal})
             </button>
             <button
               type="button"
               onClick={() => { setActiveTab('siswa'); setCurrentPage(1); }}
-              className={`px-5 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${activeTab === 'siswa' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+              className={`px-4 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === 'siswa' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+              }`}
             >
-              Siswa ({users.filter(u => u.role === 'SISWA').length})
+              Siswa ({stats.siswa})
             </button>
           </div>
 
-          {activeTab === 'guru' && (
-            <div className="flex items-center gap-1.5 p-1 bg-slate-50 rounded-xl border border-slate-200 text-xs overflow-x-auto">
-              <button
-                type="button"
-                onClick={() => { setGuruSubFilter('ALL'); setCurrentPage(1); }}
-                className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
-                  guruSubFilter === 'ALL' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-200/60'
-                }`}
+          {/* Sub Filters for Guru or Siswa */}
+          <div className="flex flex-wrap items-center gap-2">
+            {activeTab === 'guru' && (
+              <div className="flex items-center gap-1 p-1 bg-slate-50 rounded-xl border border-slate-200 text-xs overflow-x-auto">
+                <button
+                  type="button"
+                  onClick={() => { setGuruSubFilter('ALL'); setCurrentPage(1); }}
+                  className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    guruSubFilter === 'ALL' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-200/60'
+                  }`}
+                >
+                  Semua Guru ({stats.guruKsTotal})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setGuruSubFilter('WALI_KELAS'); setCurrentPage(1); }}
+                  className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    guruSubFilter === 'WALI_KELAS' ? 'bg-emerald-600 text-white shadow-xs' : 'text-emerald-800 hover:bg-emerald-50'
+                  }`}
+                >
+                  Wali Kelas ({stats.wali})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setGuruSubFilter('GURU_MAPEL'); setCurrentPage(1); }}
+                  className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    guruSubFilter === 'GURU_MAPEL' ? 'bg-indigo-600 text-white shadow-xs' : 'text-indigo-800 hover:bg-indigo-50'
+                  }`}
+                >
+                  Guru Mapel ({stats.mapel})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setGuruSubFilter('KEPALA_SEKOLAH'); setCurrentPage(1); }}
+                  className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    guruSubFilter === 'KEPALA_SEKOLAH' ? 'bg-sky-600 text-white shadow-xs' : 'text-sky-800 hover:bg-sky-50'
+                  }`}
+                >
+                  Kepala Sekolah ({stats.kepsek})
+                </button>
+              </div>
+            )}
+
+            {activeTab === 'siswa' && (
+              <div className="flex items-center gap-2 text-xs">
+                <span className="font-bold text-slate-500">Rombel:</span>
+                <select
+                  value={siswaClassFilter}
+                  onChange={(e) => { setSiswaClassFilter(e.target.value); setCurrentPage(1); }}
+                  className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-600 cursor-pointer"
+                >
+                  <option value="ALL">Semua Rombel ({stats.siswa})</option>
+                  {classes.map((c) => (
+                    <option key={c.id} value={c.name}>
+                      Kelas {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Auth Filter */}
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="font-bold text-slate-500">Auth:</span>
+              <select
+                value={authFilter}
+                onChange={(e) => { setAuthFilter(e.target.value as any); setCurrentPage(1); }}
+                className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-600 cursor-pointer"
               >
-                Semua ({teacherStats.total})
-              </button>
-              <button
-                type="button"
-                onClick={() => { setGuruSubFilter('WALI_KELAS'); setCurrentPage(1); }}
-                className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
-                  guruSubFilter === 'WALI_KELAS' ? 'bg-emerald-600 text-white shadow-xs' : 'text-emerald-800 hover:bg-emerald-50'
-                }`}
-              >
-                Wali Kelas ({teacherStats.wali})
-              </button>
-              <button
-                type="button"
-                onClick={() => { setGuruSubFilter('GURU_MAPEL'); setCurrentPage(1); }}
-                className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
-                  guruSubFilter === 'GURU_MAPEL' ? 'bg-indigo-600 text-white shadow-xs' : 'text-indigo-800 hover:bg-indigo-50'
-                }`}
-              >
-                Guru Mapel ({teacherStats.mapel})
-              </button>
-              <button
-                type="button"
-                onClick={() => { setGuruSubFilter('KEPALA_SEKOLAH'); setCurrentPage(1); }}
-                className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
-                  guruSubFilter === 'KEPALA_SEKOLAH' ? 'bg-sky-600 text-white shadow-xs' : 'text-sky-800 hover:bg-sky-50'
-                }`}
-              >
-                Kepala Sekolah ({teacherStats.kepsek})
-              </button>
+                <option value="ALL">Semua Metode</option>
+                <option value="PASSWORD">Password Sistem</option>
+                <option value="GOOGLE">Google SSO</option>
+              </select>
             </div>
-          )}
+          </div>
         </div>
 
-        {/* Unlinked Master Teachers Warning */}
-        {activeTab === 'guru' && teacherStats.unlinkedCount > 0 && (
-          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between gap-3 text-xs text-amber-900">
-            <div className="flex items-center gap-2">
-              <Sparkles size={16} className="text-amber-600 shrink-0" />
-              <span>
-                Terdapat <b>{teacherStats.unlinkedCount} guru</b> di Data Referensi yang belum memiliki akun login.
-              </span>
-            </div>
-            <button
-              onClick={() => setIsGenerateModalOpen(true)}
-              className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg transition-colors shrink-0 cursor-pointer"
-            >
-              Generate Sekarang
-            </button>
-          </div>
-        )}
-
-        {/* Controls */}
+        {/* Controls: Search & Per Page */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="relative w-full sm:w-80">
             <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -732,27 +1200,26 @@ export const DataPenggunaView: React.FC = () => {
                 setSearchTerm(e.target.value);
                 setCurrentPage(1);
               }}
-              placeholder="Cari Username, Nama, atau Penugasan..."
+              placeholder="Cari Nama, Username, Kelas, NIP/NISN..."
               className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-500/10 transition-all"
             />
           </div>
 
-          <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
-            <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-              <span>TAMPILKAN:</span>
-              <select
-                value={pageSize}
-                onChange={(e) => {
-                  setPageSize(Number(e.target.value));
-                  setCurrentPage(1);
-                }}
-                className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:outline-none focus:border-blue-600 cursor-pointer"
-              >
-                <option value={10}>10</option>
-                <option value={25}>25</option>
-                <option value={50}>50</option>
-              </select>
-            </div>
+          <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end text-xs font-semibold text-slate-500">
+            <span>TAMPILKAN:</span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:outline-none focus:border-blue-600 cursor-pointer"
+            >
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
           </div>
         </div>
 
@@ -762,11 +1229,11 @@ export const DataPenggunaView: React.FC = () => {
             <thead>
               <tr className="border-b border-slate-200 text-[10px] font-bold text-blue-700 uppercase tracking-widest bg-blue-50/60">
                 <th className="py-3.5 px-4 w-12 rounded-l-xl">NO</th>
-                <th className="py-3.5 px-4">NAMA PENGGUNA</th>
-                <th className="py-3.5 px-4 w-44">USERNAME</th>
+                <th className="py-3.5 px-4 min-w-48">NAMA PENGGUNA</th>
+                <th className="py-3.5 px-4 w-40">USERNAME</th>
                 <th className="py-3.5 px-4 text-center w-36">AUTH / PASSWORD</th>
-                <th className="py-3.5 px-4">HAK AKSES / PENUGASAN</th>
-                <th className="py-3.5 px-4 text-center w-28 rounded-r-xl">AKSI</th>
+                <th className="py-3.5 px-4 min-w-56">HAK AKSES / PENUGASAN</th>
+                <th className="py-3.5 px-4 text-center w-32 rounded-r-xl">AKSI</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
@@ -779,7 +1246,14 @@ export const DataPenggunaView: React.FC = () => {
                         {startIndex + idx + 1}
                       </td>
                       <td className="py-3.5 px-4">
-                        <div className="font-bold text-slate-900">{u.name}</div>
+                        <div className="font-bold text-slate-900 flex items-center gap-2">
+                          <span>{u.name}</span>
+                          {currentUser && currentUser.id === u.id && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-blue-100 text-blue-800">
+                              SAYA
+                            </span>
+                          )}
+                        </div>
                         {u.email && (
                           <div className="text-[11px] text-slate-400 font-normal">{u.email}</div>
                         )}
@@ -829,7 +1303,19 @@ export const DataPenggunaView: React.FC = () => {
                         </div>
                       </td>
                       <td className="py-3.5 px-4 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
+                        <div className="flex items-center justify-center gap-1">
+                          {/* Copy Credential Format */}
+                          <button
+                            type="button"
+                            onClick={() => handleCopyCredentialMessage(u)}
+                            className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                            title="Salin Pesan Kredensial Login (Username & Password)"
+                            id={`btn-copy-credential-${u.id}`}
+                          >
+                            {copiedUserId === u.id ? <Check size={14} className="text-emerald-600 stroke-[3]" /> : <Share2 size={14} />}
+                          </button>
+
+                          {/* Edit User */}
                           <button
                             onClick={() => openEditUser(u)}
                             className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
@@ -838,6 +1324,8 @@ export const DataPenggunaView: React.FC = () => {
                           >
                             <Edit2 size={14} />
                           </button>
+
+                          {/* Change Password */}
                           <button
                             onClick={() => {
                               setTargetPasswordUser(u);
@@ -850,10 +1338,13 @@ export const DataPenggunaView: React.FC = () => {
                           >
                             <Key size={14} />
                           </button>
+
+                          {/* Delete User */}
                           <button
                             onClick={() => setUserToDelete(u)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                            title="Hapus Akun"
+                            disabled={currentUser?.id === u.id}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                            title={currentUser?.id === u.id ? 'Tidak dapat menghapus akun Anda sendiri' : 'Hapus Akun'}
                             id={`btn-delete-user-${u.id}`}
                           >
                             <Trash2 size={14} />
@@ -866,7 +1357,7 @@ export const DataPenggunaView: React.FC = () => {
               ) : (
                 <tr>
                   <td colSpan={6} className="text-center py-12 text-slate-400 font-medium">
-                    Tidak ada akun pengguna yang terdaftar atau sesuai pencarian.
+                    Tidak ada akun pengguna yang terdaftar atau sesuai filter pencarian.
                   </td>
                 </tr>
               )}
@@ -874,10 +1365,10 @@ export const DataPenggunaView: React.FC = () => {
           </table>
         </div>
 
-        {/* Pagination */}
-        <div className="flex items-center justify-between pt-4 border-t border-slate-100 text-xs font-semibold text-slate-500">
+        {/* Pagination & Status Footer */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4 border-t border-slate-100 text-xs font-semibold text-slate-500">
           <div>
-            TOTAL {filteredUsers.length} PENGGUNA
+            MENAMPILKAN {Math.min(startIndex + 1, filteredUsers.length)} - {Math.min(startIndex + pageSize, filteredUsers.length)} DARI {filteredUsers.length} PENGGUNA
           </div>
           <div className="flex items-center gap-1.5">
             <button
@@ -900,6 +1391,270 @@ export const DataPenggunaView: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Add User Modal */}
+      {isAddModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 text-slate-800 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center">
+                  <Plus size={18} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">Tambah Akun Pengguna Baru</h3>
+                  <p className="text-[11px] text-slate-500">Buat akun untuk Admin, Guru, KS, atau Siswa</p>
+                </div>
+              </div>
+              <button
+                onClick={() => !isSubmittingAdd && setIsAddModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700 cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddSubmit} className="space-y-4 pt-4">
+              {/* Role Selection */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                  HAK AKSES / PERAN
+                </label>
+                <select
+                  value={addRole}
+                  onChange={(e) => setAddRole(e.target.value as UserRole)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:border-blue-600 focus:bg-white outline-none cursor-pointer"
+                >
+                  <option value="WALI KELAS">GURU WALI KELAS</option>
+                  <option value="GURU MAPEL">GURU MATA PELAJARAN</option>
+                  <option value="KEPALA SEKOLAH">KEPALA SEKOLAH</option>
+                  <option value="ADMIN">ADMINISTRATOR</option>
+                  <option value="SISWA">PESERTA DIDIK (SISWA)</option>
+                </select>
+              </div>
+
+              {/* Quick Pick from Master Teachers if Role is Teacher / KS */}
+              {(addRole === 'WALI KELAS' || addRole === 'GURU MAPEL' || addRole === 'KEPALA SEKOLAH') && (
+                <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-xl space-y-1.5">
+                  <label className="block text-[10px] font-bold text-blue-900 uppercase tracking-wider">
+                    PILIH DARI DATA REFERENSI GURU (OPSIONAL)
+                  </label>
+                  <select
+                    onChange={(e) => handleSelectTeacherForAdd(e.target.value)}
+                    defaultValue=""
+                    className="w-full px-3 py-2 bg-white border border-blue-200 rounded-lg text-xs font-medium text-slate-800 outline-none"
+                  >
+                    <option value="">-- Pilih Guru dari Data Referensi --</option>
+                    {teachers.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.nama} ({t.nip && t.nip !== '-' ? `NIP: ${t.nip}` : 'Non-NIP'}) — {t.tugasUtama || 'Pendidik'}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-blue-700">
+                    Memilih guru akan otomatis mengisi Nama, Username (NIP), dan penugasan kelas.
+                  </p>
+                </div>
+              )}
+
+              {/* Quick Pick from Master Students if Role is Student */}
+              {addRole === 'SISWA' && (
+                <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl space-y-1.5">
+                  <label className="block text-[10px] font-bold text-emerald-900 uppercase tracking-wider">
+                    PILIH DARI DATA REFERENSI SISWA (OPSIONAL)
+                  </label>
+                  <select
+                    onChange={(e) => handleSelectStudentForAdd(e.target.value)}
+                    defaultValue=""
+                    className="w-full px-3 py-2 bg-white border border-emerald-200 rounded-lg text-xs font-medium text-slate-800 outline-none"
+                  >
+                    <option value="">-- Pilih Siswa dari Data Referensi --</option>
+                    {students.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.nama} ({s.nisn && s.nisn !== '-' ? `NISN: ${s.nisn}` : 'No NISN'}) — {s.className || 'Tanpa Kelas'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Name */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                  NAMA LENGKAP PENGGUNA *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={addName}
+                  onChange={(e) => setAddName(e.target.value)}
+                  placeholder="Masukkan nama lengkap"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-900 focus:border-blue-600 focus:bg-white outline-none"
+                />
+              </div>
+
+              {/* Username & Email */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                    USERNAME LOGIN *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={addUsername}
+                    onChange={(e) => setAddUsername(e.target.value.replace(/\s+/g, '').toLowerCase())}
+                    placeholder="contoh: 19850101... atau admin"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-mono font-medium text-slate-900 focus:border-blue-600 focus:bg-white outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                    EMAIL GOOGLE (OPSIONAL)
+                  </label>
+                  <input
+                    type="email"
+                    value={addEmail}
+                    onChange={(e) => setAddEmail(e.target.value)}
+                    placeholder="user@sekolah.sch.id"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-900 focus:border-blue-600 focus:bg-white outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Password */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                    PASSWORD AKUN *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setAddPassword(generateRandomPassword(8))}
+                    className="text-[10px] text-blue-600 font-bold hover:underline cursor-pointer"
+                  >
+                    Acak Password Baru
+                  </button>
+                </div>
+                <div className="relative">
+                  <input
+                    type={showAddPassword ? 'text' : 'password'}
+                    required
+                    minLength={4}
+                    value={addPassword}
+                    onChange={(e) => setAddPassword(e.target.value)}
+                    className="w-full pl-3.5 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-mono font-bold text-slate-900 focus:border-blue-600 focus:bg-white outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAddPassword(!showAddPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                  >
+                    {showAddPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Assignment Details for Teachers */}
+              {isTeacherRole(addRole) && (
+                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                  <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-widest">
+                    PENUGASAN ROMBEL / MATA PELAJARAN
+                  </label>
+
+                  {addRole === 'WALI KELAS' && (
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                        PILIH ROMBEL KELAS BINAAN (1 KELAS)
+                      </label>
+                      <select
+                        value={addSingleClassId}
+                        onChange={(e) => setAddSingleClassId(e.target.value)}
+                        className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:border-blue-600 outline-none"
+                      >
+                        <option value="">Pilih Rombel...</option>
+                        {classes.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            Kelas {c.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {addRole === 'GURU MAPEL' && (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                          MATA PELAJARAN YANG DIAMPU
+                        </label>
+                        <select
+                          value={addSubjectId}
+                          onChange={(e) => setAddSubjectId(e.target.value)}
+                          className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:border-blue-600 outline-none"
+                        >
+                          <option value="">Pilih Mata Pelajaran...</option>
+                          {subjects.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name} ({s.code || 'Mapel'})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
+                          PILIH ROMBEL KELAS YANG DIAJAR (BISA MULTI-ROMBEL)
+                        </label>
+                        <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto p-2 bg-white rounded-xl border border-slate-200">
+                          {classes.map((c) => (
+                            <label key={c.id} className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={addClassIds.includes(c.id)}
+                                onChange={(e) =>
+                                  setAddClassIds((v) =>
+                                    e.target.checked ? [...v, c.id] : v.filter((id) => id !== c.id)
+                                  )
+                                }
+                                className="rounded text-blue-600"
+                              />
+                              Kelas {c.name}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsAddModalOpen(false)}
+                  disabled={isSubmittingAdd}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer disabled:opacity-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingAdd}
+                  className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  {isSubmittingAdd ? (
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Check size={15} />
+                  )}
+                  <span>Simpan Akun Pengguna</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Edit User Modal */}
       {editUser && (
@@ -928,7 +1683,7 @@ export const DataPenggunaView: React.FC = () => {
                   required
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-900 focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-500/10 outline-none transition-all"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-900 focus:border-blue-600 focus:bg-white outline-none"
                 />
               </div>
 
@@ -941,7 +1696,7 @@ export const DataPenggunaView: React.FC = () => {
                   value={editEmail}
                   onChange={(e) => setEditEmail(e.target.value)}
                   placeholder="contoh: guru@sekolah.sch.id"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-900 focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-500/10 outline-none transition-all"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-900 focus:border-blue-600 focus:bg-white outline-none"
                 />
               </div>
 
@@ -954,7 +1709,7 @@ export const DataPenggunaView: React.FC = () => {
                   required
                   value={editUsername}
                   onChange={(e) => setEditUsername(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-900 focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-500/10 outline-none transition-all"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-900 focus:border-blue-600 focus:bg-white outline-none"
                 />
               </div>
 
@@ -995,7 +1750,7 @@ export const DataPenggunaView: React.FC = () => {
                         <span>Wali Kelas</span>
                       </div>
                       <p className={`text-[10px] mt-1 font-normal ${editTeacherType === 'wali_kelas' ? 'text-blue-100' : 'text-slate-400'}`}>
-                        Hanya mengajar 1 kelas
+                        1 rombel binaan
                       </p>
                     </button>
 
@@ -1013,7 +1768,7 @@ export const DataPenggunaView: React.FC = () => {
                         <span>Guru Mapel</span>
                       </div>
                       <p className={`text-[10px] mt-1 font-normal ${editTeacherType === 'guru_mapel' ? 'text-blue-100' : 'text-slate-400'}`}>
-                        Mengajar beberapa kelas
+                        Banyak rombel
                       </p>
                     </button>
                   </div>
@@ -1031,7 +1786,7 @@ export const DataPenggunaView: React.FC = () => {
                         <option value="">Belum ditentukan (Pilih nanti)</option>
                         {classes.map((c) => (
                           <option key={c.id} value={c.id}>
-                            {c.name}
+                            Kelas {c.name}
                           </option>
                         ))}
                       </select>
@@ -1054,7 +1809,7 @@ export const DataPenggunaView: React.FC = () => {
                               }
                               className="rounded text-blue-600"
                             />
-                            {c.name}
+                            Kelas {c.name}
                           </label>
                         ))}
                       </div>
@@ -1143,14 +1898,7 @@ export const DataPenggunaView: React.FC = () => {
                   </label>
                   <button
                     type="button"
-                    onClick={() => {
-                      const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
-                      let gen = '';
-                      for (let i = 0; i < 6; i++) {
-                        gen += chars.charAt(Math.floor(Math.random() * chars.length));
-                      }
-                      setNewPassword(gen);
-                    }}
+                    onClick={() => setNewPassword(generateRandomPassword(8))}
                     className="text-[10px] text-blue-600 font-bold hover:underline cursor-pointer"
                   >
                     Acak Password
@@ -1448,7 +2196,7 @@ export const DataPenggunaView: React.FC = () => {
                     resultFilterTab === 'GURU' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'
                   }`}
                 >
-                  Guru ({generatedResults.filter(r => r.category === 'GURU').length})
+                  Guru & Pendidik ({generatedResults.filter(r => r.category === 'GURU' || r.role === 'GURU MAPEL' || r.role === 'WALI KELAS').length})
                 </button>
                 <button
                   onClick={() => setResultFilterTab('SISWA')}
@@ -1456,7 +2204,7 @@ export const DataPenggunaView: React.FC = () => {
                     resultFilterTab === 'SISWA' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'
                   }`}
                 >
-                  Siswa ({generatedResults.filter(r => r.category === 'SISWA').length})
+                  Siswa ({generatedResults.filter(r => r.category === 'SISWA' || r.role === 'SISWA').length})
                 </button>
                 <button
                   onClick={() => setResultFilterTab('KEPALA SEKOLAH')}
@@ -1464,7 +2212,7 @@ export const DataPenggunaView: React.FC = () => {
                     resultFilterTab === 'KEPALA SEKOLAH' ? 'bg-white text-purple-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'
                   }`}
                 >
-                  Kepala Sekolah ({generatedResults.filter(r => r.category === 'KEPALA SEKOLAH').length})
+                  Kepala Sekolah ({generatedResults.filter(r => r.category === 'KEPALA SEKOLAH' || r.role === 'KEPALA SEKOLAH').length})
                 </button>
               </div>
 
@@ -1474,131 +2222,98 @@ export const DataPenggunaView: React.FC = () => {
                   type="text"
                   value={resultSearchTerm}
                   onChange={(e) => setResultSearchTerm(e.target.value)}
-                  placeholder="Cari nama / username..."
-                  className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:bg-white focus:border-blue-500 outline-none"
+                  placeholder="Cari nama, username..."
+                  className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
                 />
               </div>
             </div>
 
-            {/* Result Table Container */}
+            {/* Results Table */}
             <div className="flex-1 overflow-y-auto p-4 sm:p-5">
-              {filteredGeneratedResults.length === 0 ? (
-                <div className="py-12 text-center text-slate-400 space-y-2">
-                  <Users size={32} className="mx-auto text-slate-300" />
-                  <p className="text-xs">Tidak ada data akun yang cocok dengan filter / pencarian.</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto rounded-xl border border-slate-200">
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50 text-[10px] font-extrabold text-slate-500 uppercase tracking-wider border-b border-slate-200">
-                        <th className="py-2.5 px-3 text-center w-12">No</th>
-                        <th className="py-2.5 px-3">Nama Pengguna</th>
-                        <th className="py-2.5 px-3">Username (ID Login)</th>
-                        <th className="py-2.5 px-3">Peran / Kategori</th>
-                        <th className="py-2.5 px-3">Password Acak</th>
-                        <th className="py-2.5 px-3">Kelas</th>
-                        <th className="py-2.5 px-3 text-center">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {filteredGeneratedResults.map((r, idx) => (
-                        <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="py-2.5 px-3 text-center text-slate-400 font-mono text-[11px]">
-                            {idx + 1}
+              <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="py-2.5 px-3 w-12">NO</th>
+                      <th className="py-2.5 px-3">NAMA</th>
+                      <th className="py-2.5 px-3">USERNAME</th>
+                      <th className="py-2.5 px-3">PASSWORD</th>
+                      <th className="py-2.5 px-3">ROLE / PENUGASAN</th>
+                      <th className="py-2.5 px-3 text-center w-24">STATUS</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium text-slate-800">
+                    {filteredGeneratedResults.length > 0 ? (
+                      filteredGeneratedResults.map((r, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="py-2 px-3 text-slate-400">{idx + 1}</td>
+                          <td className="py-2 px-3 font-bold text-slate-900">{r.name}</td>
+                          <td className="py-2 px-3 font-mono text-blue-600 font-bold">{r.username}</td>
+                          <td className="py-2 px-3">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono font-bold bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded text-xs select-all">
+                                {r.password}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleCopyPassword(r.password, idx)}
+                                className="p-1 text-slate-400 hover:text-blue-600 rounded transition-colors cursor-pointer"
+                                title="Salin Password"
+                              >
+                                {copiedIndex === idx ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
+                              </button>
+                            </div>
                           </td>
-                          <td className="py-2.5 px-3 font-bold text-slate-900">
-                            {r.name}
-                          </td>
-                          <td className="py-2.5 px-3 font-mono font-bold text-blue-600 text-[11px]">
-                            {r.username}
-                          </td>
-                          <td className="py-2.5 px-3">
-                            <span
-                              className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${
-                                r.category === 'GURU'
-                                  ? 'bg-blue-50 text-blue-700 border-blue-200'
-                                  : r.category === 'SISWA'
-                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                  : 'bg-purple-50 text-purple-700 border-purple-200'
-                              }`}
-                            >
-                              {r.role}
+                          <td className="py-2 px-3">
+                            <span className="text-[11px] font-semibold text-slate-700">
+                              {r.role} {r.className ? `(${r.className})` : ''}
                             </span>
                           </td>
-                          <td className="py-2.5 px-3">
-                            {r.password ? (
-                              <div className="flex items-center gap-1.5">
-                                <code className="px-2 py-1 bg-amber-50 border border-amber-200 text-amber-900 rounded-lg font-mono font-black text-xs">
-                                  {r.password}
-                                </code>
-                                <button
-                                  type="button"
-                                  onClick={() => handleCopyPassword(r.password!, idx)}
-                                  className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
-                                  title="Salin password"
-                                >
-                                  {copiedIndex === idx ? (
-                                    <Check size={13} className="text-emerald-600" />
-                                  ) : (
-                                    <Copy size={13} />
-                                  )}
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="text-slate-400 italic text-[11px]">Tidak diubah</span>
-                            )}
-                          </td>
-                          <td className="py-2.5 px-3 text-slate-600 font-medium">
-                            {r.className || '-'}
-                          </td>
-                          <td className="py-2.5 px-3 text-center">
+                          <td className="py-2 px-3 text-center">
                             {r.status === 'CREATED' ? (
-                              <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                Baru Dibuat
-                              </span>
-                            ) : r.status === 'UPDATED' ? (
-                              <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-amber-50 text-amber-700 border border-amber-200">
-                                Diacak Ulang
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                BARU
                               </span>
                             ) : (
-                              <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-slate-100 text-slate-600 border border-slate-200">
-                                Sudah Ada
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-blue-100 text-blue-800 border border-blue-200">
+                                DIUPDATE
                               </span>
                             )}
                           </td>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={6} className="text-center py-8 text-slate-400">
+                          Tidak ada data yang sesuai filter atau pencarian.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
-            {/* Footer */}
-            <div className="p-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50/50 rounded-b-2xl">
-              <p className="text-[11px] text-slate-500">
-                💡 <b>Catatan:</b> Anda dapat mengekspor daftar akun hasil generate ini ke dokumen PDF resmi ber-kop surat melalui tombol <b>Export PDF</b> (Guru / Siswa) di pojok kanan atas.
-              </p>
-              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                <button
-                  onClick={() => setGeneratedResults(null)}
-                  className="px-6 py-2.5 text-xs font-bold text-white bg-slate-800 hover:bg-slate-900 rounded-xl shadow-md transition-all cursor-pointer"
-                >
-                  Tutup
-                </button>
-              </div>
+            {/* Footer Modal */}
+            <div className="p-4 border-t border-slate-100 bg-slate-50/70 rounded-b-2xl flex items-center justify-between">
+              <span className="text-xs text-slate-500 font-medium">
+                Menampilkan {filteredGeneratedResults.length} dari {generatedResults.length} akun
+              </span>
+              <button
+                type="button"
+                onClick={() => setGeneratedResults(null)}
+                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
+              >
+                Tutup Jendela
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Visual Book Loading Modal for Generate User Accounts */}
+      {/* Book Loading Modal during generation */}
       <BookLoadingModal
         isOpen={isGenerating}
-        title="Membuat Akun Pengguna & Password..."
-        subtitle="Sistem sedang men-generate kredensial login unik, memetakan hak akses kelas, dan memperbarui akun pengguna."
-        badgeText="PROSES GENERATE AKUN PENGGUNA"
         progress={generateProgress}
         statusMessage={generateStatusMessage}
       />
