@@ -16,7 +16,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   return (
     <section 
       id="beranda" 
-      className="relative min-h-[calc(100vh-80px)] pt-28 sm:pt-32 pb-16 lg:pt-36 lg:pb-24 flex items-center justify-center overflow-hidden bg-white text-slate-900 border-b border-blue-100"
+      className="relative min-h-[calc(100vh-80px)] pt-24 sm:pt-28 pb-16 lg:pt-32 lg:pb-24 flex items-center justify-center overflow-hidden bg-white text-slate-900 border-b border-blue-100"
     >
       {/* Educational Technical Grid & Blue Lighting Backdrop */}
       <div className="absolute inset-0 z-0 pointer-events-none bg-grid-pattern opacity-60" />

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Menu, X, Shield, ChevronRight, UserCheck, GraduationCap, School, CheckCircle2, Phone, Sparkles } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
 import { NavItem } from '../types';
 
 interface NavbarProps {
@@ -56,33 +56,6 @@ export const Navbar: React.FC<NavbarProps> = ({
       id="main-navbar"
       className="fixed top-0 left-0 right-0 z-50 transition-all duration-300"
     >
-      {/* Top Educational Portal Utility Stripe */}
-      <div className="bg-[#0B2F64] text-white text-[11px] font-medium py-1.5 px-4 sm:px-6 lg:px-8 border-b border-blue-900/60 hidden sm:block">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <span className="inline-flex items-center gap-1.5 text-blue-100 font-semibold tracking-wide">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              <span>{lang === 'ID' ? 'PORTAL RESMI PRESENSI SEKOLAH DASAR' : 'OFFICIAL PRIMARY SCHOOL ATTENDANCE PORTAL'}</span>
-            </span>
-            <span className="text-blue-400/60">|</span>
-            <span className="text-blue-200 text-[10px] uppercase font-bold tracking-wider">
-              {lang === 'ID' ? 'Tahun Ajaran 2026/2027 • Rombel 1-6' : 'Academic Year 2026/2027 • Grade 1-6'}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-4 text-[10px] text-blue-200">
-            <span className="flex items-center gap-1">
-              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-              <span>{lang === 'ID' ? 'Siap Cetak Format Dinas A4' : 'Dinas A4 Format Ready'}</span>
-            </span>
-            <span className="text-blue-400/60">|</span>
-            <span className="font-mono text-blue-100 font-bold">
-              CS: 0813-1249-8919
-            </span>
-          </div>
-        </div>
-      </div>
-
       {/* Main Navigation Bar */}
       <div 
         className={`transition-all duration-300 ${
