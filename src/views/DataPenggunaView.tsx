@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { UserAccount, UserRole, GeneratedAccountResult } from '../types';
 import { exportGeneratedAccountsPdf } from '../utils/exportGeneratedAccountsPdf';
+import { BookLoadingModal } from '../components/BookLoader';
 import {
   ArrowLeft,
   UserCheck,
@@ -52,6 +53,8 @@ export const DataPenggunaView: React.FC = () => {
   // Generate Accounts Modal & Result State
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generateProgress, setGenerateProgress] = useState(0);
+  const [generateStatusMessage, setGenerateStatusMessage] = useState('');
   const [generateResetExisting, setGenerateResetExisting] = useState(false);
   const [generatedResults, setGeneratedResults] = useState<GeneratedAccountResult[] | null>(null);
   const [resultFilterTab, setResultFilterTab] = useState<'ALL' | 'GURU' | 'SISWA' | 'KEPALA SEKOLAH'>('ALL');
@@ -203,14 +206,32 @@ export const DataPenggunaView: React.FC = () => {
 
   const handleGenerateSubmit = async () => {
     setIsGenerating(true);
+    setGenerateProgress(15);
+    setGenerateStatusMessage('Membaca data referensi guru, tenaga pendidik, dan siswa...');
     try {
+      await new Promise((res) => setTimeout(res, 350));
+      setGenerateProgress(45);
+      setGenerateStatusMessage('Men-generate username, password acak aman, dan memetakan hak akses rombel...');
+      await new Promise((res) => setTimeout(res, 350));
+      setGenerateProgress(75);
+      setGenerateStatusMessage('Menyinkronkan kredensial akun pengguna ke database sekolah...');
+
       const results = await generateAccountsFromReferences({
         resetExistingPasswords: generateResetExisting,
       });
+
+      setGenerateProgress(100);
+      setGenerateStatusMessage(`Selesai! Berhasil memproses ${results?.length || 0} akun pengguna.`);
+      await new Promise((res) => setTimeout(res, 300));
+
       setGeneratedResults(results);
       setIsGenerateModalOpen(false);
+    } catch (err: any) {
+      showToast(err?.message || 'Gagal mengenerate akun pengguna', 'error');
     } finally {
       setIsGenerating(false);
+      setGenerateProgress(0);
+      setGenerateStatusMessage('');
     }
   };
 
@@ -1280,6 +1301,16 @@ export const DataPenggunaView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Visual Book Loading Modal for Generate User Accounts */}
+      <BookLoadingModal
+        isOpen={isGenerating}
+        title="Membuat Akun Pengguna & Password..."
+        subtitle="Sistem sedang men-generate kredensial login unik, memetakan hak akses kelas, dan memperbarui akun pengguna."
+        badgeText="PROSES GENERATE AKUN PENGGUNA"
+        progress={generateProgress}
+        statusMessage={generateStatusMessage}
+      />
     </div>
   );
 };

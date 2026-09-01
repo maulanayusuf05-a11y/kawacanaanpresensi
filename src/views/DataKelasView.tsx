@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { validateTeacherRoleAssignment } from '../utils/packageSystem';
 import { getFaseByClassName, getFaseByGrade, getFaseBadgeColor, getGradeFromClassName, formatClassDisplay } from '../utils/faseKurikulum';
+import { BookLoadingModal } from '../components/BookLoader';
 
 interface ParsedClassItem {
   name: string;
@@ -164,6 +165,9 @@ export const DataKelasView: React.FC = () => {
   const [fileName, setFileName] = useState('');
   const [pasteText, setPasteText] = useState('');
   const [parsedClasses, setParsedClasses] = useState<ParsedClassItem[]>([]);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
+  const [importStatusMessage, setImportStatusMessage] = useState('');
 
   // Daftar Guru Mapel bersumber dari data assignment mata pelajaran (subjects)
   const activeAcademicYear = schoolProfile?.tahunPelajaran || '2026/2027';
@@ -581,17 +585,38 @@ export const DataKelasView: React.FC = () => {
       return;
     }
 
-    const payload = validOnes.map((c) => ({
-      name: c.name,
-      grade: c.grade,
-      waliKelasNameInput: c.waliKelasNameInput,
-    }));
+    setIsImporting(true);
+    setImportProgress(20);
+    setImportStatusMessage(`Membaca dan memvalidasi ${validOnes.length} baris data rombongan belajar...`);
 
-    await importClasses(payload, importMode === 'replace');
-    setIsImportModalOpen(false);
-    setParsedClasses([]);
-    setPasteText('');
-    setFileName('');
+    try {
+      await new Promise((res) => setTimeout(res, 300));
+      setImportProgress(55);
+      setImportStatusMessage('Menyusun rombel kelas, menentukan tingkat fase, dan memetakan wali kelas...');
+
+      const payload = validOnes.map((c) => ({
+        name: c.name,
+        grade: c.grade,
+        waliKelasNameInput: c.waliKelasNameInput,
+      }));
+
+      await importClasses(payload, importMode === 'replace');
+
+      setImportProgress(100);
+      setImportStatusMessage('Selesai! Seluruh data rombongan belajar berhasil diimpor.');
+      await new Promise((res) => setTimeout(res, 300));
+
+      setIsImportModalOpen(false);
+      setParsedClasses([]);
+      setPasteText('');
+      setFileName('');
+    } catch (err: any) {
+      showToast(err?.message || 'Gagal memproses import data kelas', 'error');
+    } finally {
+      setIsImporting(false);
+      setImportProgress(0);
+      setImportStatusMessage('');
+    }
   };
 
   const validCount = parsedClasses.filter((p) => p.isValid).length;
@@ -1674,6 +1699,16 @@ export const DataKelasView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Visual Book Loading Modal for Import Kelas */}
+      <BookLoadingModal
+        isOpen={isImporting}
+        title="Mengimpor Data Kelas & Rombel..."
+        subtitle="Sistem sedang memproses rombongan belajar, tingkat kurikulum, dan wali kelas."
+        badgeText="PROSES IMPORT DATA KELAS"
+        progress={importProgress}
+        statusMessage={importStatusMessage}
+      />
     </div>
   );
 };

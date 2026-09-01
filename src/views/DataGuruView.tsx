@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { validateTeacherRoleAssignment } from '../utils/packageSystem';
 import { supabase } from '../lib/supabase';
+import { BookLoadingModal } from '../components/BookLoader';
 
 interface ParsedTeacherItem {
   nama: string;
@@ -107,6 +108,9 @@ export const DataGuruView: React.FC = () => {
   const [fileName, setFileName] = useState('');
   const [pasteText, setPasteText] = useState('');
   const [parsedTeachers, setParsedTeachers] = useState<ParsedTeacherItem[]>([]);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
+  const [importStatusMessage, setImportStatusMessage] = useState('');
 
   // Helper to get detailed assignment info for a teacher based on actual assignments & role
   const getTeacherAssignmentDetails = (t: Teacher) => {
@@ -575,20 +579,41 @@ export const DataGuruView: React.FC = () => {
       return;
     }
 
-    const payload = validOnes.map((t) => ({
-      nama: t.nama,
-      nip: t.nip && t.nip !== '-' ? t.nip : null,
-      jenisKelamin: t.jenisKelamin,
-      tugasUtama: t.tugasUtama || 'Belum ditugaskan',
-      tugas_utama: t.tugas_utama || t.tugasUtama || 'Belum ditugaskan',
-      mataPelajaran: '',
-    }));
+    setIsImporting(true);
+    setImportProgress(20);
+    setImportStatusMessage(`Membaca dan memvalidasi ${validOnes.length} data tenaga pendidik...`);
 
-    await importTeachers(payload, importMode === 'replace');
-    setIsImportModalOpen(false);
-    setParsedTeachers([]);
-    setPasteText('');
-    setFileName('');
+    try {
+      await new Promise((res) => setTimeout(res, 300));
+      setImportProgress(55);
+      setImportStatusMessage('Menyinkronkan data pendidik dan penugasan ke database...');
+
+      const payload = validOnes.map((t) => ({
+        nama: t.nama,
+        nip: t.nip && t.nip !== '-' ? t.nip : null,
+        jenisKelamin: t.jenisKelamin,
+        tugasUtama: t.tugasUtama || 'Belum ditugaskan',
+        tugas_utama: t.tugas_utama || t.tugasUtama || 'Belum ditugaskan',
+        mataPelajaran: '',
+      }));
+
+      await importTeachers(payload, importMode === 'replace');
+
+      setImportProgress(100);
+      setImportStatusMessage('Selesai! Seluruh data guru berhasil diimpor.');
+      await new Promise((res) => setTimeout(res, 300));
+
+      setIsImportModalOpen(false);
+      setParsedTeachers([]);
+      setPasteText('');
+      setFileName('');
+    } catch (err: any) {
+      showToast(err?.message || 'Gagal memproses import data guru', 'error');
+    } finally {
+      setIsImporting(false);
+      setImportProgress(0);
+      setImportStatusMessage('');
+    }
   };
 
   const validCount = parsedTeachers.filter((p) => p.isValid).length;
@@ -1409,6 +1434,16 @@ export const DataGuruView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Visual Book Loading Modal for Import Guru */}
+      <BookLoadingModal
+        isOpen={isImporting}
+        title="Mengimpor Data Guru..."
+        subtitle="Sistem sedang memproses data pendidik, memvalidasi NIP, dan memperbarui daftar tenaga pendidik."
+        badgeText="PROSES IMPORT DATA GURU"
+        progress={importProgress}
+        statusMessage={importStatusMessage}
+      />
     </div>
   );
 };

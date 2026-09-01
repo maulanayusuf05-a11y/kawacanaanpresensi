@@ -52,6 +52,10 @@ interface AppContextType {
   selectWorkspace: (ws: WorkspaceMembership) => Promise<void>;
   switchToSchoolWorkspace: () => Promise<void>;
   switchToPersonalWorkspace: () => Promise<void>;
+  isSwitchingWorkspace: boolean;
+  switchingWorkspaceProgress: number;
+  switchingWorkspaceTitle: string;
+  switchingWorkspaceMessage: string;
   openOnboarding: () => void;
   returnToWorkspaceSelector: () => void;
   loadUserDataAfterOnboarding: (userId: string) => Promise<void>;
@@ -691,6 +695,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     useState<boolean>(false);
   const [isJoinSchoolModalOpen, setIsJoinSchoolModalOpen] =
     useState<boolean>(false);
+  const [isSwitchingWorkspace, setIsSwitchingWorkspace] =
+    useState<boolean>(false);
+  const [switchingWorkspaceProgress, setSwitchingWorkspaceProgress] =
+    useState<number>(0);
+  const [switchingWorkspaceTitle, setSwitchingWorkspaceTitle] =
+    useState<string>("");
+  const [switchingWorkspaceMessage, setSwitchingWorkspaceMessage] =
+    useState<string>("");
 
   const [activeView, setActiveViewState] = useState<ActiveView>(() => {
     const cached = getCachedUserSession();
@@ -1307,28 +1319,63 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const selectWorkspace = async (ws: WorkspaceMembership) => {
-    setActiveWorkspace(ws);
-    setIsSelectingWorkspace(false);
-    setIsOnboarding(false);
-    if (ws.userId) {
-      localStorage.setItem(
-        `kawacanaan_last_workspace_id_${ws.userId}`,
-        ws.workspaceId,
-      );
-    }
-    localStorage.setItem("kawacanaan_last_workspace_id", ws.workspaceId);
-    const { data: baseProfile } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", ws.userId)
-      .maybeSingle();
-    if (baseProfile) {
-      await loadDataForSchool(ws.workspaceId, baseProfile, ws.role);
-    }
+    const isPersonal =
+      ws.workspaceType === "personal" || ws.workspaceType === "individu";
+    const targetTitle = isPersonal
+      ? "Ruang Kerja Individu"
+      : ws.workspaceName || "Ruang Kerja Sekolah";
 
-    const saved = getSavedActiveView();
-    const targetView = resolveInitialViewForRole(ws.role, saved);
-    setActiveView(targetView);
+    setIsSwitchingWorkspace(true);
+    setSwitchingWorkspaceProgress(25);
+    setSwitchingWorkspaceTitle(`Beralih ke ${targetTitle}...`);
+    setSwitchingWorkspaceMessage(
+      "Menyiapkan otorisasi profil dan konfigurasi ruang kerja...",
+    );
+
+    try {
+      setActiveWorkspace(ws);
+      setIsSelectingWorkspace(false);
+      setIsOnboarding(false);
+      if (ws.userId) {
+        localStorage.setItem(
+          `kawacanaan_last_workspace_id_${ws.userId}`,
+          ws.workspaceId,
+        );
+      }
+      localStorage.setItem("kawacanaan_last_workspace_id", ws.workspaceId);
+
+      setSwitchingWorkspaceProgress(60);
+      setSwitchingWorkspaceMessage(
+        "Memuat data rombel, profil pendidik, dan kalender presensi...",
+      );
+
+      const { data: baseProfile } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", ws.userId)
+        .maybeSingle();
+      if (baseProfile) {
+        await loadDataForSchool(ws.workspaceId, baseProfile, ws.role);
+      }
+
+      setSwitchingWorkspaceProgress(90);
+      setSwitchingWorkspaceMessage("Menyelesaikan persiapan ruang kerja...");
+
+      const saved = getSavedActiveView();
+      const targetView = resolveInitialViewForRole(ws.role, saved);
+      setActiveView(targetView);
+
+      setSwitchingWorkspaceProgress(100);
+      setSwitchingWorkspaceMessage("Ruang kerja siap digunakan!");
+      await new Promise((res) => setTimeout(res, 300));
+    } catch (err: any) {
+      showToast(err?.message || "Gagal mengalihkan ruang kerja.", "error");
+    } finally {
+      setIsSwitchingWorkspace(false);
+      setSwitchingWorkspaceProgress(0);
+      setSwitchingWorkspaceTitle("");
+      setSwitchingWorkspaceMessage("");
+    }
   };
 
   const switchToSchoolWorkspace = async () => {
@@ -1345,6 +1392,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       );
       return;
     }
+
+    setIsSwitchingWorkspace(true);
+    setSwitchingWorkspaceProgress(15);
+    setSwitchingWorkspaceTitle("Beralih ke Ruang Kerja Sekolah...");
+    setSwitchingWorkspaceMessage("Memeriksa keanggotaan ruang kerja sekolah...");
 
     let currentMemberships = [...userWorkspaces];
     try {
@@ -1363,21 +1415,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         currentMemberships = json.workspaces;
         setUserWorkspaces(json.workspaces);
       }
-    } catch (_) {}
 
-    const schoolWs = currentMemberships.find(
-      (ws) =>
-        ws.workspaceType !== "personal" && ws.workspaceType !== "individu",
-    );
-
-    if (schoolWs) {
-      await selectWorkspace(schoolWs);
-      showToast(
-        `Beralih ke Ruang Kerja Sekolah: ${schoolWs.workspaceName}`,
-        "success",
+      const schoolWs = currentMemberships.find(
+        (ws) =>
+          ws.workspaceType !== "personal" && ws.workspaceType !== "individu",
       );
-    } else {
-      setIsJoinSchoolModalOpen(true);
+
+      if (schoolWs) {
+        await selectWorkspace(schoolWs);
+        showToast(
+          `Beralih ke Ruang Kerja Sekolah: ${schoolWs.workspaceName}`,
+          "success",
+        );
+      } else {
+        setIsJoinSchoolModalOpen(true);
+      }
+    } catch (err: any) {
+      showToast(
+        err?.message || "Gagal beralih ke ruang kerja sekolah.",
+        "error",
+      );
+    } finally {
+      setIsSwitchingWorkspace(false);
+      setSwitchingWorkspaceProgress(0);
+      setSwitchingWorkspaceTitle("");
+      setSwitchingWorkspaceMessage("");
     }
   };
 
@@ -1396,6 +1458,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       return;
     }
 
+    setIsSwitchingWorkspace(true);
+    setSwitchingWorkspaceProgress(15);
+    setSwitchingWorkspaceTitle("Beralih ke Ruang Kerja Individu...");
+    setSwitchingWorkspaceMessage(
+      "Memeriksa keanggotaan ruang kerja mandiri pendidik...",
+    );
+
     let currentMemberships = [...userWorkspaces];
     try {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -1413,21 +1482,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         currentMemberships = json.workspaces;
         setUserWorkspaces(json.workspaces);
       }
-    } catch (_) {}
 
-    const personalWs = currentMemberships.find(
-      (ws) =>
-        ws.workspaceType === "personal" || ws.workspaceType === "individu",
-    );
+      const personalWs = currentMemberships.find(
+        (ws) =>
+          ws.workspaceType === "personal" || ws.workspaceType === "individu",
+      );
 
-    if (personalWs) {
-      await selectWorkspace(personalWs);
-      showToast("Beralih ke Ruang Kerja Individu.", "success");
-    } else {
-      try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        const token = sessionData.session?.access_token || "";
-        const res = await fetch("/api/onboarding", {
+      if (personalWs) {
+        await selectWorkspace(personalWs);
+        showToast("Beralih ke Ruang Kerja Individu.", "success");
+      } else {
+        setSwitchingWorkspaceProgress(40);
+        setSwitchingWorkspaceMessage("Membuat ruang kerja individu baru...");
+        const resCreate = await fetch("/api/onboarding", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -1439,24 +1506,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             nip: currentUser.nip,
           }),
         });
-        const json = await res.json();
-        if (json.success && json.workspace) {
-          const updated = [...currentMemberships, json.workspace];
+        const jsonCreate = await resCreate.json();
+        if (jsonCreate.success && jsonCreate.workspace) {
+          const updated = [...currentMemberships, jsonCreate.workspace];
           setUserWorkspaces(updated);
-          await selectWorkspace(json.workspace);
+          await selectWorkspace(jsonCreate.workspace);
           showToast("Ruang Kerja Individu baru berhasil dibuka.", "success");
         } else {
           showToast(
-            json.error || "Gagal membuka ruang kerja individu baru.",
+            jsonCreate.error || "Gagal membuka ruang kerja individu baru.",
             "error",
           );
         }
-      } catch (err: any) {
-        showToast(
-          err.message || "Gagal membuat ruang kerja individu.",
-          "error",
-        );
       }
+    } catch (err: any) {
+      showToast(
+        err?.message || "Gagal membuat ruang kerja individu.",
+        "error",
+      );
+    } finally {
+      setIsSwitchingWorkspace(false);
+      setSwitchingWorkspaceProgress(0);
+      setSwitchingWorkspaceTitle("");
+      setSwitchingWorkspaceMessage("");
     }
   };
 
@@ -4324,6 +4396,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         selectWorkspace,
         switchToSchoolWorkspace,
         switchToPersonalWorkspace,
+        isSwitchingWorkspace,
+        switchingWorkspaceProgress,
+        switchingWorkspaceTitle,
+        switchingWorkspaceMessage,
         openOnboarding,
         returnToWorkspaceSelector,
         loadUserDataAfterOnboarding,

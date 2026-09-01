@@ -1,6 +1,7 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
 import { WorkspaceMembership } from '../types';
+import { BookLoadingModal } from '../components/BookLoader';
 import {
   Building2,
   UserCheck,
@@ -18,7 +19,17 @@ interface WorkspaceSelectorViewProps {
 }
 
 export const WorkspaceSelectorView: React.FC<WorkspaceSelectorViewProps> = () => {
-  const { userWorkspaces, selectWorkspace, currentUser, logout, activeWorkspace } = useApp();
+  const {
+    userWorkspaces,
+    selectWorkspace,
+    currentUser,
+    logout,
+    activeWorkspace,
+    isSwitchingWorkspace,
+    switchingWorkspaceProgress,
+    switchingWorkspaceTitle,
+    switchingWorkspaceMessage,
+  } = useApp();
 
   const getWorkspaceIcon = (membership: WorkspaceMembership) => {
     if (membership.workspaceType === 'personal') {
@@ -174,6 +185,16 @@ export const WorkspaceSelectorView: React.FC<WorkspaceSelectorViewProps> = () =>
           </div>
         </div>
       </main>
+
+      {/* Visual Book Loading Modal for Workspace Switch */}
+      <BookLoadingModal
+        isOpen={isSwitchingWorkspace}
+        title={switchingWorkspaceTitle || "Memuat Ruang Kerja..."}
+        subtitle="Sistem sedang mengalihkan profil, izin akses rombel kelas, dan basis data presensi."
+        badgeText="PERGANTIAN RUANG KERJA"
+        progress={switchingWorkspaceProgress}
+        statusMessage={switchingWorkspaceMessage}
+      />
     </div>
   );
 };

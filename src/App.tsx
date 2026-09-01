@@ -19,6 +19,7 @@ import { SetupSuperAdminView } from './views/SetupSuperAdminView';
 import { OnboardingView } from './views/OnboardingView';
 import { WorkspaceSelectorView } from './views/WorkspaceSelectorView';
 import { AppAuthLoadingSkeleton } from './components/DashboardSkeleton';
+import { BookLoadingModal } from './components/BookLoader';
 import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
 import type { ActiveView, UserRole } from './types';
 
@@ -134,7 +135,11 @@ const MainAppContent: React.FC = () => {
     selectWorkspace, 
     openOnboarding, 
     loadUserDataAfterOnboarding,
-    isAuthChecking
+    isAuthChecking,
+    isSwitchingWorkspace,
+    switchingWorkspaceProgress,
+    switchingWorkspaceTitle,
+    switchingWorkspaceMessage
   } = useApp();
   const [showLanding, setShowLanding] = React.useState(() => {
     if (typeof window === 'undefined') return true;
@@ -302,6 +307,16 @@ const MainAppContent: React.FC = () => {
         {activeView === 'pengaturan' && <PengaturanView />}
         {activeView === 'portal-siswa' && <PortalSiswaView />}
       </main>
+
+      {/* Visual Book Loading Modal for Workspace Switch */}
+      <BookLoadingModal
+        isOpen={isSwitchingWorkspace}
+        title={switchingWorkspaceTitle || "Memuat Ruang Kerja..."}
+        subtitle="Sistem sedang mengalihkan profil, izin akses rombel kelas, dan basis data presensi."
+        badgeText="PERGANTIAN RUANG KERJA"
+        progress={switchingWorkspaceProgress}
+        statusMessage={switchingWorkspaceMessage}
+      />
 
       {/* Global Toast Notifications */}
       <ToastContainer />
