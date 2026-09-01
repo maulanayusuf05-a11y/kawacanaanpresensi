@@ -59,28 +59,28 @@ export const TestimonialSection: React.FC<TestimonialSectionProps> = ({ lang }) 
   ];
 
   return (
-    <section id="testimoni" className="py-16 sm:py-20 lg:py-24 bg-white text-slate-900 relative border-b border-slate-200/80">
+    <section id="testimoni" className="py-16 sm:py-20 lg:py-24 bg-white text-slate-900 relative border-b border-blue-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
-        {/* Header - Editorial Style */}
+        {/* Header - Educational Style */}
         <div className="text-left max-w-3xl space-y-4 mb-12 sm:mb-16">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded bg-indigo-50 border border-indigo-100 text-indigo-700 text-[10px] font-bold uppercase tracking-widest">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-blue-50 border border-blue-200 text-blue-800 text-[10px] font-bold uppercase tracking-wider">
             <span>{lang === 'ID' ? 'TESTIMONI PENGGUNA' : 'USER TESTIMONIALS'}</span>
           </div>
-          <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-slate-900 tracking-tight uppercase leading-[1.05]">
+          <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-[#0B2F64] tracking-tight uppercase leading-[1.05]">
             {lang === 'ID' ? (
               <>
                 ADMINISTRASI SEKOLAH<br />
-                <span className="text-indigo-600">LEBIH PRAKTIS</span>
+                <span className="text-blue-600">LEBIH PRAKTIS</span>
               </>
             ) : (
               <>
                 MORE PRACTICAL<br />
-                <span className="text-indigo-600">SCHOOL ADMINISTRATION</span>
+                <span className="text-blue-600">SCHOOL ADMINISTRATION</span>
               </>
             )}
           </h2>
-          <p className="text-slate-600 text-xs sm:text-base lg:text-lg leading-relaxed border-l-4 border-indigo-200 pl-3 sm:pl-4 font-normal">
+          <p className="text-slate-600 text-xs sm:text-base lg:text-lg leading-relaxed border-l-4 border-blue-600 pl-3 sm:pl-4 font-normal">
             {lang === 'ID'
               ? 'Bagaimana ekosistem Kawacanaan membawa kepraktisan dan keteraturan nyata dalam operasional sekolah.'
               : 'How the Kawacanaan ecosystem delivers genuine practicality and order in day-to-day school operations.'}
@@ -93,10 +93,10 @@ export const TestimonialSection: React.FC<TestimonialSectionProps> = ({ lang }) 
             <div
               key={t.id}
               id={`testimonial-card-${t.id}`}
-              className="bg-slate-50 border border-slate-200 rounded-xl p-8 flex flex-col justify-between hover:border-slate-400 hover:bg-white hover:shadow-md transition-all shadow-2xs group"
+              className="bg-slate-50 border border-slate-200 rounded-xl p-8 flex flex-col justify-between hover:border-blue-500 hover:bg-white hover:shadow-md transition-all shadow-xs group"
             >
               <div>
-                <Quote className="w-8 h-8 text-indigo-300 group-hover:text-indigo-600 transition-colors mb-6 stroke-[1.5]" />
+                <Quote className="w-8 h-8 text-blue-300 group-hover:text-blue-600 transition-colors mb-6 stroke-[1.5]" />
 
                 {/* Quote Content */}
                 <p className="text-base sm:text-lg text-slate-800 leading-relaxed italic mb-8 font-normal">
@@ -106,14 +106,14 @@ export const TestimonialSection: React.FC<TestimonialSectionProps> = ({ lang }) 
 
               {/* Author Info */}
               <div className="pt-5 border-t border-slate-200 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-indigo-50 border border-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs shrink-0">
+                <div className="w-10 h-10 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 flex items-center justify-center font-bold text-xs shrink-0">
                   {t.initials}
                 </div>
                 <div>
                   <h4 className="font-bold text-slate-900 text-sm">{t.name}</h4>
-                  <div className="text-[11px] text-indigo-600 font-bold uppercase tracking-wider">{t.role}</div>
+                  <div className="text-[11px] text-blue-700 font-bold uppercase tracking-wider">{t.role}</div>
                   <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
-                    <School className="w-3 h-3" /> {t.school}
+                    <School className="w-3 h-3 text-blue-600" /> {t.school}
                   </div>
                 </div>
               </div>

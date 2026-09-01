@@ -138,17 +138,17 @@ export const PricingSection: React.FC<PricingSectionProps> = ({ onOpenRegister, 
       ];
 
   return (
-    <section id="harga" className="py-16 sm:py-20 lg:py-24 bg-slate-50 text-slate-900 relative border-b border-slate-200/80">
+    <section id="harga" className="py-16 sm:py-20 lg:py-24 bg-slate-50 text-slate-900 relative border-b border-blue-100">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-left max-w-3xl space-y-4 mb-12 sm:mb-16">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded bg-indigo-50 border border-indigo-100 text-indigo-700 text-[10px] font-bold uppercase tracking-widest font-mono">
-            <QrCode className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-blue-50 border border-blue-200 text-blue-800 text-[10px] font-bold uppercase tracking-wider font-mono">
+            <QrCode className="w-3.5 h-3.5 text-blue-700 shrink-0" />
             <span>{lang === 'ID' ? 'HARGA & PEMBAYARAN QRIS' : 'PRICING & QRIS PAYMENT'}</span>
           </div>
-          <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-slate-900 tracking-tight uppercase leading-[1.05]">
-            {lang === 'ID' ? <>PAKET LISENSI <span className="text-indigo-600">SEKOLAH DASAR</span></> : <>PRIMARY SCHOOL <span className="text-indigo-600">PLANS</span></>}
+          <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-[#0B2F64] tracking-tight uppercase leading-[1.05]">
+            {lang === 'ID' ? <>PAKET LISENSI <span className="text-blue-600">SEKOLAH DASAR</span></> : <>PRIMARY SCHOOL <span className="text-blue-600">PLANS</span></>}
           </h2>
-          <p className="text-slate-600 text-xs sm:text-base lg:text-lg leading-relaxed border-l-4 border-indigo-200 pl-3 sm:pl-4">
+          <p className="text-slate-600 text-xs sm:text-base lg:text-lg leading-relaxed border-l-4 border-blue-600 pl-3 sm:pl-4">
             {lang === 'ID'
               ? 'Pilihan paket fleksibel untuk guru kelas mandiri maupun satu Sekolah Dasar secara terpadu dengan sistem pembayaran QRIS instan.'
               : 'Flexible plans for individual elementary teachers or complete school-wide institutional deployment with instant QRIS gateway.'}
@@ -162,45 +162,45 @@ export const PricingSection: React.FC<PricingSectionProps> = ({ onOpenRegister, 
               id={`pricing-card-${plan.id}`}
               className={`rounded-2xl p-6 sm:p-8 lg:p-10 flex flex-col justify-between transition-all relative ${
                 plan.highlight
-                  ? 'bg-slate-900 text-white border-2 border-slate-900 shadow-2xl lg:-translate-y-2'
+                  ? 'bg-[#0B2F64] text-white border-2 border-blue-900 shadow-2xl lg:-translate-y-2'
                   : 'bg-white text-slate-900 border border-slate-200 shadow-sm'
               }`}
             >
               {plan.badge && (
-                <div className="absolute -top-3 left-8 px-3 py-1 rounded bg-indigo-600 text-white text-[9px] font-bold uppercase tracking-widest shadow-sm flex items-center gap-1">
-                  <Sparkles className="w-3 h-3 text-amber-400" /> {plan.badge}
+                <div className="absolute -top-3 left-8 px-3.5 py-1 rounded-md bg-blue-600 text-white text-[9px] font-bold uppercase tracking-wider shadow-sm flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-amber-300" /> {plan.badge}
                 </div>
               )}
 
               <div>
-                <h3 className={`text-xl sm:text-2xl font-black uppercase tracking-tight mb-2 ${plan.highlight ? 'text-white' : 'text-slate-900'}`}>
+                <h3 className={`text-xl sm:text-2xl font-black uppercase tracking-tight mb-2 ${plan.highlight ? 'text-white' : 'text-[#0B2F64]'}`}>
                   {plan.name}
                 </h3>
-                <p className={`text-sm mb-7 min-h-[42px] leading-relaxed ${plan.highlight ? 'text-slate-300' : 'text-slate-600'}`}>
+                <p className={`text-sm mb-7 min-h-[42px] leading-relaxed ${plan.highlight ? 'text-blue-100' : 'text-slate-600'}`}>
                   {plan.tagline}
                 </p>
 
-                <div className={`mb-7 pb-7 border-b ${plan.highlight ? 'border-slate-700' : 'border-slate-100'}`}>
+                <div className={`mb-7 pb-7 border-b ${plan.highlight ? 'border-blue-800/80' : 'border-slate-100'}`}>
                   <div className={`text-4xl sm:text-5xl font-black ${plan.highlight ? 'text-white' : 'text-slate-900'}`}>
                     {plan.price}
-                    <span className={`text-base font-bold ml-1 ${plan.highlight ? 'text-slate-300' : 'text-slate-500'}`}>
+                    <span className={`text-base font-bold ml-1 ${plan.highlight ? 'text-blue-200' : 'text-slate-500'}`}>
                       {plan.period}
                     </span>
                   </div>
-                  <div className={`mt-2 text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5 ${plan.highlight ? 'text-indigo-400' : 'text-indigo-600'}`}>
+                  <div className={`mt-2 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${plan.highlight ? 'text-blue-200' : 'text-blue-700'}`}>
                     <QrCode className="w-3.5 h-3.5" />
                     <span>{plan.paymentNote}</span>
                   </div>
                 </div>
 
                 <div className="space-y-3.5 mb-8">
-                  <div className={`text-[10px] font-bold uppercase tracking-widest ${plan.highlight ? 'text-slate-400' : 'text-slate-500'}`}>
+                  <div className={`text-[10px] font-bold uppercase tracking-wider ${plan.highlight ? 'text-blue-200' : 'text-slate-500'}`}>
                     {lang === 'ID' ? 'FITUR TERMASUK' : 'INCLUDED FEATURES'}
                   </div>
                   {plan.features.map((feat, i) => (
-                    <div key={i} className={`flex items-start gap-2.5 text-sm ${plan.highlight ? 'text-slate-200' : 'text-slate-700'}`}>
+                    <div key={i} className={`flex items-start gap-2.5 text-sm ${plan.highlight ? 'text-blue-50' : 'text-slate-700'}`}>
                       <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 mt-0.5 ${
-                        plan.highlight ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                        plan.highlight ? 'bg-blue-500 text-white' : 'bg-blue-50 text-blue-700 border border-blue-200'
                       }`}>
                         <Check className="w-3.5 h-3.5 stroke-[3]" />
                       </div>
@@ -213,10 +213,10 @@ export const PricingSection: React.FC<PricingSectionProps> = ({ onOpenRegister, 
               <button
                 type="button"
                 onClick={() => onOpenRegister(plan.id)}
-                className={`w-full py-4 text-xs font-bold uppercase tracking-widest transition-all cursor-pointer shadow-sm active:scale-95 rounded flex items-center justify-center gap-2 ${
+                className={`w-full py-4 text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shadow-sm active:scale-95 rounded-lg flex items-center justify-center gap-2 ${
                   plan.highlight
-                    ? 'bg-indigo-500 hover:bg-indigo-400 text-white shadow-indigo-900/30'
-                    : 'bg-slate-900 hover:bg-indigo-600 text-white'
+                    ? 'bg-blue-500 hover:bg-blue-400 text-white shadow-blue-950/40'
+                    : 'bg-blue-700 hover:bg-blue-800 text-white'
                 }`}
                 id={`btn-select-plan-${plan.id}`}
               >

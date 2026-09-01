@@ -66,28 +66,28 @@ export const FaqSection: React.FC<FaqSectionProps> = ({ lang, onOpenRegister }) 
   };
 
   return (
-    <section id="faq" className="py-16 sm:py-20 lg:py-24 bg-white text-slate-900 relative border-b border-slate-200">
+    <section id="faq" className="py-16 sm:py-20 lg:py-24 bg-white text-slate-900 relative border-b border-blue-100">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         
         {/* Section Header */}
         <div className="text-left space-y-4 mb-12 sm:mb-16">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded bg-indigo-50 border border-indigo-100 text-indigo-700 text-[10px] font-bold uppercase tracking-widest">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-blue-50 border border-blue-200 text-blue-800 text-[10px] font-bold uppercase tracking-wider">
             <span>{lang === 'ID' ? 'TANYA JAWAB' : 'FREQUENTLY ASKED QUESTIONS'}</span>
           </div>
-          <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-slate-900 tracking-tight uppercase leading-[1.05]">
+          <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-[#0B2F64] tracking-tight uppercase leading-[1.05]">
             {lang === 'ID' ? (
               <>
                 PERTANYAAN<br />
-                <span className="text-indigo-600">SERING DITANYAKAN</span>
+                <span className="text-blue-600">SERING DITANYAKAN</span>
               </>
             ) : (
               <>
                 COMMON<br />
-                <span className="text-indigo-600">QUESTIONS & ANSWERS</span>
+                <span className="text-blue-600">QUESTIONS & ANSWERS</span>
               </>
             )}
           </h2>
-          <p className="text-slate-600 text-xs sm:text-base lg:text-lg leading-relaxed border-l-4 border-indigo-200 pl-3 sm:pl-4 font-normal">
+          <p className="text-slate-600 text-xs sm:text-base lg:text-lg leading-relaxed border-l-4 border-blue-600 pl-3 sm:pl-4 font-normal">
             {lang === 'ID'
               ? 'Jawaban lengkap seputar fitur, akses pengguna, dan implementasi sistem Kawacanaan.'
               : 'Complete answers regarding features, user access levels, and system implementation of Kawacanaan.'}
@@ -104,8 +104,8 @@ export const FaqSection: React.FC<FaqSectionProps> = ({ lang, onOpenRegister }) 
                 id={`faq-item-${idx}`}
                 className={`border rounded-xl transition-all duration-200 overflow-hidden ${
                   isOpen 
-                    ? 'border-indigo-600 bg-indigo-50/20 shadow-sm' 
-                    : 'border-slate-200 bg-slate-50/60 hover:border-slate-300'
+                    ? 'border-blue-600 bg-blue-50/30 shadow-xs' 
+                    : 'border-slate-200 bg-slate-50/60 hover:border-blue-300'
                 }`}
               >
                 <button
@@ -114,7 +114,7 @@ export const FaqSection: React.FC<FaqSectionProps> = ({ lang, onOpenRegister }) 
                   className="w-full p-6 text-left flex items-center justify-between gap-4 cursor-pointer"
                 >
                   <div className="flex items-center gap-3">
-                    <span className="font-mono text-xs font-bold text-indigo-600 bg-white border border-indigo-100 px-2 py-1 rounded shrink-0">
+                    <span className="font-mono text-xs font-bold text-blue-700 bg-white border border-blue-200 px-2 py-1 rounded shrink-0">
                       0{idx + 1}
                     </span>
                     <h3 className="text-sm sm:text-base font-bold text-slate-900">
@@ -122,14 +122,14 @@ export const FaqSection: React.FC<FaqSectionProps> = ({ lang, onOpenRegister }) 
                     </h3>
                   </div>
                   <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-transform duration-200 ${
-                    isOpen ? 'rotate-180 bg-indigo-600 text-white' : 'bg-slate-200 text-slate-600'
+                    isOpen ? 'rotate-180 bg-blue-700 text-white' : 'bg-slate-200 text-slate-600'
                   }`}>
                     <ChevronDown className="w-4 h-4" />
                   </div>
                 </button>
 
                 {isOpen && (
-                  <div className="px-6 pb-6 pt-0 text-xs sm:text-sm text-slate-600 leading-relaxed border-t border-indigo-100/60 mt-2 pt-4 pl-12 font-normal">
+                  <div className="px-6 pb-6 pt-0 text-xs sm:text-sm text-slate-600 leading-relaxed border-t border-blue-100/60 mt-2 pt-4 pl-12 font-normal">
                     {faq.a}
                   </div>
                 )}
@@ -139,12 +139,12 @@ export const FaqSection: React.FC<FaqSectionProps> = ({ lang, onOpenRegister }) 
         </div>
 
         {/* Contact Hotline Note */}
-        <div className="mt-12 text-center p-6 bg-slate-50 border border-slate-200 rounded-xl">
+        <div className="mt-12 text-center p-6 bg-blue-50/60 border border-blue-200 rounded-xl">
           <p className="text-xs text-slate-600">
             {lang === 'ID' ? 'Punya pertanyaan spesifik lain seputar sekolah Anda? ' : 'Have specific questions about your institution? '}
             <button
               onClick={onOpenRegister}
-              className="text-indigo-600 font-bold hover:underline cursor-pointer"
+              className="text-blue-700 font-bold hover:underline cursor-pointer"
             >
               {lang === 'ID' ? 'Hubungi Tim Konsultan Kami' : 'Contact Our Consulting Team'}
             </button>

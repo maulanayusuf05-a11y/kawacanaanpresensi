@@ -119,36 +119,36 @@ export const AdvantagesSection: React.FC<AdvantagesSectionProps> = ({ lang, onOp
   ];
 
   return (
-    <section id="keunggulan" className="py-16 sm:py-20 lg:py-24 bg-white text-slate-900 relative border-b border-slate-200/80">
+    <section id="keunggulan" className="py-16 sm:py-20 lg:py-24 bg-white text-slate-900 relative border-b border-blue-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
-        {/* Header - Editorial Style */}
+        {/* Header - Educational Style */}
         <div className="text-left max-w-3xl space-y-4 mb-12 sm:mb-16">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded bg-indigo-50 border border-indigo-100 text-indigo-700 text-[10px] font-bold uppercase tracking-widest">
-            <Award className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-blue-50 border border-blue-200 text-blue-800 text-[10px] font-bold uppercase tracking-wider">
+            <Award className="w-3.5 h-3.5 text-blue-700 shrink-0" />
             <span>{lang === 'ID' ? 'KEUNGGULAN SISTEM SD' : 'PRIMARY SYSTEM ADVANTAGES'}</span>
           </div>
-          <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-slate-900 tracking-tight uppercase leading-[1.05]">
+          <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-[#0B2F64] tracking-tight uppercase leading-[1.05]">
             {lang === 'ID' ? (
               <>
                 KEUNGGULAN KHUSUS<br />
-                <span className="text-indigo-600">SEKOLAH DASAR</span>
+                <span className="text-blue-600">SEKOLAH DASAR</span>
               </>
             ) : (
               <>
                 PURPOSE-BUILT FOR<br />
-                <span className="text-indigo-600">PRIMARY SCHOOLS</span>
+                <span className="text-blue-600">PRIMARY SCHOOLS</span>
               </>
             )}
           </h2>
-          <p className="text-slate-600 text-xs sm:text-base lg:text-lg leading-relaxed border-l-4 border-indigo-200 pl-3 sm:pl-4 font-normal">
+          <p className="text-slate-600 text-xs sm:text-base lg:text-lg leading-relaxed border-l-4 border-blue-600 pl-3 sm:pl-4 font-normal">
             {lang === 'ID'
               ? 'Menjawab kebutuhan nyata guru dan kepala sekolah dasar di Indonesia: presensi cepat, perhitungan hari efektif tepat, dan berkas dinas lengkap.'
               : 'Addressing the real needs of elementary teachers and principals in Indonesia: rapid check-ins, exact learning days, and complete Dinas documentation.'}
           </p>
         </div>
 
-        {/* 8 Advantages Grid with Editorial Numbering */}
+        {/* 8 Advantages Grid with Educational Numbering */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {advantages.map((item, idx) => {
             const Icon = item.icon;
@@ -156,18 +156,18 @@ export const AdvantagesSection: React.FC<AdvantagesSectionProps> = ({ lang, onOp
               <div 
                 key={idx}
                 id={`advantage-card-${idx}`}
-                className="bg-slate-50 border border-slate-200 rounded-xl p-6 hover:border-indigo-400 hover:bg-white hover:shadow-md transition-all shadow-2xs group flex flex-col justify-between"
+                className="bg-slate-50 border border-slate-200 hover:border-blue-500 hover:bg-white hover:shadow-md transition-all rounded-xl p-6 shadow-xs group flex flex-col justify-between"
               >
                 <div>
                   <div className="flex items-center justify-between mb-4">
-                    <span className="font-mono text-2xl font-black text-indigo-600/60 group-hover:text-indigo-600 transition-colors">
+                    <span className="font-mono text-2xl font-black text-blue-600/70 group-hover:text-blue-600 transition-colors">
                       {item.num}
                     </span>
-                    <div className="w-9 h-9 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-700 group-hover:bg-indigo-600 group-hover:text-white group-hover:border-indigo-600 transition-colors">
+                    <div className="w-9 h-9 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-700 group-hover:bg-blue-700 group-hover:text-white group-hover:border-blue-700 transition-colors">
                       <Icon className="w-4 h-4" />
                     </div>
                   </div>
-                  <h3 className="text-sm font-black text-slate-900 mb-2 group-hover:text-indigo-600 transition-colors uppercase tracking-tight">
+                  <h3 className="text-sm font-black text-[#0B2F64] mb-2 group-hover:text-blue-600 transition-colors uppercase tracking-tight">
                     {item.title}
                   </h3>
                   <p className="text-xs text-slate-600 leading-relaxed font-normal">
@@ -177,7 +177,7 @@ export const AdvantagesSection: React.FC<AdvantagesSectionProps> = ({ lang, onOp
 
                 <div className="mt-4 pt-3 border-t border-slate-200/60 flex items-center justify-between text-[10px] text-slate-400 font-bold uppercase tracking-wider">
                   <span>{lang === 'ID' ? 'Fitur Terintegrasi' : 'Integrated Feature'}</span>
-                  <span className="text-indigo-600">{lang === 'ID' ? '✓ Siap Pakai' : '✓ Ready'}</span>
+                  <span className="text-blue-700 font-bold">{lang === 'ID' ? '✓ Siap Pakai' : '✓ Ready'}</span>
                 </div>
               </div>
             );

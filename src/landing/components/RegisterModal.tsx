@@ -329,7 +329,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
       name: 'Paket Mulai / Gratis',
       price: 'Rp0 / Bulan',
       badge: '1 Guru Gratis (32 Siswa)',
-      badgeColor: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+      badgeColor: 'bg-blue-50 text-blue-700 border-blue-200',
       description: 'Diberikan untuk 1 guru per sekolah. Langsung aktif ke dashboard guru untuk 1 rombel.',
     },
     teacher: {
@@ -387,7 +387,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
             <div className="p-5 bg-slate-50 border border-slate-200 rounded-2xl text-left space-y-3.5 shadow-2xs">
               <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
                 <div className="text-xs font-black uppercase text-slate-500 tracking-wider flex items-center gap-1.5">
-                  <ShieldCheck size={16} className="text-indigo-600" />
+                  <ShieldCheck size={16} className="text-blue-600" />
                   <span>Kredensial Akses Pengguna</span>
                 </div>
                 <button
@@ -403,7 +403,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                 <div className="p-2.5 bg-white border border-slate-200 rounded-xl">
                   <span className="text-[10px] uppercase font-bold text-slate-400 block">Username Masuk</span>
-                  <span className="font-mono font-black text-indigo-700 text-sm">{registrationSuccessData.username}</span>
+                  <span className="font-mono font-black text-blue-700 text-sm">{registrationSuccessData.username}</span>
                 </div>
 
                 <div className="p-2.5 bg-white border border-slate-200 rounded-xl">
@@ -422,7 +422,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                 </div>
               </div>
 
-              <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-xl text-[11px] text-indigo-900 font-medium leading-relaxed">
+              <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl text-[11px] text-blue-900 font-medium leading-relaxed">
                 💡 <strong>Langkah Selanjutnya:</strong> Gunakan username <code>{registrationSuccessData.username}</code> untuk login. Anda akan langsung diarahkan ke Dashboard Guru dan dapat langsung mencatat presensi harian siswa.
               </div>
             </div>
@@ -432,7 +432,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
               <button
                 type="button"
                 onClick={handleOpenLoginInNewTab}
-                className="w-full sm:flex-1 py-4 px-6 bg-indigo-600 hover:bg-indigo-700 active:scale-98 text-white font-extrabold text-xs sm:text-sm rounded-2xl shadow-lg hover:shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full sm:flex-1 py-4 px-6 bg-blue-700 hover:bg-blue-800 active:scale-98 text-white font-extrabold text-xs sm:text-sm rounded-2xl shadow-lg hover:shadow-blue-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
                 <span>Buka Tab Baru & Masuk ke Dashboard</span>
                 <ExternalLink size={17} />
@@ -453,8 +453,8 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
             
             {/* Header */}
             <div className="text-left space-y-1">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-50 border border-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-wider rounded-md">
-                <School size={13} className="text-indigo-600" />
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 border border-blue-100 text-blue-700 text-[10px] font-black uppercase tracking-wider rounded-md">
+                <School size={13} className="text-blue-600" />
                 <span>{isTeacherRegistration ? 'Pendaftaran Akun Guru Mandiri' : 'Pendaftaran Administrator Sekolah'}</span>
               </div>
               <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
@@ -468,9 +468,9 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
             </div>
 
             {/* SELECTED PLAN DISPLAY BADGE (Replaces redundant 3-card selector) */}
-            <div className="p-3.5 bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-2xl flex items-center justify-between shadow-xs">
+            <div className="p-3.5 bg-gradient-to-r from-[#0B2F64] to-blue-900 text-white rounded-2xl flex items-center justify-between shadow-xs">
               <div className="space-y-0.5">
-                <div className="text-[10px] uppercase font-bold text-indigo-200 tracking-wider flex items-center gap-1">
+                <div className="text-[10px] uppercase font-bold text-blue-200 tracking-wider flex items-center gap-1">
                   <Sparkles size={12} className="text-amber-400" />
                   <span>Paket yang Anda Pilih:</span>
                 </div>
@@ -500,7 +500,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
             <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                  <Building2 size={14} className="text-indigo-600" />
+                  <Building2 size={14} className="text-blue-600" />
                   <span>1. NPSN Sekolah (8 Digit Angka)</span>
                   <span className="text-rose-500">*</span>
                 </label>
@@ -508,7 +508,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                   href="https://referensi.data.kemendikdasmen.go.id/"
                   target="_blank"
                   rel="noreferrer"
-                  className="text-[10px] font-bold text-indigo-600 hover:underline flex items-center gap-0.5"
+                  className="text-[10px] font-bold text-blue-600 hover:underline flex items-center gap-0.5"
                 >
                   <span>Data Kemendikdasmen RI</span>
                   <ExternalLink size={10} />
@@ -523,11 +523,11 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                     onChange={handleNpsnChange}
                     placeholder="Masukkan 8 digit NPSN (Contoh: 20108801)"
                     maxLength={8}
-                    className="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-mono font-bold text-slate-900 placeholder-slate-400 outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20"
+                    className="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-mono font-bold text-slate-900 placeholder-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-500/20"
                     required
                   />
                   {isSearchingNpsn && (
-                    <div className="absolute right-3 top-3 text-indigo-600 animate-spin">
+                    <div className="absolute right-3 top-3 text-blue-600 animate-spin">
                       <Loader2 size={16} />
                     </div>
                   )}
@@ -537,7 +537,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                   type="button"
                   onClick={() => handleLookupNpsn()}
                   disabled={cleanNpsnDigits.length !== 8 || isSearchingNpsn}
-                  className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 shadow-2xs"
+                  className="px-4 py-2.5 bg-blue-700 hover:bg-blue-800 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 shadow-2xs"
                 >
                   <Search size={14} />
                   <span>Cek NPSN</span>
@@ -577,7 +577,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                     value={schoolName}
                     onChange={(e) => setSchoolName(e.target.value)}
                     placeholder="SD NEGERI ..."
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:border-indigo-600"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:border-blue-600"
                     required
                   />
                 </div>
@@ -589,7 +589,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                   <select
                     value={statusSekolah}
                     onChange={(e) => setStatusSekolah(e.target.value as 'Negeri' | 'Swasta')}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-indigo-600"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-blue-600"
                   >
                     <option value="Negeri">Sekolah Negeri (SDN)</option>
                     <option value="Swasta">Sekolah Swasta (SDS / SD IT / MI)</option>
@@ -601,7 +601,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
             {/* SECTION 2: DATA AKUN GURU (JIKA PAKET GURU/GRATIS) ATAU ADMIN (JIKA PAKET SEKOLAH) */}
             <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3.5">
               <label className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                {isTeacherRegistration ? <GraduationCap size={14} className="text-indigo-600" /> : <User size={14} />}
+                {isTeacherRegistration ? <GraduationCap size={14} className="text-blue-600" /> : <User size={14} />}
                 <span>
                   {isTeacherRegistration ? '2. Data Akun Guru & Penugasan Kelas' : '2. Data Akun Administrator Sekolah'}
                 </span>
@@ -609,14 +609,14 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
               </label>
 
               {/* Auto Generated Username Box */}
-              <div className="p-3 bg-white border border-indigo-200 rounded-xl flex items-center justify-between shadow-2xs">
+              <div className="p-3 bg-white border border-blue-200 rounded-xl flex items-center justify-between shadow-2xs">
                 <div className="space-y-0.5">
-                  <span className="text-[10px] uppercase font-bold text-indigo-600 block">
+                  <span className="text-[10px] uppercase font-bold text-blue-600 block">
                     {isTeacherRegistration ? 'Username Akun Guru Dibuat Otomatis:' : 'Username Administrator Dibuat Otomatis:'}
                   </span>
                   <div className="font-mono font-black text-sm text-slate-900 flex items-center gap-2">
                     <span>{generatedUsername}</span>
-                    <span className="text-[10px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded font-sans font-bold">
+                    <span className="text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-sans font-bold">
                       {isTeacherRegistration ? 'Format guru.<NPSN>' : 'Format admin.<NPSN>'}
                     </span>
                   </div>
@@ -628,15 +628,15 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
 
               {/* Pilihan Tugas Guru (Wali Kelas vs Guru Mapel) */}
               {isTeacherRegistration && (
-                <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl space-y-2.5">
-                  <span className="text-[10px] uppercase font-black text-indigo-900 block">
+                <div className="p-3 bg-blue-50/70 border border-blue-100 rounded-xl space-y-2.5">
+                  <span className="text-[10px] uppercase font-black text-blue-900 block">
                     Penugasan Guru di Sekolah:
                   </span>
                   <div className="grid grid-cols-2 gap-2">
                     <label
                       className={`p-2 rounded-lg border text-xs font-bold flex items-center gap-2 cursor-pointer transition-all ${
                         teacherType === 'WALI_KELAS'
-                          ? 'bg-white border-indigo-600 text-indigo-900 shadow-xs'
+                          ? 'bg-white border-blue-600 text-blue-900 shadow-xs'
                           : 'bg-white/60 border-slate-200 text-slate-600'
                       }`}
                     >
@@ -645,7 +645,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                         name="teacherType"
                         checked={teacherType === 'WALI_KELAS'}
                         onChange={() => setTeacherType('WALI_KELAS')}
-                        className="text-indigo-600"
+                        className="text-blue-600"
                       />
                       <span>Wali Kelas</span>
                     </label>
@@ -653,7 +653,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                     <label
                       className={`p-2 rounded-lg border text-xs font-bold flex items-center gap-2 cursor-pointer transition-all ${
                         teacherType === 'GURU_MAPEL'
-                          ? 'bg-white border-indigo-600 text-indigo-900 shadow-xs'
+                          ? 'bg-white border-blue-600 text-blue-900 shadow-xs'
                           : 'bg-white/60 border-slate-200 text-slate-600'
                       }`}
                     >
@@ -662,7 +662,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                         name="teacherType"
                         checked={teacherType === 'GURU_MAPEL'}
                         onChange={() => setTeacherType('GURU_MAPEL')}
-                        className="text-indigo-600"
+                        className="text-blue-600"
                       />
                       <span>Guru Mata Pelajaran</span>
                     </label>
@@ -676,7 +676,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                       <select
                         value={teacherGrade}
                         onChange={(e) => setTeacherGrade(Number(e.target.value))}
-                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-indigo-600"
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-blue-600"
                       >
                         <option value={1}>Kelas 1 (Fase A)</option>
                         <option value={2}>Kelas 2 (Fase A)</option>
@@ -694,7 +694,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                       <select
                         value={teacherSubject}
                         onChange={(e) => setTeacherSubject(e.target.value)}
-                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-indigo-600"
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-blue-600"
                       >
                         <option value="PJOK">Pendidikan Jasmani, Olahraga & Kesehatan (PJOK)</option>
                         <option value="PABP">Pendidikan Agama & Budi Pekerti (PABP)</option>
@@ -718,7 +718,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder={isTeacherRegistration ? 'Contoh: Rahmawati, S.Pd' : 'Contoh: Drs. H. Suryanto, M.Pd'}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:border-indigo-600"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:border-blue-600"
                     required
                   />
                 </div>
@@ -732,7 +732,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="Contoh: 081234567890"
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:border-indigo-600"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:border-blue-600"
                   />
                 </div>
 
@@ -746,7 +746,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                       value={teacherNip}
                       onChange={(e) => setTeacherNip(e.target.value)}
                       placeholder="19850101 201001 1 001 atau -"
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:border-indigo-600"
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:border-blue-600"
                     />
                   ) : (
                     <input
@@ -754,7 +754,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="sekolah@kemdikbud.go.id"
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:border-indigo-600"
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:border-blue-600"
                     />
                   )}
                 </div>
@@ -770,7 +770,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Minimal 8 karakter..."
                       minLength={8}
-                      className="w-full px-3 py-2 pr-9 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:border-indigo-600"
+                      className="w-full px-3 py-2 pr-9 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:border-blue-600"
                       required
                     />
                     <button
@@ -792,7 +792,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full py-3.5 px-6 bg-slate-900 hover:bg-indigo-600 active:scale-98 disabled:bg-slate-400 text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full py-3.5 px-6 bg-[#0B2F64] hover:bg-blue-700 active:scale-98 disabled:bg-slate-400 text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
                 {isSubmitting ? (
                   <>

@@ -93,29 +93,29 @@ export const BlogSection: React.FC<BlogSectionProps> = ({ lang }) => {
   ];
 
   return (
-    <section id="blog" className="py-16 sm:py-20 lg:py-24 bg-slate-50 text-slate-900 relative border-b border-slate-200/80">
+    <section id="blog" className="py-16 sm:py-20 lg:py-24 bg-slate-50 text-slate-900 relative border-b border-blue-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
-        {/* Header - Editorial Style */}
+        {/* Header - Educational Style */}
         <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 sm:mb-16 gap-6">
           <div className="space-y-4">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded bg-indigo-50 border border-indigo-100 text-indigo-700 text-[10px] font-bold uppercase tracking-widest">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-blue-50 border border-blue-200 text-blue-800 text-[10px] font-bold uppercase tracking-wider">
               <span>{lang === 'ID' ? 'BLOG & INFORMASI' : 'BLOG & INSIGHTS'}</span>
             </div>
-            <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-slate-900 tracking-tight uppercase leading-[1.05]">
+            <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-[#0B2F64] tracking-tight uppercase leading-[1.05]">
               {lang === 'ID' ? (
                 <>
                   TIPS &<br />
-                  <span className="text-indigo-600">DIGITALISASI SEKOLAH</span>
+                  <span className="text-blue-600">DIGITALISASI SEKOLAH</span>
                 </>
               ) : (
                 <>
                   TIPS &<br />
-                  <span className="text-indigo-600">SCHOOL DIGITALIZATION</span>
+                  <span className="text-blue-600">SCHOOL DIGITALIZATION</span>
                 </>
               )}
             </h2>
-            <p className="text-slate-600 text-xs sm:text-base lg:text-lg max-w-2xl border-l-4 border-indigo-200 pl-3 sm:pl-4 font-normal">
+            <p className="text-slate-600 text-xs sm:text-base lg:text-lg max-w-2xl border-l-4 border-blue-600 pl-3 sm:pl-4 font-normal">
               {lang === 'ID'
                 ? 'Edukasi, wawasan, dan panduan praktis pengelolaan presensi dan administrasi sekolah.'
                 : 'Education, insights, and practical guides for school attendance and administrative management.'}
@@ -124,7 +124,7 @@ export const BlogSection: React.FC<BlogSectionProps> = ({ lang }) => {
 
           <a 
             href="#blog" 
-            className="text-indigo-600 hover:text-indigo-800 font-bold text-xs uppercase tracking-widest flex items-center gap-2 self-start md:self-auto py-2 border-b-2 border-indigo-600"
+            className="text-blue-700 hover:text-blue-900 font-bold text-xs uppercase tracking-wider flex items-center gap-2 self-start md:self-auto py-2 border-b-2 border-blue-700"
           >
             <span>{lang === 'ID' ? 'Lihat Semua Artikel' : 'View All Articles'}</span>
             <ArrowRight className="w-4 h-4" />
@@ -134,8 +134,8 @@ export const BlogSection: React.FC<BlogSectionProps> = ({ lang }) => {
         {/* Categories Overview */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-12">
           {categories.map((cat, idx) => (
-            <div key={idx} className="p-4 bg-white border border-slate-200 rounded-xl shadow-2xs">
-              <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 block mb-1">
+            <div key={idx} className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs">
+              <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 block mb-1">
                 {cat.name}
               </span>
               <p className="text-xs text-slate-600 font-normal">
@@ -151,7 +151,7 @@ export const BlogSection: React.FC<BlogSectionProps> = ({ lang }) => {
             <article
               key={post.id}
               id={`blog-card-${post.id}`}
-              className="bg-white border border-slate-200 rounded-xl overflow-hidden hover:border-slate-400 hover:shadow-md transition-all group flex flex-col justify-between shadow-2xs"
+              className="bg-white border border-slate-200 rounded-xl overflow-hidden hover:border-blue-500 hover:shadow-md transition-all group flex flex-col justify-between shadow-xs"
             >
               <div>
                 {/* Thumbnail image - Hidden on HP (mobile), visible on laptop & desktop */}
@@ -162,7 +162,7 @@ export const BlogSection: React.FC<BlogSectionProps> = ({ lang }) => {
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     referrerPolicy="no-referrer"
                   />
-                  <span className="absolute top-3 left-3 bg-slate-900 text-white px-2.5 py-1 rounded text-[9px] font-bold uppercase tracking-widest shadow-xs">
+                  <span className="absolute top-3 left-3 bg-[#0B2F64] text-white px-2.5 py-1 rounded text-[9px] font-bold uppercase tracking-wider shadow-xs">
                     {post.category}
                   </span>
                 </div>
@@ -170,7 +170,7 @@ export const BlogSection: React.FC<BlogSectionProps> = ({ lang }) => {
                 <div className="p-5 sm:p-6 lg:p-7 space-y-3">
                   {/* Category badge visible on mobile when image is hidden */}
                   <div className="md:hidden">
-                    <span className="inline-block bg-slate-900 text-white px-2.5 py-1 rounded text-[9px] font-bold uppercase tracking-widest">
+                    <span className="inline-block bg-[#0B2F64] text-white px-2.5 py-1 rounded text-[9px] font-bold uppercase tracking-wider">
                       {post.category}
                     </span>
                   </div>
@@ -185,7 +185,7 @@ export const BlogSection: React.FC<BlogSectionProps> = ({ lang }) => {
                     </span>
                   </div>
 
-                  <h3 className="text-base sm:text-lg font-black text-slate-900 group-hover:text-indigo-600 transition-colors leading-snug uppercase">
+                  <h3 className="text-base sm:text-lg font-black text-[#0B2F64] group-hover:text-blue-600 transition-colors leading-snug uppercase">
                     {post.title}
                   </h3>
 
@@ -196,7 +196,7 @@ export const BlogSection: React.FC<BlogSectionProps> = ({ lang }) => {
               </div>
 
               <div className="p-6 sm:p-7 pt-0">
-                <span className="text-xs font-bold uppercase tracking-wider text-indigo-600 group-hover:text-indigo-800 flex items-center gap-1">
+                <span className="text-xs font-bold uppercase tracking-wider text-blue-700 group-hover:text-blue-900 flex items-center gap-1">
                   {lang === 'ID' ? 'Baca Selengkapnya →' : 'Read Full Article →'}
                 </span>
               </div>

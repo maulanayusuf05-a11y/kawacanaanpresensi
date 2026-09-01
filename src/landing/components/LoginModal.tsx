@@ -59,7 +59,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onOpenD
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-100 pb-4">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded bg-indigo-600 flex items-center justify-center text-white font-black text-sm">
+            <div className="w-8 h-8 rounded bg-blue-600 flex items-center justify-center text-white font-black text-sm shadow-xs">
               K
             </div>
             <div>
@@ -87,7 +87,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onOpenD
               type="button"
               onClick={() => handleRoleChange('guru')}
               className={`py-2 rounded transition-all cursor-pointer ${
-                role === 'guru' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                role === 'guru' ? 'bg-[#0B2F64] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               {lang === 'ID' ? 'Guru' : 'Teacher'}
@@ -96,7 +96,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onOpenD
               type="button"
               onClick={() => handleRoleChange('kepsek')}
               className={`py-2 rounded transition-all cursor-pointer ${
-                role === 'kepsek' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                role === 'kepsek' ? 'bg-[#0B2F64] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               {lang === 'ID' ? 'Kepala SD' : 'Principal'}
@@ -105,7 +105,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onOpenD
               type="button"
               onClick={() => handleRoleChange('admin')}
               className={`py-2 rounded transition-all cursor-pointer ${
-                role === 'admin' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                role === 'admin' ? 'bg-[#0B2F64] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               {lang === 'ID' ? 'Admin/TU' : 'Admin'}
@@ -114,7 +114,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onOpenD
               type="button"
               onClick={() => handleRoleChange('wali')}
               className={`py-2 rounded transition-all cursor-pointer ${
-                role === 'wali' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                role === 'wali' ? 'bg-[#0B2F64] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               {lang === 'ID' ? 'Wali Murid' : 'Parent'}
@@ -147,7 +147,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onOpenD
                 required
                 value={emailOrNip}
                 onChange={(e) => setEmailOrNip(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded px-3.5 py-2.5 text-slate-900 focus:border-indigo-600 focus:bg-white focus:outline-hidden"
+                className="w-full bg-slate-50 border border-slate-300 rounded px-3.5 py-2.5 text-slate-900 focus:border-blue-600 focus:bg-white focus:outline-hidden"
               />
             </div>
 
@@ -156,7 +156,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onOpenD
                 <label className="text-slate-700 font-bold text-[10px] uppercase tracking-wider">
                   {lang === 'ID' ? 'Kata Sandi (PIN)' : 'Password (PIN)'}
                 </label>
-                <a href="#reset" onClick={(e) => e.preventDefault()} className="text-indigo-600 hover:underline font-bold text-[10px] uppercase tracking-wider">
+                <a href="#reset" onClick={(e) => e.preventDefault()} className="text-blue-600 hover:underline font-bold text-[10px] uppercase tracking-wider">
                   {lang === 'ID' ? 'Lupa PIN?' : 'Forgot PIN?'}
                 </a>
               </div>
@@ -165,13 +165,13 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onOpenD
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded px-3.5 py-2.5 text-slate-900 focus:border-indigo-600 focus:bg-white focus:outline-hidden"
+                className="w-full bg-slate-50 border border-slate-300 rounded px-3.5 py-2.5 text-slate-900 focus:border-blue-600 focus:bg-white focus:outline-hidden"
               />
             </div>
 
             <button
               type="submit"
-              className="w-full py-3 rounded bg-slate-900 hover:bg-indigo-600 text-white font-bold text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+              className="w-full py-3 rounded bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
             >
               <span>{lang === 'ID' ? 'Masuk Dashboard' : 'Open Dashboard'}</span>
               <ArrowRight className="w-4 h-4" />
@@ -236,7 +236,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onOpenD
                   onClose();
                   onOpenDemo();
                 }}
-                className="text-indigo-600 font-bold hover:underline cursor-pointer"
+                className="text-blue-600 font-bold hover:underline cursor-pointer"
               >
                 {lang === 'ID' ? 'Coba Demo Live' : 'Try Live Demo'}
               </button>

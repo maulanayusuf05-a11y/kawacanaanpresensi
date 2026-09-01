@@ -231,29 +231,32 @@ export const FeaturesSection: React.FC<FeaturesSectionProps> = ({ lang }) => {
   ];
 
   return (
-    <section id="fitur" className="py-16 sm:py-20 lg:py-24 bg-slate-50 text-slate-900 relative border-b border-slate-200/80">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section id="fitur" className="py-16 sm:py-20 lg:py-24 bg-slate-50 text-slate-900 relative border-b border-blue-100">
+      {/* Background Subtle Grid Pattern */}
+      <div className="absolute inset-0 z-0 pointer-events-none bg-grid-pattern opacity-40" />
+
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
-        {/* Section Header - Editorial Aesthetic */}
+        {/* Section Header - Educational Aesthetic */}
         <div className="text-left max-w-3xl space-y-4 mb-12 sm:mb-16">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded bg-indigo-50 border border-indigo-100 text-indigo-700 text-[10px] font-bold uppercase tracking-widest">
-            <School className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-blue-50 border border-blue-200 text-blue-800 text-[10px] font-bold uppercase tracking-wider">
+            <School className="w-3.5 h-3.5 text-blue-700 shrink-0" />
             <span>{lang === 'ID' ? 'FITUR UTAMA SEKOLAH DASAR' : 'PRIMARY SCHOOL CORE FEATURES'}</span>
           </div>
-          <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-slate-900 tracking-tight uppercase leading-[1.05]">
+          <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-[#0B2F64] tracking-tight uppercase leading-[1.05]">
             {lang === 'ID' ? (
               <>
                 SISTEM LENGKAP<br />
-                <span className="text-indigo-600">PRESENSI SEKOLAH DASAR</span>
+                <span className="text-blue-600">PRESENSI SEKOLAH DASAR</span>
               </>
             ) : (
               <>
                 COMPREHENSIVE<br />
-                <span className="text-indigo-600">PRIMARY ATTENDANCE PLATFORM</span>
+                <span className="text-blue-600">PRIMARY ATTENDANCE PLATFORM</span>
               </>
             )}
           </h2>
-          <p className="text-slate-600 text-xs sm:text-base lg:text-lg leading-relaxed border-l-4 border-indigo-200 pl-3 sm:pl-4 font-normal">
+          <p className="text-slate-600 text-xs sm:text-base lg:text-lg leading-relaxed border-l-4 border-blue-600 pl-3 sm:pl-4 font-normal">
             {lang === 'ID' 
               ? 'Didesain khusus menyesuaikan tata kelola administrasi dan kurikulum Sekolah Dasar, dari rombel kelas 1-6 hingga rekap dinas.'
               : 'Specifically tailored to Primary School curricula and administrative workflows, from Grade 1-6 cohorts to official Dinas reporting.'}
@@ -268,19 +271,19 @@ export const FeaturesSection: React.FC<FeaturesSectionProps> = ({ lang }) => {
               <div
                 key={idx}
                 id={`feature-card-${idx}`}
-                className="bg-white border border-slate-200 rounded-xl p-6 hover:border-indigo-400 hover:shadow-md transition-all duration-200 flex flex-col justify-between group shadow-2xs"
+                className="bg-white border border-slate-200 hover:border-blue-500 rounded-xl p-6 hover:shadow-lg transition-all duration-200 flex flex-col justify-between group shadow-xs"
               >
                 <div>
                   <div className="flex items-center justify-between mb-4">
-                    <div className="w-11 h-11 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                    <div className="w-11 h-11 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-700 group-hover:bg-blue-700 group-hover:text-white transition-colors">
                       <Icon className="w-5 h-5" />
                     </div>
-                    <span className="text-[9px] font-bold uppercase tracking-widest px-2.5 py-1 rounded bg-slate-100 text-slate-600 border border-slate-200 font-mono">
+                    <span className="text-[9px] font-bold uppercase tracking-wider px-2.5 py-1 rounded bg-blue-50/70 text-blue-800 border border-blue-200/80 font-mono">
                       {feature.badge}
                     </span>
                   </div>
 
-                  <h3 className="text-base font-black text-slate-900 mb-2 group-hover:text-indigo-600 transition-colors uppercase tracking-tight">
+                  <h3 className="text-base font-black text-[#0B2F64] mb-2 group-hover:text-blue-600 transition-colors uppercase tracking-tight">
                     {feature.title}
                   </h3>
                   <p className="text-xs text-slate-600 leading-relaxed font-normal mb-4">
@@ -294,7 +297,7 @@ export const FeaturesSection: React.FC<FeaturesSectionProps> = ({ lang }) => {
                     </div>
                     {feature.items.map((item, i) => (
                       <div key={i} className="flex items-center gap-1.5 text-xs text-slate-700">
-                        <Check className="w-3 h-3 text-indigo-600 shrink-0 stroke-[3]" />
+                        <Check className="w-3 h-3 text-blue-600 shrink-0 stroke-[3]" />
                         <span>{item}</span>
                       </div>
                     ))}

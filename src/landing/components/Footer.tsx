@@ -32,10 +32,10 @@ export const Footer: React.FC<FooterProps> = ({ lang, onOpenLegal }) => {
   ];
 
   return (
-    <footer className="bg-slate-950 text-slate-400 text-xs border-t border-slate-800/80 relative overflow-hidden">
+    <footer className="bg-[#07162C] text-slate-400 text-xs border-t border-blue-950 relative overflow-hidden">
       {/* Subtle background glow effect */}
-      <div className="absolute bottom-0 left-1/4 w-96 h-96 bg-indigo-900/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute top-0 right-1/4 w-96 h-96 bg-blue-900/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-0 left-1/4 w-96 h-96 bg-blue-900/20 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-0 right-1/4 w-96 h-96 bg-sky-900/20 rounded-full blur-3xl pointer-events-none" />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-20 relative z-10">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-10 lg:gap-8 mb-14">
@@ -43,14 +43,14 @@ export const Footer: React.FC<FooterProps> = ({ lang, onOpenLegal }) => {
           {/* Column 1: Brand Info & Description & Socials */}
           <div className="lg:col-span-5 space-y-6">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-black text-base shadow-lg shadow-indigo-600/30">
+              <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white font-black text-base shadow-lg shadow-blue-600/30">
                 K
               </div>
               <div>
                 <span className="text-lg font-black text-white uppercase tracking-tight block">
                   Kawacanaan
                 </span>
-                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                <span className="text-[10px] text-blue-200 font-bold uppercase tracking-wider">
                   {lang === 'ID' ? 'Sistem Presensi Digital Sekolah Dasar' : 'Primary School Digital Attendance'}
                 </span>
               </div>
@@ -63,7 +63,7 @@ export const Footer: React.FC<FooterProps> = ({ lang, onOpenLegal }) => {
                   : 'Integrated attendance and student administration solution dedicated to Primary Schools in Indonesia.'}
               </p>
               
-              <p className="text-slate-500 text-xs leading-relaxed font-normal">
+              <p className="text-slate-400 text-xs leading-relaxed font-normal">
                 Kawacanaan Presensi — Dual-mode presensi harian & mapel, kalkulasi otomatis hari belajar efektif, rekapitulasi berkala, dan laporan format standar dinas A4.
               </p>
             </div>
@@ -75,7 +75,7 @@ export const Footer: React.FC<FooterProps> = ({ lang, onOpenLegal }) => {
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="Instagram"
-                className="w-9 h-9 rounded-lg bg-slate-900 border border-slate-800 hover:border-indigo-500 hover:bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center transition-all cursor-pointer shadow-xs"
+                className="w-9 h-9 rounded-lg bg-blue-950/80 border border-blue-900/60 hover:border-blue-500 hover:bg-blue-900 text-slate-400 hover:text-white flex items-center justify-center transition-all cursor-pointer shadow-xs"
               >
                 <Instagram className="w-4 h-4" />
               </a>
@@ -84,7 +84,7 @@ export const Footer: React.FC<FooterProps> = ({ lang, onOpenLegal }) => {
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="WhatsApp"
-                className="w-9 h-9 rounded-lg bg-slate-900 border border-slate-800 hover:border-emerald-500 hover:bg-slate-800 text-slate-400 hover:text-emerald-400 flex items-center justify-center transition-all cursor-pointer shadow-xs"
+                className="w-9 h-9 rounded-lg bg-blue-950/80 border border-blue-900/60 hover:border-emerald-500 hover:bg-emerald-900/40 text-slate-400 hover:text-emerald-400 flex items-center justify-center transition-all cursor-pointer shadow-xs"
               >
                 <MessageSquare className="w-4 h-4" />
               </a>
@@ -120,7 +120,7 @@ export const Footer: React.FC<FooterProps> = ({ lang, onOpenLegal }) => {
                 <button
                   type="button"
                   onClick={() => onOpenLegal('guide')}
-                  className="text-slate-400 hover:text-indigo-400 transition-colors text-left font-medium flex items-center gap-1.5 cursor-pointer"
+                  className="text-slate-400 hover:text-blue-400 transition-colors text-left font-medium flex items-center gap-1.5 cursor-pointer"
                 >
                   <BookOpen className="w-3.5 h-3.5 opacity-70" />
                   <span>{lang === 'ID' ? 'Panduan Pengguna' : 'User Guide'}</span>
@@ -130,7 +130,7 @@ export const Footer: React.FC<FooterProps> = ({ lang, onOpenLegal }) => {
                 <button
                   type="button"
                   onClick={() => onOpenLegal('privacy')}
-                  className="text-slate-400 hover:text-indigo-400 transition-colors text-left font-medium flex items-center gap-1.5 cursor-pointer"
+                  className="text-slate-400 hover:text-blue-400 transition-colors text-left font-medium flex items-center gap-1.5 cursor-pointer"
                 >
                   <ShieldCheck className="w-3.5 h-3.5 opacity-70" />
                   <span>{lang === 'ID' ? 'Kebijakan Privasi' : 'Privacy Policy'}</span>
@@ -140,7 +140,7 @@ export const Footer: React.FC<FooterProps> = ({ lang, onOpenLegal }) => {
                 <button
                   type="button"
                   onClick={() => onOpenLegal('terms')}
-                  className="text-slate-400 hover:text-indigo-400 transition-colors text-left font-medium flex items-center gap-1.5 cursor-pointer"
+                  className="text-slate-400 hover:text-blue-400 transition-colors text-left font-medium flex items-center gap-1.5 cursor-pointer"
                 >
                   <FileText className="w-3.5 h-3.5 opacity-70" />
                   <span>{lang === 'ID' ? 'Syarat & Ketentuan' : 'Terms & Conditions'}</span>
@@ -161,7 +161,7 @@ export const Footer: React.FC<FooterProps> = ({ lang, onOpenLegal }) => {
                   href="tel:+6281312498919" 
                   className="flex items-center gap-2.5 hover:text-white transition-colors group"
                 >
-                  <Phone className="w-4 h-4 text-slate-500 group-hover:text-indigo-400 shrink-0" />
+                  <Phone className="w-4 h-4 text-blue-400/70 group-hover:text-blue-400 shrink-0" />
                   <span className="font-semibold text-slate-300 group-hover:text-white">+62 813-1249-8919</span>
                 </a>
               </li>
@@ -170,7 +170,7 @@ export const Footer: React.FC<FooterProps> = ({ lang, onOpenLegal }) => {
                   href="mailto:maulanayusuf05@guru.sd.belajar.id" 
                   className="flex items-center gap-2.5 hover:text-white transition-colors group"
                 >
-                  <Mail className="w-4 h-4 text-slate-500 group-hover:text-indigo-400 shrink-0" />
+                  <Mail className="w-4 h-4 text-blue-400/70 group-hover:text-blue-400 shrink-0" />
                   <span className="break-all font-medium">maulanayusuf05@guru.sd.belajar.id</span>
                 </a>
               </li>
@@ -181,7 +181,7 @@ export const Footer: React.FC<FooterProps> = ({ lang, onOpenLegal }) => {
                   rel="noopener noreferrer"
                   className="flex items-center gap-2.5 hover:text-white transition-colors group"
                 >
-                  <Globe className="w-4 h-4 text-slate-500 group-hover:text-indigo-400 shrink-0" />
+                  <Globe className="w-4 h-4 text-blue-400/70 group-hover:text-blue-400 shrink-0" />
                   <span className="font-medium">www.kawacanaan.sch.id</span>
                 </a>
               </li>
@@ -194,7 +194,7 @@ export const Footer: React.FC<FooterProps> = ({ lang, onOpenLegal }) => {
         </div>
 
         {/* Bottom Bar */}
-        <div className="pt-8 border-t border-slate-900 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] font-medium text-slate-500">
+        <div className="pt-8 border-t border-blue-900/60 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] font-medium text-slate-500">
           <div>
             © 2026 Kawacanaan. {lang === 'ID' ? 'Seluruh hak cipta dilindungi.' : 'All rights reserved.'}
           </div>
@@ -214,7 +214,7 @@ export const Footer: React.FC<FooterProps> = ({ lang, onOpenLegal }) => {
             </button>
             <button 
               onClick={scrollToTop} 
-              className="flex items-center gap-1 text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer font-bold"
+              className="flex items-center gap-1 text-blue-400 hover:text-blue-300 transition-colors cursor-pointer font-bold"
             >
               <span>{lang === 'ID' ? 'Ke Atas' : 'Back to Top'}</span>
               <ArrowUp className="w-3.5 h-3.5" />

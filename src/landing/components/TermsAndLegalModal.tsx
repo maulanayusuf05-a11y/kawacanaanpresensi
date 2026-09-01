@@ -54,9 +54,9 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-white w-full max-w-4xl max-h-[92vh] rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden">
         {/* Modal Header */}
-        <div className="p-5 sm:p-6 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 shrink-0">
+        <div className="p-5 sm:p-6 bg-[#0B2F64] text-white flex items-center justify-between border-b border-blue-900 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-black text-lg shadow-sm">
+            <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white font-black text-lg shadow-sm">
               K
             </div>
             <div>
@@ -64,11 +64,11 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
                 <h3 className="font-black uppercase tracking-tight text-white text-base sm:text-lg">
                   {lang === 'ID' ? 'Pusat Kebijakan & Bantuan' : 'Policy & Help Center'}
                 </h3>
-                <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[10px] font-bold uppercase tracking-wider border border-indigo-500/30">
+                <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-200 text-[10px] font-bold uppercase tracking-wider border border-blue-400/30">
                   Kawacanaan
                 </span>
               </div>
-              <p className="text-xs text-slate-400 font-normal">
+              <p className="text-xs text-blue-200 font-normal">
                 {lang === 'ID'
                   ? 'Dokumentasi resmi sistem presensi dan manajemen kesiswaan digital'
                   : 'Official documentation for digital attendance and student management'}
@@ -80,14 +80,14 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
             <button
               onClick={handlePrint}
               title={lang === 'ID' ? 'Cetak Dokumen' : 'Print Document'}
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold transition-colors cursor-pointer border border-slate-700"
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-900/80 hover:bg-blue-800 text-blue-200 hover:text-white text-xs font-semibold transition-colors cursor-pointer border border-blue-700"
             >
               <Printer className="w-3.5 h-3.5" />
               <span>{lang === 'ID' ? 'Cetak' : 'Print'}</span>
             </button>
             <button
               onClick={onClose}
-              className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+              className="w-8 h-8 rounded-lg bg-blue-900/80 hover:bg-blue-800 text-blue-200 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -101,7 +101,7 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
               onClick={() => setActiveTab('terms')}
               className={`px-3.5 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'terms'
-                  ? 'bg-slate-900 text-white shadow-xs'
+                  ? 'bg-blue-700 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
               }`}
             >
@@ -113,7 +113,7 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
               onClick={() => setActiveTab('privacy')}
               className={`px-3.5 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'privacy'
-                  ? 'bg-slate-900 text-white shadow-xs'
+                  ? 'bg-blue-700 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
               }`}
             >
@@ -125,7 +125,7 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
               onClick={() => setActiveTab('guide')}
               className={`px-3.5 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'guide'
-                  ? 'bg-slate-900 text-white shadow-xs'
+                  ? 'bg-blue-700 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
               }`}
             >
@@ -141,7 +141,7 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
               placeholder={lang === 'ID' ? 'Cari pasal atau topik...' : 'Search clauses or topics...'}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-white border border-slate-300 rounded-lg pl-8 pr-3 py-1 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:border-indigo-600 transition-colors"
+              className="w-full bg-white border border-slate-300 rounded-lg pl-8 pr-3 py-1 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-hidden focus:border-blue-600 transition-colors"
             />
           </div>
         </div>
@@ -154,9 +154,9 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
             <div className="space-y-8 animate-in fade-in duration-150">
               
               {/* Document Banner */}
-              <div className="p-5 bg-gradient-to-r from-slate-50 via-indigo-50/40 to-slate-50 border border-indigo-100/80 rounded-xl space-y-2">
+              <div className="p-5 bg-gradient-to-r from-slate-50 via-blue-50/40 to-slate-50 border border-blue-100/80 rounded-xl space-y-2">
                 <div className="flex items-center justify-between flex-wrap gap-2">
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded bg-indigo-100 text-indigo-800 text-[10px] font-bold uppercase tracking-wider">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded bg-blue-100 text-blue-800 text-[10px] font-bold uppercase tracking-wider">
                     <Shield className="w-3 h-3" />
                     {lang === 'ID' ? 'Dokumen Resmi' : 'Official Document'}
                   </span>
@@ -200,7 +200,7 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
               {/* SECTION 1 */}
               <section className="space-y-3 pt-2">
                 <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
-                  <span className="w-6 h-6 rounded-full bg-slate-900 text-white font-black text-xs flex items-center justify-center">1</span>
+                  <span className="w-6 h-6 rounded-full bg-[#0B2F64] text-white font-black text-xs flex items-center justify-center">1</span>
                   <h3 className="font-black text-slate-900 uppercase tracking-tight text-base">
                     {lang === 'ID' ? 'Ketentuan Umum' : 'General Provisions'}
                   </h3>
@@ -215,7 +215,7 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
               {/* SECTION 2 */}
               <section className="space-y-3">
                 <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
-                  <span className="w-6 h-6 rounded-full bg-slate-900 text-white font-black text-xs flex items-center justify-center">2</span>
+                  <span className="w-6 h-6 rounded-full bg-[#0B2F64] text-white font-black text-xs flex items-center justify-center">2</span>
                   <h3 className="font-black text-slate-900 uppercase tracking-tight text-base">
                     {lang === 'ID' ? 'Akun Pengguna' : 'User Accounts'}
                   </h3>
@@ -248,7 +248,7 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
               {/* SECTION 3 */}
               <section className="space-y-4">
                 <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
-                  <span className="w-6 h-6 rounded-full bg-slate-900 text-white font-black text-xs flex items-center justify-center">3</span>
+                  <span className="w-6 h-6 rounded-full bg-[#0B2F64] text-white font-black text-xs flex items-center justify-center">3</span>
                   <h3 className="font-black text-slate-900 uppercase tracking-tight text-base">
                     {lang === 'ID' ? 'Hak Akses & Role Pengguna' : 'Access Rights & User Roles'}
                   </h3>
@@ -262,7 +262,7 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pl-8">
                   {/* ADMIN */}
                   <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
-                    <div className="flex items-center gap-2 text-indigo-700 font-black text-xs uppercase tracking-wider">
+                    <div className="flex items-center gap-2 text-blue-700 font-black text-xs uppercase tracking-wider">
                       <Lock className="w-4 h-4" />
                       <span>ADMIN / TATA USAHA</span>
                     </div>
@@ -275,7 +275,7 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
 
                   {/* KEPALA SEKOLAH */}
                   <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
-                    <div className="flex items-center gap-2 text-indigo-700 font-black text-xs uppercase tracking-wider">
+                    <div className="flex items-center gap-2 text-blue-700 font-black text-xs uppercase tracking-wider">
                       <Building2 className="w-4 h-4" />
                       <span>{lang === 'ID' ? 'KEPALA SEKOLAH' : 'SCHOOL PRINCIPAL'}</span>
                     </div>
@@ -288,7 +288,7 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
 
                   {/* WALI KELAS */}
                   <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
-                    <div className="flex items-center gap-2 text-indigo-700 font-black text-xs uppercase tracking-wider">
+                    <div className="flex items-center gap-2 text-blue-700 font-black text-xs uppercase tracking-wider">
                       <UserCheck className="w-4 h-4" />
                       <span>{lang === 'ID' ? 'WALI KELAS / GURU' : 'HOMEROOM TEACHER'}</span>
                     </div>
@@ -301,7 +301,7 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
 
                   {/* SISWA */}
                   <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
-                    <div className="flex items-center gap-2 text-indigo-700 font-black text-xs uppercase tracking-wider">
+                    <div className="flex items-center gap-2 text-blue-700 font-black text-xs uppercase tracking-wider">
                       <GraduationCap className="w-4 h-4" />
                       <span>{lang === 'ID' ? 'SISWA & WALI MURID' : 'STUDENTS & PARENTS'}</span>
                     </div>
@@ -317,7 +317,7 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
               {/* SECTION 4 */}
               <section className="space-y-3">
                 <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
-                  <span className="w-6 h-6 rounded-full bg-slate-900 text-white font-black text-xs flex items-center justify-center">4</span>
+                  <span className="w-6 h-6 rounded-full bg-[#0B2F64] text-white font-black text-xs flex items-center justify-center">4</span>
                   <h3 className="font-black text-slate-900 uppercase tracking-tight text-base">
                     {lang === 'ID' ? 'Penggunaan Sistem & Larangan' : 'System Usage & Prohibitions'}
                   </h3>
@@ -346,7 +346,7 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pl-8">
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
                   <div className="flex items-center gap-2">
-                    <span className="w-5 h-5 rounded-full bg-slate-900 text-white font-bold text-[10px] flex items-center justify-center">5</span>
+                    <span className="w-5 h-5 rounded-full bg-[#0B2F64] text-white font-bold text-[10px] flex items-center justify-center">5</span>
                     <h4 className="font-black text-slate-900 uppercase text-xs">
                       {lang === 'ID' ? 'Data Siswa' : 'Student Data Protection'}
                     </h4>
@@ -360,7 +360,7 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
 
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
                   <div className="flex items-center gap-2">
-                    <span className="w-5 h-5 rounded-full bg-slate-900 text-white font-bold text-[10px] flex items-center justify-center">6</span>
+                    <span className="w-5 h-5 rounded-full bg-[#0B2F64] text-white font-bold text-[10px] flex items-center justify-center">6</span>
                     <h4 className="font-black text-slate-900 uppercase text-xs">
                       {lang === 'ID' ? 'Data Absensi' : 'Attendance Integrity'}
                     </h4>
@@ -376,7 +376,7 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
               {/* SECTION 7, 8, 9 */}
               <section className="space-y-3">
                 <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
-                  <span className="w-6 h-6 rounded-full bg-slate-900 text-white font-black text-xs flex items-center justify-center">7</span>
+                  <span className="w-6 h-6 rounded-full bg-[#0B2F64] text-white font-black text-xs flex items-center justify-center">7</span>
                   <h3 className="font-black text-slate-900 uppercase tracking-tight text-base">
                     {lang === 'ID' ? 'Presensi Mandiri Siswa' : 'Student Self-Attendance'}
                   </h3>
@@ -397,7 +397,7 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
 
               {/* SECTION 8, 9, 10, 11, 12, 13, 14 */}
               <div className="space-y-4 pl-8">
-                <div className="border-l-2 border-indigo-500 pl-4 space-y-1">
+                <div className="border-l-2 border-blue-500 pl-4 space-y-1">
                   <h4 className="font-bold text-slate-900 text-xs uppercase">
                     8. {lang === 'ID' ? 'Keamanan Akun' : 'Account Security'}
                   </h4>
@@ -408,7 +408,7 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
                   </p>
                 </div>
 
-                <div className="border-l-2 border-indigo-500 pl-4 space-y-1">
+                <div className="border-l-2 border-blue-500 pl-4 space-y-1">
                   <h4 className="font-bold text-slate-900 text-xs uppercase">
                     9. {lang === 'ID' ? 'Ketersediaan Sistem (SLA)' : 'System Availability'}
                   </h4>
@@ -419,7 +419,7 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
                   </p>
                 </div>
 
-                <div className="border-l-2 border-indigo-500 pl-4 space-y-1">
+                <div className="border-l-2 border-blue-500 pl-4 space-y-1">
                   <h4 className="font-bold text-slate-900 text-xs uppercase">
                     10. {lang === 'ID' ? 'Perubahan Sistem' : 'System Updates'}
                   </h4>
@@ -430,7 +430,7 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
                   </p>
                 </div>
 
-                <div className="border-l-2 border-indigo-500 pl-4 space-y-1">
+                <div className="border-l-2 border-blue-500 pl-4 space-y-1">
                   <h4 className="font-bold text-slate-900 text-xs uppercase">
                     11. {lang === 'ID' ? 'Penonaktifan Akun' : 'Account Deactivation'}
                   </h4>
@@ -441,7 +441,7 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
                   </p>
                 </div>
 
-                <div className="border-l-2 border-indigo-500 pl-4 space-y-1">
+                <div className="border-l-2 border-blue-500 pl-4 space-y-1">
                   <h4 className="font-bold text-slate-900 text-xs uppercase">
                     12. {lang === 'ID' ? 'Tanggung Jawab Pengguna' : 'User Responsibility'}
                   </h4>
@@ -452,7 +452,7 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
                   </p>
                 </div>
 
-                <div className="border-l-2 border-indigo-500 pl-4 space-y-1">
+                <div className="border-l-2 border-blue-500 pl-4 space-y-1">
                   <h4 className="font-bold text-slate-900 text-xs uppercase">
                     13. {lang === 'ID' ? 'Perubahan Syarat & Ketentuan' : 'Terms Amendments'}
                   </h4>
@@ -463,7 +463,7 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
                   </p>
                 </div>
 
-                <div className="border-l-2 border-indigo-500 pl-4 space-y-1">
+                <div className="border-l-2 border-blue-500 pl-4 space-y-1">
                   <h4 className="font-bold text-slate-900 text-xs uppercase">
                     14. {lang === 'ID' ? 'Penutup' : 'Closing Statement'}
                   </h4>
@@ -494,8 +494,8 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
           {/* TAB 2: KEBIJAKAN PRIVASI (PRIVACY POLICY) */}
           {activeTab === 'privacy' && (
             <div className="space-y-6 animate-in fade-in duration-150">
-              <div className="p-5 bg-gradient-to-r from-slate-50 via-indigo-50/40 to-slate-50 border border-indigo-100/80 rounded-xl space-y-2">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded bg-indigo-100 text-indigo-800 text-[10px] font-bold uppercase tracking-wider">
+              <div className="p-5 bg-gradient-to-r from-slate-50 via-blue-50/40 to-slate-50 border border-blue-100/80 rounded-xl space-y-2">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded bg-blue-100 text-blue-800 text-[10px] font-bold uppercase tracking-wider">
                   <Shield className="w-3 h-3" />
                   {lang === 'ID' ? 'Perlindungan Data Pribadi' : 'Data Privacy & Security'}
                 </span>
@@ -560,8 +560,8 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
           {/* TAB 3: PANDUAN PENGGUNA (USER GUIDE) */}
           {activeTab === 'guide' && (
             <div className="space-y-6 animate-in fade-in duration-150">
-              <div className="p-5 bg-gradient-to-r from-slate-50 via-indigo-50/40 to-slate-50 border border-indigo-100/80 rounded-xl space-y-2">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded bg-indigo-100 text-indigo-800 text-[10px] font-bold uppercase tracking-wider">
+              <div className="p-5 bg-gradient-to-r from-slate-50 via-blue-50/40 to-slate-50 border border-blue-100/80 rounded-xl space-y-2">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded bg-blue-100 text-blue-800 text-[10px] font-bold uppercase tracking-wider">
                   <BookOpen className="w-3 h-3" />
                   {lang === 'ID' ? 'Petunjuk Praktis' : 'Practical Quickstart'}
                 </span>
@@ -578,7 +578,7 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
                   <div className="flex items-center gap-2 font-bold text-slate-900 text-xs uppercase">
-                    <span className="w-5 h-5 rounded bg-indigo-600 text-white flex items-center justify-center text-[10px]">1</span>
+                    <span className="w-5 h-5 rounded bg-blue-600 text-white flex items-center justify-center text-[10px]">1</span>
                     <span>{lang === 'ID' ? 'Panduan Admin Sekolah' : 'School Admin Guide'}</span>
                   </div>
                   <ul className="text-xs text-slate-600 space-y-1.5 pl-7 list-disc">
@@ -590,7 +590,7 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
 
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
                   <div className="flex items-center gap-2 font-bold text-slate-900 text-xs uppercase">
-                    <span className="w-5 h-5 rounded bg-indigo-600 text-white flex items-center justify-center text-[10px]">2</span>
+                    <span className="w-5 h-5 rounded bg-blue-600 text-white flex items-center justify-center text-[10px]">2</span>
                     <span>{lang === 'ID' ? 'Panduan Guru & Guru Piket' : 'Teacher & Duty Guide'}</span>
                   </div>
                   <ul className="text-xs text-slate-600 space-y-1.5 pl-7 list-disc">
@@ -602,7 +602,7 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
 
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
                   <div className="flex items-center gap-2 font-bold text-slate-900 text-xs uppercase">
-                    <span className="w-5 h-5 rounded bg-indigo-600 text-white flex items-center justify-center text-[10px]">3</span>
+                    <span className="w-5 h-5 rounded bg-blue-600 text-white flex items-center justify-center text-[10px]">3</span>
                     <span>{lang === 'ID' ? 'Panduan Kepala Sekolah' : 'Principal Guide'}</span>
                   </div>
                   <ul className="text-xs text-slate-600 space-y-1.5 pl-7 list-disc">
@@ -614,7 +614,7 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
 
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
                   <div className="flex items-center gap-2 font-bold text-slate-900 text-xs uppercase">
-                    <span className="w-5 h-5 rounded bg-indigo-600 text-white flex items-center justify-center text-[10px]">4</span>
+                    <span className="w-5 h-5 rounded bg-blue-600 text-white flex items-center justify-center text-[10px]">4</span>
                     <span>{lang === 'ID' ? 'Panduan Wali Murid' : 'Parent Guide'}</span>
                   </div>
                   <ul className="text-xs text-slate-600 space-y-1.5 pl-7 list-disc">
@@ -637,7 +637,7 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
               href="https://wa.me/6281312498919?text=Halo%20Admin%20Kawacanaan,%20saya%20ingin%20bertanya%20mengenai%20Syarat%20dan%20Ketentuan"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-indigo-600 font-bold hover:underline"
+              className="text-blue-600 font-bold hover:underline"
             >
               {lang === 'ID' ? 'Hubungi Tim Legal Kawacanaan' : 'Contact Legal Helpdesk'}
             </a>
@@ -645,7 +645,7 @@ export const TermsAndLegalModal: React.FC<TermsAndLegalModalProps> = ({
 
           <button
             onClick={onClose}
-            className="w-full sm:w-auto px-6 py-2.5 bg-slate-900 hover:bg-indigo-600 text-white rounded-lg text-xs font-bold uppercase tracking-widest transition-all cursor-pointer shadow-xs"
+            className="w-full sm:w-auto px-6 py-2.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shadow-xs"
           >
             {lang === 'ID' ? 'Tutup & Setuju' : 'Close & Acknowledge'}
           </button>

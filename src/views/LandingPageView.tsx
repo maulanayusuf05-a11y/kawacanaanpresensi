@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import '../landing/landing.css';
 import { Navbar } from '../landing/components/Navbar';
 import { HeroSection } from '../landing/components/HeroSection';
 import { FeaturesSection } from '../landing/components/FeaturesSection';
@@ -40,7 +41,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({ onEnterSystem 
   };
 
   return (
-    <div className="min-h-screen bg-white text-slate-900 font-sans selection:bg-indigo-600 selection:text-white antialiased">
+    <div className="min-h-screen bg-white text-slate-900 font-sans selection:bg-blue-600 selection:text-white antialiased">
       <Navbar
         onOpenLogin={handleOpenLogin}
         onOpenRegister={() => handleOpenRegister('free')}
