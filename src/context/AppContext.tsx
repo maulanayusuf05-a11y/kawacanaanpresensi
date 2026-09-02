@@ -111,7 +111,10 @@ interface AppContextType {
   syncUsersWithStudents: () => Promise<void>;
   generateAccountsFromReferences: (options?: {
     resetExistingPasswords?: boolean;
+    passwordMode?: "standard" | "random" | "custom";
+    customPassword?: string;
   }) => Promise<GeneratedAccountResult[]>;
+  resetUserToDefaultPassword: (user: UserAccount) => Promise<string>;
   updateUserPassword: (id: string, p: string) => Promise<void>;
   academicEvents: AcademicEvent[];
   addAcademicEvent: (e: Omit<AcademicEvent, "id">) => Promise<void>;
@@ -3126,14 +3129,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const generateAccountsFromReferences = async (options?: {
     resetExistingPasswords?: boolean;
+    passwordMode?: "random" | "standard" | "custom";
+    customPassword?: string;
   }): Promise<GeneratedAccountResult[]> => {
     const resetExisting = !!options?.resetExistingPasswords;
     const results: GeneratedAccountResult[] = [];
+    const passwordMap = new Map<string, string>(); // username/id -> password
     const schoolId = currentUser?.schoolId || activeWorkspace?.workspaceId;
     if (!schoolId) {
       showToast("ID Sekolah tidak valid.", "error");
       return results;
     }
+
+    const createAccountPassword = (): string => {
+      return generateRandomPassword(8);
+    };
 
     try {
       // 0. Ambil data referensi & penugasan peran (assignment_role) terbaru langsung dari database untuk school_id yang sama
@@ -3213,8 +3223,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       const ksName = (schoolProfileRes.data?.nama_kepala_sekolah || schoolProfile.namaKepalaSekolah || "").trim();
       const ksNip = (schoolProfileRes.data?.nip_kepala_sekolah || schoolProfile.nipKepalaSekolah || "").trim();
 
-      if (ksName && ksNip) {
-        const ksUsername = sanitizeUsername(ksNip, "ks");
+      if (ksName) {
+        const ksUsername = sanitizeUsername(ksNip || ksName, "ks");
         const existing = dbProfiles.find(
           (u: any) =>
             u.role === "KEPALA SEKOLAH" ||
@@ -3222,18 +3232,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         );
 
         if (!existing) {
-          const password = generateRandomPassword(8);
+          const newKsPassword = createAccountPassword();
           try {
             await apiUser("create", {
               name: ksName,
               username: ksUsername,
-              password,
+              password: newKsPassword,
               role: "KEPALA SEKOLAH",
             });
+            passwordMap.set(ksUsername.toLowerCase(), newKsPassword);
             results.push({
               name: ksName,
               username: ksUsername,
-              password,
+              password: newKsPassword,
               role: "KEPALA SEKOLAH",
               category: "KEPALA SEKOLAH",
               status: "CREATED",
@@ -3249,17 +3260,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             });
           }
         } else if (resetExisting) {
-          const newPassword = generateRandomPassword(8);
+          const newKsPassword = createAccountPassword();
           try {
             await apiUser("password", {
               userId: existing.id,
-              password: newPassword,
+              password: newKsPassword,
             });
+            passwordMap.set(existing.id, newKsPassword);
+            if (existing.username) passwordMap.set(existing.username.toLowerCase(), newKsPassword);
             results.push({
               id: existing.id,
               name: existing.name || ksName,
               username: existing.username || ksUsername,
-              password: newPassword,
+              password: newKsPassword,
               role: existing.role || "KEPALA SEKOLAH",
               category: "KEPALA SEKOLAH",
               status: "UPDATED",
@@ -3280,7 +3293,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             id: existing.id,
             name: existing.name || ksName,
             username: existing.username || ksUsername,
-            password: "Tersimpan",
+            password: "(Tetap Aktif)",
             role: existing.role || "KEPALA SEKOLAH",
             category: "KEPALA SEKOLAH",
             status: "ACTIVE" as any,
@@ -3373,17 +3386,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         }
 
         if (!existing) {
-          const password = generateRandomPassword(8);
+          const newTeacherPassword = createAccountPassword();
           try {
             const res = await apiUser("create", {
               name: teacherName,
               username: teacherUsername,
-              password,
+              password: newTeacherPassword,
               role,
               classIds,
               subjectId: teacherSubjects[0]?.id || null,
               subjectName: teacherSubjects[0]?.name || null,
             });
+            passwordMap.set(teacherUsername.toLowerCase(), newTeacherPassword);
             const createdTeacherId = res?.teacherId || teacher.id;
             if (createdTeacherId && linkedHomeroom && role === "WALI KELAS") {
               await supabase
@@ -3394,7 +3408,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             results.push({
               name: teacherName,
               username: teacherUsername,
-              password,
+              password: newTeacherPassword,
               role,
               category: "GURU",
               className: assignmentDescription,
@@ -3412,11 +3426,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             });
           }
         } else if (resetExisting) {
-          const newPassword = generateRandomPassword(8);
+          const newTeacherPassword = createAccountPassword();
           try {
             await apiUser("password", {
               userId: existing.id,
-              password: newPassword,
+              password: newTeacherPassword,
             });
             await apiUser("update", {
               userId: existing.id,
@@ -3426,11 +3440,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               classIds,
               subjectId: teacherSubjects[0]?.id || null,
             }).catch(() => {});
+            passwordMap.set(existing.id, newTeacherPassword);
+            if (existing.username) passwordMap.set(existing.username.toLowerCase(), newTeacherPassword);
             results.push({
               id: existing.id,
               name: existing.name || teacherName,
               username: existing.username,
-              password: newPassword,
+              password: newTeacherPassword,
               role: role || existing.role,
               category: "GURU",
               className: assignmentDescription,
@@ -3462,7 +3478,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             id: existing.id,
             name: existing.name || teacherName,
             username: existing.username,
-            password: "Tersimpan",
+            password: "(Tetap Aktif)",
             role: role || existing.role,
             category: "GURU",
             className: assignmentDescription,
@@ -3474,7 +3490,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       // 3. Data Siswa (diambil dari database students dengan school_id yang sama)
       for (const student of dbStudents) {
         const studentName = (student.nama || "").trim();
-        const studentUsername = sanitizeUsername(student.nisn, "sis");
+        const studentUsername = sanitizeUsername(student.nisn || student.nama, "sis");
         const studentClass = dbClasses.find(
           (c) => c.id === student.classId || c.id === (student as any).class_id,
         );
@@ -3488,19 +3504,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         );
 
         if (!existing) {
-          const password = generateRandomPassword(8);
+          const newStudentPassword = createAccountPassword();
           try {
             await apiUser("create", {
               name: studentName,
               username: studentUsername,
-              password,
+              password: newStudentPassword,
               role: "SISWA",
               studentId: student.id,
             });
+            passwordMap.set(studentUsername.toLowerCase(), newStudentPassword);
             results.push({
               name: studentName,
               username: studentUsername,
-              password,
+              password: newStudentPassword,
               role: "SISWA",
               category: "SISWA",
               className: studentClassName,
@@ -3518,11 +3535,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             });
           }
         } else if (resetExisting) {
-          const newPassword = generateRandomPassword(8);
+          const newStudentPassword = createAccountPassword();
           try {
             await apiUser("password", {
               userId: existing.id,
-              password: newPassword,
+              password: newStudentPassword,
             });
             await apiUser("update", {
               userId: existing.id,
@@ -3531,11 +3548,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               role: "SISWA",
               studentId: student.id,
             }).catch(() => {});
+            passwordMap.set(existing.id, newStudentPassword);
+            if (existing.username) passwordMap.set(existing.username.toLowerCase(), newStudentPassword);
             results.push({
               id: existing.id,
               name: existing.name || studentName,
               username: existing.username,
-              password: newPassword,
+              password: newStudentPassword,
               role: "SISWA",
               category: "SISWA",
               className: studentClassName,
@@ -3568,7 +3587,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             id: existing.id,
             name: existing.name || studentName,
             username: existing.username,
-            password: "Tersimpan",
+            password: "(Tetap Aktif)",
             role: "SISWA",
             category: "SISWA",
             className: studentClassName,
@@ -3594,11 +3613,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         }
       }
 
+      // Terapkan password acak baru ke state users lokal agar langsung tampil di UI tabel
+      if (passwordMap.size > 0) {
+        setUsers((prevUsers) =>
+          prevUsers.map((u) => {
+            const pwd =
+              passwordMap.get(u.id) ||
+              (u.username ? passwordMap.get(u.username.toLowerCase()) : undefined);
+            return pwd ? { ...u, password: pwd } : u;
+          }),
+        );
+      }
+
       const createdCount = results.filter((r) => r.status === "CREATED").length;
       const updatedCount = results.filter((r) => r.status === "UPDATED").length;
       if (createdCount > 0 || updatedCount > 0) {
         showToast(
-          `Berhasil men-generate ${createdCount} akun baru dan menyinkronkan ${updatedCount} akun dengan data assignment database.`,
+          `Berhasil memproses ${results.length} akun (${createdCount} baru dibuat, ${updatedCount} password diacak ulang).`,
           "success",
         );
       } else {
@@ -3612,6 +3643,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       showToast(e.message || "Gagal men-generate akun pengguna", "error");
       return results;
     }
+  };
+
+  const resetUserToDefaultPassword = async (user: UserAccount): Promise<string> => {
+    const newRandomPass = generateRandomPassword(8);
+    await updateUserPassword(user.id, newRandomPass);
+    setUsers((prevUsers) =>
+      prevUsers.map((u) => (u.id === user.id ? { ...u, password: newRandomPass } : u)),
+    );
+    return newRandomPass;
   };
 
   const syncUsersWithStudents = async () => {
@@ -4618,6 +4658,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         syncUsersWithStudents,
         generateAccountsFromReferences,
         updateUserPassword,
+        resetUserToDefaultPassword,
         academicEvents,
         addAcademicEvent,
         deleteAcademicEvent,

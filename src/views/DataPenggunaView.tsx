@@ -620,6 +620,22 @@ export const DataPenggunaView: React.FC = () => {
     setTimeout(() => setCopiedIndex(null), 2000);
   };
 
+  // Copy all generated credentials to clipboard as formatted text
+  const handleCopyAllGeneratedCredentials = () => {
+    if (!generatedResults || generatedResults.length === 0) return;
+    const lines = [
+      `REKAPITULASI KREDENSIAL AKUN LOGIN - ${schoolProfile?.namaSekolah || 'SEKOLAH'}`,
+      `Waktu Generate: ${new Date().toLocaleString('id-ID')}`,
+      '--------------------------------------------------------------------------------',
+      'No | Nama Lengkap | Username | Password | Role / Penugasan | Status',
+      '--------------------------------------------------------------------------------',
+      ...generatedResults.map((r, i) => `${i + 1}. ${r.name} | User: ${r.username} | Pass: ${r.password} | ${r.role} (${r.className || '-'}) | ${r.status === 'CREATED' ? 'Baru' : 'Diupdate'}`),
+      '--------------------------------------------------------------------------------',
+    ];
+    navigator.clipboard.writeText(lines.join('\n'));
+    showToast('Seluruh daftar kredensial akun berhasil disalin ke clipboard!', 'success');
+  };
+
   // Quick Copy Account Credential Message
   const handleCopyCredentialMessage = (u: UserAccount) => {
     const details = getUserAssignmentDetails(u);
@@ -701,15 +717,15 @@ export const DataPenggunaView: React.FC = () => {
     });
   };
 
-  // Unified Export PDF handler (Guru / Siswa)
-  const handleExportPDF = async (scope: 'GURU' | 'SISWA') => {
+  // Unified Export PDF handler (Guru / Siswa / Semua Akun)
+  const handleExportPDF = async (scope: 'GURU' | 'SISWA' | 'ALL') => {
     setIsExportingPdf(true);
     setShowExportMenu(false);
     setShowMainExportMenu(false);
     try {
       let targetAccounts: GeneratedAccountResult[] = [];
       let filterCategory = 'ALL';
-      let docTitle = 'DAFTAR HASIL GENERATE AKUN PENGGUNA & PASSWORD RESMI';
+      let docTitle = 'DAFTAR REKAPITULASI AKUN PENGGUNA & PASSWORD ACAK';
 
       const sourceList = generatedResults && generatedResults.length > 0
         ? generatedResults
@@ -725,22 +741,21 @@ export const DataPenggunaView: React.FC = () => {
             r.role === 'KEPALA SEKOLAH'
         );
         filterCategory = 'GURU';
-        docTitle = 'DAFTAR AKUN GURU (WALI KELAS & GURU MAPEL) & KEPALA SEKOLAH';
+        docTitle = 'DAFTAR REKAPITULASI AKUN GURU & KEPALA SEKOLAH';
       } else if (scope === 'SISWA') {
         targetAccounts = sourceList.filter(
           (r) => r.category === 'SISWA' || r.role === 'SISWA'
         );
         filterCategory = 'SISWA';
-        docTitle = 'DAFTAR AKUN PESERTA DIDIK (SISWA)';
+        docTitle = 'DAFTAR REKAPITULASI AKUN PESERTA DIDIK (SISWA)';
+      } else {
+        targetAccounts = sourceList;
+        filterCategory = 'ALL';
+        docTitle = 'DAFTAR REKAPITULASI AKUN PENGGUNA & PASSWORD ACAK';
       }
 
       if (targetAccounts.length === 0) {
-        showToast(
-          scope === 'GURU'
-            ? 'Tidak ada data akun Guru / Pendidik untuk diekspor.'
-            : 'Tidak ada data akun Siswa untuk diekspor.',
-          'warning'
-        );
+        showToast('Tidak ada data akun untuk diekspor ke PDF.', 'warning');
         return;
       }
 
@@ -753,7 +768,8 @@ export const DataPenggunaView: React.FC = () => {
         documentTitle: docTitle,
       });
 
-      showToast(`Dokumen PDF ${scope === 'GURU' ? 'Akun Guru' : 'Akun Siswa'} berhasil diekspor dengan kop surat resmi.`, 'success');
+      const scopeName = scope === 'GURU' ? 'Akun Guru & KS' : scope === 'SISWA' ? 'Akun Siswa' : 'Semua Akun Pengguna';
+      showToast(`Dokumen PDF Rekapitulasi ${scopeName} berhasil diekspor dengan kop surat resmi.`, 'success');
     } catch (err) {
       console.error('Error generating PDF:', err);
       showToast('Gagal membuat dokumen PDF.', 'error');
@@ -865,6 +881,25 @@ export const DataPenggunaView: React.FC = () => {
                     Pilihan Ekspor & Cetak Resmi
                   </div>
                   
+                  <button
+                    type="button"
+                    onClick={() => handleExportPDF('ALL')}
+                    className="w-full px-3.5 py-2.5 text-left hover:bg-slate-50 flex items-center gap-3 transition-colors cursor-pointer group"
+                    id="btn-main-export-pdf-all"
+                  >
+                    <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0 group-hover:bg-purple-600 group-hover:text-white transition-colors shadow-xs">
+                      <Printer size={16} />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-slate-900 group-hover:text-purple-700">
+                        Cetak PDF Rekapitulasi Semua Akun
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-medium">
+                        Rekapitulasi lengkap Guru, KS, & Siswa ({stats.total} akun)
+                      </div>
+                    </div>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => handleExportPDF('GURU')}
@@ -2031,21 +2066,69 @@ export const DataPenggunaView: React.FC = () => {
                 </ul>
               </div>
 
-              <label className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer hover:bg-slate-100 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={generateResetExisting}
-                  onChange={(e) => setGenerateResetExisting(e.target.checked)}
-                  disabled={isGenerating}
-                  className="mt-0.5 rounded text-blue-600 focus:ring-blue-500"
-                />
-                <div className="text-xs">
-                  <span className="font-bold text-slate-800">Acak ulang password akun yang sudah terdaftar</span>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Centang opsi ini jika Anda ingin memperbarui dan mengganti password lama seluruh guru dan siswa dengan password acak baru.
-                  </p>
+              {/* Strategy Choice: Radio Cards */}
+              <div className="space-y-2">
+                <label className="block text-[11px] font-black text-slate-700 uppercase tracking-wider">
+                  PILIH STRATEGI PEMBUATAN PASSWORD:
+                </label>
+
+                <div className="grid grid-cols-1 gap-2.5">
+                  {/* Option 1: Reset All */}
+                  <label
+                    className={`flex items-start gap-3 p-3.5 rounded-xl border transition-all cursor-pointer ${
+                      generateResetExisting
+                        ? 'bg-amber-50/80 border-amber-300 ring-2 ring-amber-400/30'
+                        : 'bg-white border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="generateStrategy"
+                      checked={generateResetExisting === true}
+                      onChange={() => setGenerateResetExisting(true)}
+                      disabled={isGenerating}
+                      className="mt-1 text-amber-600 focus:ring-amber-500"
+                    />
+                    <div className="text-xs">
+                      <div className="font-extrabold text-slate-900 flex items-center gap-2">
+                        <span>Acak Ulang Password untuk Semua Akun</span>
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-amber-200 text-amber-900">
+                          Rekomendasi
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-600 mt-1 leading-relaxed">
+                        Sistem membuatkan password acak baru 8 karakter untuk seluruh Guru, KS, dan Siswa serta menyinkronkannya ke sistem login. Semua kredensial langsung terdata ulang di tabel dan siap dicetak di dokumen PDF baru.
+                      </p>
+                    </div>
+                  </label>
+
+                  {/* Option 2: New Users Only */}
+                  <label
+                    className={`flex items-start gap-3 p-3.5 rounded-xl border transition-all cursor-pointer ${
+                      !generateResetExisting
+                        ? 'bg-blue-50/80 border-blue-300 ring-2 ring-blue-400/30'
+                        : 'bg-white border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="generateStrategy"
+                      checked={generateResetExisting === false}
+                      onChange={() => setGenerateResetExisting(false)}
+                      disabled={isGenerating}
+                      className="mt-1 text-blue-600 focus:ring-blue-500"
+                    />
+                    <div className="text-xs">
+                      <div className="font-extrabold text-slate-900">
+                        Hanya Pengguna Baru Saja
+                      </div>
+                      <p className="text-[11px] text-slate-600 mt-1 leading-relaxed">
+                        Hanya membuat akun dan password acak baru bagi guru atau siswa yang belum terdaftar. Akun yang sudah ada sebelumnya tidak akan diubah password-nya.
+                      </p>
+                    </div>
+                  </label>
                 </div>
-              </label>
+              </div>
 
               <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
                 <button
@@ -2098,14 +2181,26 @@ export const DataPenggunaView: React.FC = () => {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {/* Export PDF Button with 2 Choices: Guru / Siswa */}
+                {/* Copy All Credentials Button */}
+                <button
+                  type="button"
+                  onClick={handleCopyAllGeneratedCredentials}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                  title="Salin semua akun dan password ke clipboard"
+                  id="btn-copy-all-credentials"
+                >
+                  <Copy size={13} />
+                  <span className="hidden sm:inline">Salin Semua</span>
+                </button>
+
+                {/* Export PDF Button with 3 Choices: Semua / Guru / Siswa */}
                 <div className="relative">
                   <button
                     type="button"
                     onClick={() => setShowExportMenu((prev) => !prev)}
                     disabled={isExportingPdf || !generatedResults || generatedResults.length === 0}
                     className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                    title="Pilih untuk mengekspor PDF Akun Guru atau Akun Siswa"
+                    title="Pilih untuk mengekspor PDF Rekapitulasi Akun"
                     id="btn-export-pdf-generated"
                   >
                     {isExportingPdf ? (
@@ -2123,10 +2218,29 @@ export const DataPenggunaView: React.FC = () => {
                         className="fixed inset-0 z-40"
                         onClick={() => setShowExportMenu(false)}
                       />
-                      <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-slate-200 py-2 z-50 animate-in fade-in zoom-in-95 text-slate-800">
+                      <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-slate-200 py-2 z-50 animate-in fade-in zoom-in-95 text-slate-800">
                         <div className="px-3.5 py-1.5 border-b border-slate-100 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
                           Pilihan Cetak Dokumen PDF
                         </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleExportPDF('ALL')}
+                          className="w-full px-3.5 py-2.5 text-left hover:bg-rose-50/80 flex items-center gap-3 transition-colors cursor-pointer group"
+                          id="btn-export-pdf-all"
+                        >
+                          <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0 group-hover:bg-purple-600 group-hover:text-white transition-colors shadow-xs">
+                            <Printer size={16} />
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold text-slate-900 group-hover:text-rose-700">
+                              Export PDF Rekapitulasi Semua Akun
+                            </div>
+                            <div className="text-[10px] text-slate-500 font-medium">
+                              Cetak seluruh {generatedResults?.length || 0} akun pengguna
+                            </div>
+                          </div>
+                        </button>
                         
                         <button
                           type="button"
