@@ -173,15 +173,24 @@ export default async function handler(req: any, res: any) {
         let effectiveSubjectIds: string[] = subjectId ? [subjectId] : [];
         if (!effectiveSubjectIds.length) {
           const { data: existingSubjects, error: subjectErr } = await admin.from('subject_teacher_assignments').select('subject_id').eq('school_id',schoolId).eq('teacher_id',teacherId).eq('academic_year',year);
-          if (subjectErr) return json(res,400,{error:subjectErr.message});
-          effectiveSubjectIds=(existingSubjects||[]).map((x:any)=>x.subject_id);
+          if (!subjectErr && existingSubjects) {
+            effectiveSubjectIds = existingSubjects.map((x: any) => x.subject_id);
+          }
         }
-        if (!effectiveSubjectIds.length) return json(res,400,{error:'Guru Mapel belum memiliki Mata Pelajaran. Tetapkan guru pada Data Mapel terlebih dahulu.'});
-        for(const effectiveSubjectId of effectiveSubjectIds){
-          const { data: subjectRow, error: subjectErr } = await admin.from('subjects').select('id').eq('id',effectiveSubjectId).eq('school_id',schoolId).maybeSingle();
-          if(subjectErr||!subjectRow) return json(res,400,{error:subjectErr?.message||'Mata Pelajaran tidak ditemukan pada sekolah pengguna.'});
-          const { error: assignError } = await admin.rpc('replace_subject_assignment',{p_school_id:schoolId,p_subject_id:effectiveSubjectId,p_teacher_id:teacherId,p_class_ids:classIds,p_academic_year:year,p_actor_user_id:caller.user.id});
-          if(assignError) return json(res,400,{error:assignError.message});
+        if (effectiveSubjectIds.length > 0) {
+          for (const effectiveSubjectId of effectiveSubjectIds) {
+            const { data: subjectRow } = await admin.from('subjects').select('id').eq('id', effectiveSubjectId).eq('school_id', schoolId).maybeSingle();
+            if (subjectRow) {
+              await admin.rpc('replace_subject_assignment', {
+                p_school_id: schoolId,
+                p_subject_id: effectiveSubjectId,
+                p_teacher_id: teacherId,
+                p_class_ids: classIds,
+                p_academic_year: year,
+                p_actor_user_id: caller.user.id
+              });
+            }
+          }
         }
       }
 
@@ -272,14 +281,21 @@ export default async function handler(req: any, res: any) {
       if (teacherId && role === 'GURU MAPEL' && classIds.length) {
         const year = await getAcademicYear(target.school_id);
         const { data: existingSubjects, error: existingSubjectsErr } = await admin.from('subject_teacher_assignments').select('subject_id').eq('school_id', target.school_id).eq('teacher_id', teacherId).eq('academic_year', year);
-        if (existingSubjectsErr) return json(res,400,{error:existingSubjectsErr.message});
-        const effectiveSubjectIds = subjectId ? [subjectId] : (existingSubjects || []).map((x:any)=>x.subject_id);
-        if (!effectiveSubjectIds.length) return json(res,400,{error:'Guru Mapel belum memiliki Mata Pelajaran. Tetapkan guru pada Data Mapel terlebih dahulu.'});
-        for (const effectiveSubjectId of effectiveSubjectIds) {
-          const { data: subjectRow, error: subjectErr } = await admin.from('subjects').select('id').eq('id',effectiveSubjectId).eq('school_id',target.school_id).maybeSingle();
-          if (subjectErr || !subjectRow) return json(res,400,{error:subjectErr?.message || 'Mata Pelajaran tidak ditemukan pada sekolah pengguna.'});
-          const { error: assignErr } = await admin.rpc('replace_subject_assignment',{p_school_id:target.school_id,p_subject_id:effectiveSubjectId,p_teacher_id:teacherId,p_class_ids:classIds,p_academic_year:year,p_actor_user_id:caller.user.id});
-          if (assignErr) return json(res,400,{error:assignErr.message});
+        const effectiveSubjectIds = subjectId ? [subjectId] : (!existingSubjectsErr && existingSubjects ? existingSubjects.map((x: any) => x.subject_id) : []);
+        if (effectiveSubjectIds.length > 0) {
+          for (const effectiveSubjectId of effectiveSubjectIds) {
+            const { data: subjectRow } = await admin.from('subjects').select('id').eq('id', effectiveSubjectId).eq('school_id', target.school_id).maybeSingle();
+            if (subjectRow) {
+              await admin.rpc('replace_subject_assignment', {
+                p_school_id: target.school_id,
+                p_subject_id: effectiveSubjectId,
+                p_teacher_id: teacherId,
+                p_class_ids: classIds,
+                p_academic_year: year,
+                p_actor_user_id: caller.user.id
+              });
+            }
+          }
         }
       }
       if (role !== 'GURU MAPEL' && role !== 'WALI KELAS') {

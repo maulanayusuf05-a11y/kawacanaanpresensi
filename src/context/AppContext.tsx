@@ -3129,24 +3129,96 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   }): Promise<GeneratedAccountResult[]> => {
     const resetExisting = !!options?.resetExistingPasswords;
     const results: GeneratedAccountResult[] = [];
-    const schoolId = currentUser?.schoolId;
+    const schoolId = currentUser?.schoolId || activeWorkspace?.workspaceId;
     if (!schoolId) {
       showToast("ID Sekolah tidak valid.", "error");
       return results;
     }
 
     try {
+      // 0. Ambil data referensi & penugasan peran (assignment_role) terbaru langsung dari database untuk school_id yang sama
+      const [
+        teachersRes,
+        classesRes,
+        subjectsRes,
+        subjectTeacherScopeRes,
+        subjectClassScopeRes,
+        studentsRes,
+        schoolProfileRes,
+        profilesRes,
+      ] = await Promise.all([
+        supabase.from("teachers").select("*").eq("school_id", schoolId).order("nama"),
+        supabase.from("classes").select("*, wali:wali_kelas_teacher_id(id,nama,nip)").eq("school_id", schoolId).order("grade").order("name"),
+        supabase.from("subjects").select("*").eq("school_id", schoolId),
+        supabase.from("subject_teacher_assignments").select("subject_id,teacher_id,academic_year").eq("school_id", schoolId),
+        supabase.from("subject_class_assignments").select("subject_id,class_id,academic_year").eq("school_id", schoolId),
+        supabase.from("students").select("*, classes:class_id(id,name,grade,academic_year)").eq("school_id", schoolId).order("nama"),
+        supabase.from("school_profile").select("*").eq("school_id", schoolId).maybeSingle(),
+        supabase.from("profiles").select("*").eq("school_id", schoolId),
+      ]);
+
+      const dbTeachers = (teachersRes.data && teachersRes.data.length > 0) ? teachersRes.data.map(dbTeacher) : teachers;
+      const dbClasses: SchoolClass[] = (classesRes.data && classesRes.data.length > 0)
+        ? classesRes.data.map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            grade: c.grade,
+            academicYear: c.academic_year,
+            waliKelasTeacherId: c.wali_kelas_teacher_id || null,
+            waliKelasName: c.wali?.nama || null,
+          }))
+        : classes;
+      const dbSubjects: Subject[] = (subjectsRes.data && subjectsRes.data.length > 0)
+        ? subjectsRes.data.map((s: any) => ({
+            id: s.id,
+            name: s.name,
+            code: s.code,
+            teacherId: s.teacher_id,
+            teacherName: s.teacher_name,
+            targetClassIds: s.target_class_ids || [],
+          }))
+        : subjects;
+      const dbStudents: Student[] = (studentsRes.data && studentsRes.data.length > 0)
+        ? studentsRes.data.map((x: any) => dbStudent({ ...x, class_name: x.classes?.name || "" }))
+        : students;
+      const dbProfiles = profilesRes.data || [];
+
+      const activeAcademicYear = String(
+        schoolProfileRes.data?.tahun_pelajaran ||
+        schoolProfile.tahunPelajaran ||
+        "2026/2027"
+      ).trim() || "2026/2027";
+
+      // Pemetaan assignment Guru Mapel dari subject_teacher_assignments & subject_class_assignments
+      const teacherSubjectScope = new Map<string, string[]>();
+      const subjectClassScope = new Map<string, string[]>();
+
+      (subjectTeacherScopeRes.data || [])
+        .filter((a: any) => !a.academic_year || a.academic_year === activeAcademicYear)
+        .forEach((a: any) => {
+          const ids = teacherSubjectScope.get(a.teacher_id) || [];
+          if (!ids.includes(a.subject_id)) ids.push(a.subject_id);
+          teacherSubjectScope.set(a.teacher_id, ids);
+        });
+
+      (subjectClassScopeRes.data || [])
+        .filter((a: any) => !a.academic_year || a.academic_year === activeAcademicYear)
+        .forEach((a: any) => {
+          const ids = subjectClassScope.get(a.subject_id) || [];
+          if (!ids.includes(a.class_id)) ids.push(a.class_id);
+          subjectClassScope.set(a.subject_id, ids);
+        });
+
       // 1. Data Kepala Sekolah
-      if (schoolProfile.namaKepalaSekolah && schoolProfile.nipKepalaSekolah) {
-        const ksName = schoolProfile.namaKepalaSekolah.trim();
-        const ksUsername = sanitizeUsername(
-          schoolProfile.nipKepalaSekolah,
-          "ks",
-        );
-        const existing = users.find(
-          (u) =>
+      const ksName = (schoolProfileRes.data?.nama_kepala_sekolah || schoolProfile.namaKepalaSekolah || "").trim();
+      const ksNip = (schoolProfileRes.data?.nip_kepala_sekolah || schoolProfile.nipKepalaSekolah || "").trim();
+
+      if (ksName && ksNip) {
+        const ksUsername = sanitizeUsername(ksNip, "ks");
+        const existing = dbProfiles.find(
+          (u: any) =>
             u.role === "KEPALA SEKOLAH" ||
-            u.username.toLowerCase() === ksUsername.toLowerCase(),
+            (u.username && u.username.toLowerCase() === ksUsername.toLowerCase())
         );
 
         if (!existing) {
@@ -3185,81 +3257,119 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             });
             results.push({
               id: existing.id,
-              name: existing.name,
-              username: existing.username,
+              name: existing.name || ksName,
+              username: existing.username || ksUsername,
               password: newPassword,
-              role: existing.role,
+              role: existing.role || "KEPALA SEKOLAH",
               category: "KEPALA SEKOLAH",
               status: "UPDATED",
             });
           } catch (err: any) {
             results.push({
               id: existing.id,
-              name: existing.name,
-              username: existing.username,
-              role: existing.role,
+              name: existing.name || ksName,
+              username: existing.username || ksUsername,
+              role: existing.role || "KEPALA SEKOLAH",
               category: "KEPALA SEKOLAH",
               status: "SKIPPED",
               error: err?.message,
             });
           }
+        } else {
+          results.push({
+            id: existing.id,
+            name: existing.name || ksName,
+            username: existing.username || ksUsername,
+            password: "Tersimpan",
+            role: existing.role || "KEPALA SEKOLAH",
+            category: "KEPALA SEKOLAH",
+            status: "ACTIVE" as any,
+          });
         }
       }
 
-      // 2. Data Guru & Tenaga Kependidikan
-      for (const teacher of teachers) {
-        const teacherName = teacher.nama.trim();
+      // 2. Data Guru & Tenaga Kependidikan (diambil dari assignment_role: Wali Kelas & Guru Mapel)
+      for (const teacher of dbTeachers) {
+        const teacherName = (teacher.nama || "").trim();
         const teacherUsername = sanitizeUsername(
           teacher.nip && teacher.nip !== "-" ? teacher.nip : teacher.nama,
           "guru",
         );
-        const existing = users.find(
-          (u) =>
-            u.username.toLowerCase() === teacherUsername.toLowerCase() ||
-            (u.name.trim().toLowerCase() === teacherName.toLowerCase() &&
+
+        // Cari akun profil yang sudah ada
+        const existing = dbProfiles.find(
+          (u: any) =>
+            (u.teacher_id && u.teacher_id === teacher.id) ||
+            (u.username && u.username.toLowerCase() === teacherUsername.toLowerCase()) ||
+            (u.name && u.name.trim().toLowerCase() === teacherName.toLowerCase() &&
               (u.role === "WALI KELAS" || u.role === "GURU MAPEL")),
         );
 
-        // Cari assignment Wali Kelas
-        const linkedHomeroom = classes.find(
+        // Cari assignment Wali Kelas di database classes
+        const linkedHomeroom = dbClasses.find(
           (c) =>
             c.waliKelasTeacherId === teacher.id ||
             (c.waliKelasName &&
               c.waliKelasName.trim().toLowerCase() === teacherName.toLowerCase()),
         );
 
-        // Cari assignment Guru Mapel
-        const teacherSubjects = subjects.filter(
+        // Cari assignment Guru Mapel dari tabel penugasan database
+        const assignedSubjectIds = teacherSubjectScope.get(teacher.id) || [];
+        const directSubjects = dbSubjects.filter(
           (s) =>
             s.teacherId === teacher.id ||
             (s.teacherName && s.teacherName.trim().toLowerCase() === teacherName.toLowerCase()),
         );
+        const combinedSubjectIds = Array.from(
+          new Set([...assignedSubjectIds, ...directSubjects.map((s) => s.id)]),
+        );
+        const teacherSubjects = combinedSubjectIds
+          .map((sid) => dbSubjects.find((s) => s.id === sid))
+          .filter(Boolean) as Subject[];
 
-        const isWali = (teacher.tugasUtama === "Wali Kelas" || teacher.tugas_utama === "Wali Kelas" || !!linkedHomeroom);
-        const isMapel = (teacher.tugasUtama === "Guru Mapel" || teacher.tugas_utama === "Guru Mapel" || teacherSubjects.length > 0);
+        const isWali = !!linkedHomeroom || teacher.tugasUtama === "Wali Kelas" || (teacher as any).tugas_utama === "Wali Kelas";
+        const isMapel = teacherSubjects.length > 0 || teacher.tugasUtama === "Guru Mapel" || (teacher as any).tugas_utama === "Guru Mapel";
 
-        let role: UserRole = isWali ? "WALI KELAS" : (isMapel ? "GURU MAPEL" : "GURU MAPEL");
-        if (existing && (existing.role === "WALI KELAS" || existing.role === "GURU MAPEL")) {
-          role = existing.role;
+        let role: UserRole = "GURU MAPEL";
+        if (isWali && !isMapel) {
+          role = "WALI KELAS";
+        } else if (isMapel && !isWali) {
+          role = "GURU MAPEL";
+        } else if (isWali && isMapel) {
+          role = (teacher.tugasUtama === "Wali Kelas" || (teacher as any).tugas_utama === "Wali Kelas") ? "WALI KELAS" : "GURU MAPEL";
+        } else {
+          role = (teacher.tugasUtama === "Wali Kelas" || (teacher as any).tugas_utama === "Wali Kelas") ? "WALI KELAS" : "GURU MAPEL";
         }
 
         let classIds: string[] = [];
         let assignmentDescription = "";
 
-        if (isWali && linkedHomeroom) {
-          classIds = [linkedHomeroom.id];
-          assignmentDescription = `Wali Kelas ${linkedHomeroom.name}`;
-        } else if (teacherSubjects.length > 0) {
-          const mapelNames = teacherSubjects.map(s => s.name).join(", ");
-          const targetClassIds: string[] = Array.from(new Set(teacherSubjects.flatMap(s => (s.targetClassIds || []) as string[])));
+        if (role === "WALI KELAS") {
+          if (linkedHomeroom) {
+            classIds = [linkedHomeroom.id];
+            assignmentDescription = `Wali Kelas ${linkedHomeroom.name}`;
+          } else {
+            assignmentDescription = "Wali Kelas";
+          }
+        } else if (role === "GURU MAPEL") {
+          const mapelNames = teacherSubjects.map((s) => s.name).join(", ") || teacher.tugasUtama || (teacher as any).tugas_utama || "Guru Mapel";
+          const targetClassIds: string[] = Array.from(
+            new Set(
+              teacherSubjects.flatMap((s) => {
+                const fromScope = subjectClassScope.get(s.id) || [];
+                const fromDirect = (s.targetClassIds || []) as string[];
+                return [...fromScope, ...fromDirect];
+              }),
+            ),
+          );
           classIds = targetClassIds;
           const targetClassNames = targetClassIds
-            .map(cid => classes.find(c => c.id === cid)?.name || "")
+            .map((cid) => dbClasses.find((c) => c.id === cid)?.name || "")
             .filter(Boolean);
           const classSuffix = targetClassNames.length > 0 ? ` (${targetClassNames.join(", ")})` : "";
           assignmentDescription = `${mapelNames}${classSuffix}`;
         } else {
-          assignmentDescription = teacher.tugasUtama || teacher.tugas_utama || "Tenaga Pendidik";
+          assignmentDescription = teacher.tugasUtama || (teacher as any).tugas_utama || "Tenaga Pendidik";
         }
 
         if (!existing) {
@@ -3274,23 +3384,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               subjectId: teacherSubjects[0]?.id || null,
               subjectName: teacherSubjects[0]?.name || null,
             });
-            const createdTeacherId = res?.teacherId;
-            if (createdTeacherId && linkedHomeroom) {
+            const createdTeacherId = res?.teacherId || teacher.id;
+            if (createdTeacherId && linkedHomeroom && role === "WALI KELAS") {
               await supabase
                 .from("classes")
                 .update({ wali_kelas_teacher_id: createdTeacherId })
                 .eq("id", linkedHomeroom.id);
-              setClasses((prev) =>
-                prev.map((c) =>
-                  c.id === linkedHomeroom.id
-                    ? {
-                        ...c,
-                        waliKelasTeacherId: createdTeacherId,
-                        waliKelasName: teacherName,
-                      }
-                    : c,
-                ),
-              );
             }
             results.push({
               name: teacherName,
@@ -3319,22 +3418,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               userId: existing.id,
               password: newPassword,
             });
+            await apiUser("update", {
+              userId: existing.id,
+              name: teacherName,
+              username: existing.username,
+              role,
+              classIds,
+              subjectId: teacherSubjects[0]?.id || null,
+            }).catch(() => {});
             results.push({
               id: existing.id,
-              name: existing.name,
+              name: existing.name || teacherName,
               username: existing.username,
               password: newPassword,
-              role: existing.role || role,
+              role: role || existing.role,
               category: "GURU",
-              className: assignmentDescription || existing.classNames?.join(", "),
+              className: assignmentDescription,
               status: "UPDATED",
             });
           } catch (err: any) {
             results.push({
               id: existing.id,
-              name: existing.name,
+              name: existing.name || teacherName,
               username: existing.username,
-              role: existing.role || role,
+              role: role || existing.role,
               category: "GURU",
               className: assignmentDescription,
               status: "SKIPPED",
@@ -3342,29 +3449,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             });
           }
         } else {
-          // If not resetting passwords, still list existing account in results for visibility
+          // Sinkronkan penugasan kelas dan role jika berubah di database
+          await apiUser("update", {
+            userId: existing.id,
+            name: teacherName,
+            username: existing.username,
+            role,
+            classIds,
+            subjectId: teacherSubjects[0]?.id || null,
+          }).catch(() => {});
           results.push({
             id: existing.id,
-            name: existing.name,
+            name: existing.name || teacherName,
             username: existing.username,
-            password: existing.password || "Tersimpan",
-            role: existing.role || role,
+            password: "Tersimpan",
+            role: role || existing.role,
             category: "GURU",
-            className: assignmentDescription || existing.classNames?.join(", "),
+            className: assignmentDescription,
             status: "ACTIVE" as any,
           });
         }
       }
 
-      // 3. Data Siswa
-      for (const student of students) {
-        const studentName = student.nama.trim();
+      // 3. Data Siswa (diambil dari database students dengan school_id yang sama)
+      for (const student of dbStudents) {
+        const studentName = (student.nama || "").trim();
         const studentUsername = sanitizeUsername(student.nisn, "sis");
-        const existing = users.find(
-          (u) =>
+        const studentClass = dbClasses.find(
+          (c) => c.id === student.classId || c.id === (student as any).class_id,
+        );
+        const studentClassName = studentClass?.name || student.className || "-";
+
+        const existing = dbProfiles.find(
+          (u: any) =>
             u.role === "SISWA" &&
-            (u.studentId === student.id ||
-              u.username.toLowerCase() === studentUsername.toLowerCase()),
+            ((u.student_id && u.student_id === student.id) ||
+              (u.username && u.username.toLowerCase() === studentUsername.toLowerCase())),
         );
 
         if (!existing) {
@@ -3383,7 +3503,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               password,
               role: "SISWA",
               category: "SISWA",
-              className: student.className,
+              className: studentClassName,
               status: "CREATED",
             });
           } catch (err: any) {
@@ -3392,7 +3512,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               username: studentUsername,
               role: "SISWA",
               category: "SISWA",
-              className: student.className,
+              className: studentClassName,
               status: "SKIPPED",
               error: err?.message,
             });
@@ -3404,53 +3524,86 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               userId: existing.id,
               password: newPassword,
             });
+            await apiUser("update", {
+              userId: existing.id,
+              name: studentName,
+              username: existing.username,
+              role: "SISWA",
+              studentId: student.id,
+            }).catch(() => {});
             results.push({
               id: existing.id,
-              name: existing.name,
+              name: existing.name || studentName,
               username: existing.username,
               password: newPassword,
               role: "SISWA",
               category: "SISWA",
-              className: student.className,
+              className: studentClassName,
               status: "UPDATED",
             });
           } catch (err: any) {
             results.push({
               id: existing.id,
-              name: existing.name,
+              name: existing.name || studentName,
               username: existing.username,
               role: "SISWA",
               category: "SISWA",
+              className: studentClassName,
               status: "SKIPPED",
               error: err?.message,
             });
           }
+        } else {
+          // Sinkronkan student_id jika belum terhubung
+          if (!existing.student_id && student.id) {
+            await apiUser("update", {
+              userId: existing.id,
+              name: studentName,
+              username: existing.username,
+              role: "SISWA",
+              studentId: student.id,
+            }).catch(() => {});
+          }
+          results.push({
+            id: existing.id,
+            name: existing.name || studentName,
+            username: existing.username,
+            password: "Tersimpan",
+            role: "SISWA",
+            category: "SISWA",
+            className: studentClassName,
+            status: "ACTIVE" as any,
+          });
         }
       }
 
-      // Refresh users state dari assignment otoritatif:
-      // Wali Kelas -> classes.wali_kelas_teacher_id
-      // Guru Mapel -> subject_teacher_assignments + subject_class_assignments
-      const { data: allProfiles, error: allProfilesError } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("school_id", schoolId)
-        .order("name");
-      if (allProfilesError) throw allProfilesError;
-      const hydratedUsers = await Promise.all(
-        (allProfiles || []).map((p: any) => hydrateUser(p)),
-      );
-      setUsers(hydratedUsers);
+      // Refresh seluruh state aplikasi dari database secara menyeluruh
+      if (schoolId && currentUser) {
+        await loadDataForSchool(schoolId, currentUser, currentUser.role);
+      } else {
+        const { data: allProfiles } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("school_id", schoolId)
+          .order("name");
+        if (allProfiles) {
+          const hydratedUsers = await Promise.all(
+            allProfiles.map((p: any) => hydrateUser(p)),
+          );
+          setUsers(hydratedUsers);
+        }
+      }
 
       const createdCount = results.filter((r) => r.status === "CREATED").length;
       const updatedCount = results.filter((r) => r.status === "UPDATED").length;
       if (createdCount > 0 || updatedCount > 0) {
         showToast(
-          `Berhasil men-generate ${createdCount} akun baru dan mengacak ${updatedCount} password akun.`,
+          `Berhasil men-generate ${createdCount} akun baru dan menyinkronkan ${updatedCount} akun dengan data assignment database.`,
+          "success",
         );
       } else {
         showToast(
-          "Semua data referensi (Guru & Siswa) sudah memiliki akun pengguna.",
+          "Semua data referensi (Guru & Siswa) telah tersinkron dengan akun database.",
           "info",
         );
       }
