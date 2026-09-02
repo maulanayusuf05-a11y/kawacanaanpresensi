@@ -88,8 +88,10 @@ export default async function handler(req: any, res: any) {
         if ((classes || []).length !== classIds.length) return json(res, 400, { error: 'Ada kelas yang bukan milik sekolah pengguna.' });
       }
 
-      const { data: duplicate } = await admin.from('profiles').select('id').eq('username', username).maybeSingle();
-      if (duplicate) return json(res, 409, { error: 'Username sudah digunakan.' });
+      const { data: duplicate } = await admin.from('profiles').select('id,school_id').eq('username', username).maybeSingle();
+      if (duplicate && duplicate.school_id !== schoolId) {
+        return json(res, 409, { error: 'Username sudah digunakan oleh pengguna di sekolah lain.' });
+      }
 
       const authEmail = email || `${username}@login.edushift.local`;
       let authUserId: string | null = null;
@@ -101,12 +103,18 @@ export default async function handler(req: any, res: any) {
       });
 
       if (authErr || !authData?.user) {
-        if (authErr && (authErr.message?.toLowerCase().includes('already') || authErr.message?.toLowerCase().includes('exists'))) {
-          const { data: userList } = await admin.auth.admin.listUsers();
-          const existingAuthUser = (userList?.users || []).find((u) => u.email === authEmail);
-          if (existingAuthUser) {
-            authUserId = existingAuthUser.id;
-            await admin.auth.admin.updateUserById(existingAuthUser.id, {
+        if (authErr && (authErr.message?.toLowerCase().includes('already') || authErr.message?.toLowerCase().includes('exists') || duplicate)) {
+          if (duplicate) {
+            authUserId = duplicate.id;
+          } else {
+            const { data: userList } = await admin.auth.admin.listUsers();
+            const existingAuthUser = (userList?.users || []).find((u) => u.email === authEmail);
+            if (existingAuthUser) {
+              authUserId = existingAuthUser.id;
+            }
+          }
+          if (authUserId) {
+            await admin.auth.admin.updateUserById(authUserId, {
               password,
               user_metadata: { name, username, role, school_id: schoolId },
             });
@@ -182,7 +190,17 @@ export default async function handler(req: any, res: any) {
 
       if (teacherId && role === 'WALI KELAS') {
         const year = await getAcademicYear(schoolId);
-        await admin.rpc('assign_homeroom_teacher',{p_school_id:schoolId,p_teacher_id:teacherId,p_class_id:classIds[0]||null,p_academic_year:year,p_actor_user_id:caller.user.id}).catch((e: any) => console.warn('[admin-users] assign_homeroom_teacher warning:', e?.message));
+        try {
+          await admin.rpc('assign_homeroom_teacher', {
+            p_school_id: schoolId,
+            p_teacher_id: teacherId,
+            p_class_id: classIds[0] || null,
+            p_academic_year: year,
+            p_actor_user_id: caller.user.id,
+          });
+        } catch (e: any) {
+          console.warn('[admin-users] assign_homeroom_teacher warning:', e?.message);
+        }
       }
       if (teacherId && role === 'GURU MAPEL' && (classIds.length || subjectId)) {
         const year = await getAcademicYear(schoolId);
@@ -197,14 +215,18 @@ export default async function handler(req: any, res: any) {
           for (const effectiveSubjectId of effectiveSubjectIds) {
             const { data: subjectRow } = await admin.from('subjects').select('id').eq('id', effectiveSubjectId).eq('school_id', schoolId).maybeSingle();
             if (subjectRow) {
-              await admin.rpc('replace_subject_assignment', {
-                p_school_id: schoolId,
-                p_subject_id: effectiveSubjectId,
-                p_teacher_id: teacherId,
-                p_class_ids: classIds,
-                p_academic_year: year,
-                p_actor_user_id: caller.user.id
-              }).catch((e: any) => console.warn('[admin-users] replace_subject_assignment warning:', e?.message));
+              try {
+                await admin.rpc('replace_subject_assignment', {
+                  p_school_id: schoolId,
+                  p_subject_id: effectiveSubjectId,
+                  p_teacher_id: teacherId,
+                  p_class_ids: classIds,
+                  p_academic_year: year,
+                  p_actor_user_id: caller.user.id
+                });
+              } catch (e: any) {
+                console.warn('[admin-users] replace_subject_assignment warning:', e?.message);
+              }
             }
           }
         }

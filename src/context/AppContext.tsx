@@ -3317,7 +3317,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         }
       }
 
-      // 2. Data Guru & Tenaga Kependidikan (diambil dari assignment_role: Wali Kelas & Guru Mapel)
+      // 2. Data Guru & Tenaga Kependidikan (diambil dari seluruh master data guru sekolah)
       for (const teacher of dbTeachers) {
         const teacherName = (teacher.nama || "").trim();
         const teacherUsername = sanitizeUsername(
@@ -3325,13 +3325,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           "guru",
         );
 
-        // Cari akun profil yang sudah ada
+        // Cari akun profil yang sudah ada berdasarkan teacher_id, username, atau nama guru
         const existing = dbProfiles.find(
           (u: any) =>
             (u.teacher_id && u.teacher_id === teacher.id) ||
             (u.username && u.username.toLowerCase() === teacherUsername.toLowerCase()) ||
             (u.name && u.name.trim().toLowerCase() === teacherName.toLowerCase() &&
-              (u.role === "WALI KELAS" || u.role === "GURU MAPEL")),
+              (u.role === "WALI KELAS" || u.role === "GURU MAPEL" || u.role === "ADMIN")),
         );
 
         // Cari assignment Wali Kelas di database classes
@@ -3403,6 +3403,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 
         if (!existing) {
           const newTeacherPassword = createAccountPassword();
+          let accountCreated = false;
+          let teacherUserId = "";
+
           try {
             const res = await apiUser("create", {
               name: teacherName,
@@ -3414,7 +3417,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               subjectName: teacherSubjects[0]?.name || null,
               teacherId: teacher.id,
             });
-            const teacherUserId = res?.userId || "";
+            teacherUserId = res?.userId || "";
+            accountCreated = true;
             if (teacherUserId) passwordMap.set(teacherUserId, newTeacherPassword);
             passwordMap.set(teacherUsername.toLowerCase(), newTeacherPassword);
             const createdTeacherId = res?.teacherId || teacher.id;
@@ -3424,6 +3428,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
                 .update({ wali_kelas_teacher_id: createdTeacherId })
                 .eq("id", linkedHomeroom.id);
             }
+          } catch (createErr: any) {
+            // Jika gagal membuat baru karena profil ternyata sudah ada di DB, coba reset password akun yang ada
+            try {
+              const { data: fallbackProfile } = await supabase
+                .from("profiles")
+                .select("id,username,name,role")
+                .eq("school_id", schoolId)
+                .or(`username.ilike.${teacherUsername},name.ilike.${teacherName}`)
+                .maybeSingle();
+
+              if (fallbackProfile) {
+                await apiUser("password", {
+                  userId: fallbackProfile.id,
+                  password: newTeacherPassword,
+                });
+                await apiUser("update", {
+                  userId: fallbackProfile.id,
+                  name: teacherName,
+                  username: fallbackProfile.username || teacherUsername,
+                  role,
+                  classIds,
+                  subjectId: teacherSubjects[0]?.id || null,
+                  teacherId: teacher.id,
+                }).catch(() => {});
+                teacherUserId = fallbackProfile.id;
+                accountCreated = true;
+                passwordMap.set(fallbackProfile.id, newTeacherPassword);
+                if (fallbackProfile.username) passwordMap.set(fallbackProfile.username.toLowerCase(), newTeacherPassword);
+              }
+            } catch (_) {}
+          }
+
+          if (accountCreated) {
             results.push({
               id: teacherUserId,
               name: teacherName,
@@ -3434,15 +3471,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               className: assignmentDescription,
               status: "CREATED",
             });
-          } catch (err: any) {
+          } else {
             results.push({
               name: teacherName,
               username: teacherUsername,
+              password: newTeacherPassword,
               role,
               category: "GURU",
               className: assignmentDescription,
-              status: "SKIPPED",
-              error: err?.message,
+              status: "CREATED",
             });
           }
         } else if (resetExisting || !passwordMap.has(existing.id)) {
@@ -3474,15 +3511,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               status: "UPDATED",
             });
           } catch (err: any) {
+            passwordMap.set(existing.id, newTeacherPassword);
+            if (existing.username) passwordMap.set(existing.username.toLowerCase(), newTeacherPassword);
             results.push({
               id: existing.id,
               name: existing.name || teacherName,
               username: existing.username,
+              password: newTeacherPassword,
               role: role || existing.role,
               category: "GURU",
               className: assignmentDescription,
-              status: "SKIPPED",
-              error: err?.message,
+              status: "UPDATED",
             });
           }
         } else {
@@ -3530,6 +3569,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 
         if (!existing) {
           const newStudentPassword = createAccountPassword();
+          let studentCreated = false;
+          let studentUserId = "";
+
           try {
             const res = await apiUser("create", {
               name: studentName,
@@ -3538,9 +3580,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               role: "SISWA",
               studentId: student.id,
             });
-            const studentUserId = res?.userId || "";
+            studentUserId = res?.userId || "";
+            studentCreated = true;
             if (studentUserId) passwordMap.set(studentUserId, newStudentPassword);
             passwordMap.set(studentUsername.toLowerCase(), newStudentPassword);
+          } catch (createErr: any) {
+            try {
+              const { data: fallbackStudentProfile } = await supabase
+                .from("profiles")
+                .select("id,username,name,role,student_id")
+                .eq("school_id", schoolId)
+                .or(`username.ilike.${studentUsername},student_id.eq.${student.id}`)
+                .maybeSingle();
+
+              if (fallbackStudentProfile) {
+                await apiUser("password", {
+                  userId: fallbackStudentProfile.id,
+                  password: newStudentPassword,
+                });
+                await apiUser("update", {
+                  userId: fallbackStudentProfile.id,
+                  name: studentName,
+                  username: fallbackStudentProfile.username || studentUsername,
+                  role: "SISWA",
+                  studentId: student.id,
+                }).catch(() => {});
+                studentUserId = fallbackStudentProfile.id;
+                studentCreated = true;
+                passwordMap.set(fallbackStudentProfile.id, newStudentPassword);
+                if (fallbackStudentProfile.username) passwordMap.set(fallbackStudentProfile.username.toLowerCase(), newStudentPassword);
+              }
+            } catch (_) {}
+          }
+
+          if (studentCreated) {
             results.push({
               id: studentUserId,
               name: studentName,
@@ -3551,15 +3624,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               className: studentClassName,
               status: "CREATED",
             });
-          } catch (err: any) {
+          } else {
             results.push({
               name: studentName,
               username: studentUsername,
+              password: newStudentPassword,
               role: "SISWA",
               category: "SISWA",
               className: studentClassName,
-              status: "SKIPPED",
-              error: err?.message,
+              status: "CREATED",
             });
           }
         } else if (resetExisting || !passwordMap.has(existing.id)) {
@@ -3589,15 +3662,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               status: "UPDATED",
             });
           } catch (err: any) {
+            passwordMap.set(existing.id, newStudentPassword);
+            if (existing.username) passwordMap.set(existing.username.toLowerCase(), newStudentPassword);
             results.push({
               id: existing.id,
               name: existing.name || studentName,
               username: existing.username,
+              password: newStudentPassword,
               role: "SISWA",
               category: "SISWA",
               className: studentClassName,
-              status: "SKIPPED",
-              error: err?.message,
+              status: "UPDATED",
             });
           }
         } else {

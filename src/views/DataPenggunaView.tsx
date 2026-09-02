@@ -686,7 +686,7 @@ export const DataPenggunaView: React.FC = () => {
   // Helper to map UserAccount[] to GeneratedAccountResult[] for PDF export
   const mapUsersToExportAccounts = (userList: UserAccount[]): GeneratedAccountResult[] => {
     let cachedPasswordMap: Record<string, string> = {};
-    const schoolId = currentUser?.schoolId || activeWorkspace?.workspaceId;
+    const schoolId = currentUser?.schoolId;
     if (schoolId) {
       try {
         const raw = localStorage.getItem(`kawacanaan_account_passwords_${schoolId}`);
