@@ -685,6 +685,15 @@ export const DataPenggunaView: React.FC = () => {
 
   // Helper to map UserAccount[] to GeneratedAccountResult[] for PDF export
   const mapUsersToExportAccounts = (userList: UserAccount[]): GeneratedAccountResult[] => {
+    let cachedPasswordMap: Record<string, string> = {};
+    const schoolId = currentUser?.schoolId || activeWorkspace?.workspaceId;
+    if (schoolId) {
+      try {
+        const raw = localStorage.getItem(`kawacanaan_account_passwords_${schoolId}`);
+        if (raw) cachedPasswordMap = JSON.parse(raw);
+      } catch (_) {}
+    }
+
     return userList.map((u) => {
       const details = getUserAssignmentDetails(u);
       let category: 'ADMIN' | 'GURU' | 'SISWA' | 'KEPALA SEKOLAH' = 'ADMIN';
@@ -699,7 +708,7 @@ export const DataPenggunaView: React.FC = () => {
         category = 'ADMIN';
       }
 
-      let pwdDisplay = u.password || '';
+      let pwdDisplay = u.password || cachedPasswordMap[u.id] || (u.username ? cachedPasswordMap[u.username.toLowerCase()] : '') || '';
       if (isGoogleUser(u)) {
         pwdDisplay = 'Google SSO';
       }
@@ -1310,9 +1319,23 @@ export const DataPenggunaView: React.FC = () => {
                             </svg>
                             <span className="font-extrabold text-[11px] text-slate-800 tracking-tight">Google SSO</span>
                           </span>
+                        ) : u.password ? (
+                          <div className="flex items-center justify-center gap-1.5">
+                            <span className="font-mono font-bold bg-amber-50 text-amber-950 border border-amber-200/80 px-2 py-0.5 rounded text-xs select-all shadow-2xs">
+                              {u.password}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyPassword(u.password || '', idx)}
+                              className="p-1 text-slate-400 hover:text-blue-600 rounded transition-colors cursor-pointer"
+                              title="Salin Password"
+                            >
+                              {copiedIndex === idx ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
+                            </button>
+                          </div>
                         ) : (
                           <span
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50/90 border border-emerald-200/80 text-emerald-900 text-xs font-bold shadow-2xs hover:bg-emerald-100/80 transition-all select-none"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50/90 border border-emerald-200/80 text-emerald-900 text-xs font-bold shadow-2xs select-none"
                             title="Akun menggunakan password sistem yang terenkripsi"
                           >
                             <Lock size={12} className="text-emerald-700" />

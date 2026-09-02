@@ -1086,6 +1086,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     // Master teachers state directly from teachers table
     setTeachers(baseTeachers);
 
+    let cachedPasswordMap: Record<string, string> = {};
+    try {
+      const rawPw = localStorage.getItem(`kawacanaan_account_passwords_${schoolId}`);
+      if (rawPw) cachedPasswordMap = JSON.parse(rawPw);
+    } catch (_) {}
+
     const hydratedUsers = (allProfiles.data || []).map((p: any) => {
       const u = emptyUser(p);
       const isWali = u.teacherId && classList.some((c: any) => c.waliKelasTeacherId === u.teacherId && (!c.academicYear || c.academicYear === activeAcademicYear));
@@ -1113,8 +1119,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         });
         ids = [...unique];
       }
+
+      const cachedPwd = cachedPasswordMap[u.id] || (u.username ? cachedPasswordMap[u.username.toLowerCase()] : undefined);
+
       return {
         ...u,
+        password: u.password || cachedPwd || undefined,
         role: effectiveRole,
         classIds: ids,
         classNames: ids
@@ -3234,14 +3244,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         if (!existing) {
           const newKsPassword = createAccountPassword();
           try {
-            await apiUser("create", {
+            const res = await apiUser("create", {
               name: ksName,
               username: ksUsername,
               password: newKsPassword,
               role: "KEPALA SEKOLAH",
             });
+            const ksUserId = res?.userId || "";
+            if (ksUserId) passwordMap.set(ksUserId, newKsPassword);
             passwordMap.set(ksUsername.toLowerCase(), newKsPassword);
             results.push({
+              id: ksUserId,
               name: ksName,
               username: ksUsername,
               password: newKsPassword,
@@ -3259,7 +3272,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               error: err?.message,
             });
           }
-        } else if (resetExisting) {
+        } else if (resetExisting || !passwordMap.has(existing.id)) {
           const newKsPassword = createAccountPassword();
           try {
             await apiUser("password", {
@@ -3289,11 +3302,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             });
           }
         } else {
+          const existingPwd = passwordMap.get(existing.id) || passwordMap.get((existing.username || "").toLowerCase()) || createAccountPassword();
+          passwordMap.set(existing.id, existingPwd);
+          if (existing.username) passwordMap.set(existing.username.toLowerCase(), existingPwd);
           results.push({
             id: existing.id,
             name: existing.name || ksName,
             username: existing.username || ksUsername,
-            password: "(Tetap Aktif)",
+            password: existingPwd,
             role: existing.role || "KEPALA SEKOLAH",
             category: "KEPALA SEKOLAH",
             status: "ACTIVE" as any,
@@ -3396,7 +3412,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               classIds,
               subjectId: teacherSubjects[0]?.id || null,
               subjectName: teacherSubjects[0]?.name || null,
+              teacherId: teacher.id,
             });
+            const teacherUserId = res?.userId || "";
+            if (teacherUserId) passwordMap.set(teacherUserId, newTeacherPassword);
             passwordMap.set(teacherUsername.toLowerCase(), newTeacherPassword);
             const createdTeacherId = res?.teacherId || teacher.id;
             if (createdTeacherId && linkedHomeroom && role === "WALI KELAS") {
@@ -3406,6 +3425,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
                 .eq("id", linkedHomeroom.id);
             }
             results.push({
+              id: teacherUserId,
               name: teacherName,
               username: teacherUsername,
               password: newTeacherPassword,
@@ -3425,7 +3445,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               error: err?.message,
             });
           }
-        } else if (resetExisting) {
+        } else if (resetExisting || !passwordMap.has(existing.id)) {
           const newTeacherPassword = createAccountPassword();
           try {
             await apiUser("password", {
@@ -3439,6 +3459,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               role,
               classIds,
               subjectId: teacherSubjects[0]?.id || null,
+              teacherId: teacher.id,
             }).catch(() => {});
             passwordMap.set(existing.id, newTeacherPassword);
             if (existing.username) passwordMap.set(existing.username.toLowerCase(), newTeacherPassword);
@@ -3473,12 +3494,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             role,
             classIds,
             subjectId: teacherSubjects[0]?.id || null,
+            teacherId: teacher.id,
           }).catch(() => {});
+          const existingPwd = passwordMap.get(existing.id) || passwordMap.get((existing.username || "").toLowerCase()) || createAccountPassword();
+          passwordMap.set(existing.id, existingPwd);
+          if (existing.username) passwordMap.set(existing.username.toLowerCase(), existingPwd);
           results.push({
             id: existing.id,
             name: existing.name || teacherName,
             username: existing.username,
-            password: "(Tetap Aktif)",
+            password: existingPwd,
             role: role || existing.role,
             category: "GURU",
             className: assignmentDescription,
@@ -3506,15 +3531,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         if (!existing) {
           const newStudentPassword = createAccountPassword();
           try {
-            await apiUser("create", {
+            const res = await apiUser("create", {
               name: studentName,
               username: studentUsername,
               password: newStudentPassword,
               role: "SISWA",
               studentId: student.id,
             });
+            const studentUserId = res?.userId || "";
+            if (studentUserId) passwordMap.set(studentUserId, newStudentPassword);
             passwordMap.set(studentUsername.toLowerCase(), newStudentPassword);
             results.push({
+              id: studentUserId,
               name: studentName,
               username: studentUsername,
               password: newStudentPassword,
@@ -3534,7 +3562,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               error: err?.message,
             });
           }
-        } else if (resetExisting) {
+        } else if (resetExisting || !passwordMap.has(existing.id)) {
           const newStudentPassword = createAccountPassword();
           try {
             await apiUser("password", {
@@ -3583,17 +3611,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               studentId: student.id,
             }).catch(() => {});
           }
+          const existingPwd = passwordMap.get(existing.id) || passwordMap.get((existing.username || "").toLowerCase()) || createAccountPassword();
+          passwordMap.set(existing.id, existingPwd);
+          if (existing.username) passwordMap.set(existing.username.toLowerCase(), existingPwd);
           results.push({
             id: existing.id,
             name: existing.name || studentName,
             username: existing.username,
-            password: "(Tetap Aktif)",
+            password: existingPwd,
             role: "SISWA",
             category: "SISWA",
             className: studentClassName,
             status: "ACTIVE" as any,
           });
         }
+      }
+
+      // Persist all generated passwords into localStorage for this school
+      if (passwordMap.size > 0 && schoolId) {
+        try {
+          const existingRaw = localStorage.getItem(`kawacanaan_account_passwords_${schoolId}`);
+          const mergedMap = existingRaw ? { ...JSON.parse(existingRaw) } : {};
+          passwordMap.forEach((val, key) => {
+            mergedMap[key] = val;
+          });
+          localStorage.setItem(`kawacanaan_account_passwords_${schoolId}`, JSON.stringify(mergedMap));
+        } catch (_) {}
       }
 
       // Refresh seluruh state aplikasi dari database secara menyeluruh
@@ -3619,7 +3662,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           prevUsers.map((u) => {
             const pwd =
               passwordMap.get(u.id) ||
-              (u.username ? passwordMap.get(u.username.toLowerCase()) : undefined);
+              (u.username ? passwordMap.get(u.username.toLowerCase()) : undefined) ||
+              u.password;
             return pwd ? { ...u, password: pwd } : u;
           }),
         );
@@ -3648,6 +3692,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const resetUserToDefaultPassword = async (user: UserAccount): Promise<string> => {
     const newRandomPass = generateRandomPassword(8);
     await updateUserPassword(user.id, newRandomPass);
+    const schoolId = currentUser?.schoolId || activeWorkspace?.workspaceId;
+    if (schoolId) {
+      try {
+        const existingRaw = localStorage.getItem(`kawacanaan_account_passwords_${schoolId}`);
+        const mergedMap = existingRaw ? { ...JSON.parse(existingRaw) } : {};
+        mergedMap[user.id] = newRandomPass;
+        if (user.username) mergedMap[user.username.toLowerCase()] = newRandomPass;
+        localStorage.setItem(`kawacanaan_account_passwords_${schoolId}`, JSON.stringify(mergedMap));
+      } catch (_) {}
+    }
     setUsers((prevUsers) =>
       prevUsers.map((u) => (u.id === user.id ? { ...u, password: newRandomPass } : u)),
     );
@@ -3660,6 +3714,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const updateUserPassword = async (id: string, p: string) => {
     try {
       await apiUser("password", { userId: id, password: p });
+      const schoolId = currentUser?.schoolId || activeWorkspace?.workspaceId;
+      if (schoolId) {
+        try {
+          const existingRaw = localStorage.getItem(`kawacanaan_account_passwords_${schoolId}`);
+          const mergedMap = existingRaw ? { ...JSON.parse(existingRaw) } : {};
+          mergedMap[id] = p;
+          const matched = users.find((u) => u.id === id);
+          if (matched?.username) mergedMap[matched.username.toLowerCase()] = p;
+          localStorage.setItem(`kawacanaan_account_passwords_${schoolId}`, JSON.stringify(mergedMap));
+        } catch (_) {}
+      }
+      setUsers((prevUsers) =>
+        prevUsers.map((u) => (u.id === id ? { ...u, password: p } : u)),
+      );
       showToast("Password akun berhasil diperbarui");
     } catch (e: any) {
       showToast(e.message, "error");
