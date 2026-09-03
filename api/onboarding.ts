@@ -952,6 +952,28 @@ export default async function handler(req: any, res: any) {
           }
         }
 
+        // Auto-create teacher record jika belum ada di database untuk role WALI KELAS
+        if (!matchedTeacher && callerProfile.role === 'WALI KELAS') {
+          try {
+            const userNip = normNip(callerProfile.username);
+            const resolvedNip = userNip && userNip.length >= 8 ? callerProfile.username.trim() : (callerProfile.nip || null);
+            const { data: insertedT, error: insTErr } = await db.from('teachers').insert({
+              school_id: schoolId,
+              nama: callerProfile.name || callerProfile.username || 'Wali Kelas',
+              nip: resolvedNip,
+              tugas_utama: 'Wali Kelas',
+              jenis_kelamin: 'L',
+            }).select().single();
+
+            if (!insTErr && insertedT) {
+              matchedTeacher = insertedT;
+              allTeachers.push(insertedT);
+            }
+          } catch (err: any) {
+            console.warn('[onboarding] auto-create teacher error:', err?.message);
+          }
+        }
+
         // Jika guru ditemukan, lakukan auto-link ke akun profile agar relasi teacher_id terhubung
         if (matchedTeacher) {
           const updates: any = {};
@@ -974,9 +996,35 @@ export default async function handler(req: any, res: any) {
 
         // 5. Resolusi Kelas untuk WALI KELAS
         if (callerProfile.role === 'WALI KELAS') {
+          // Sinkronisasi wali_kelas_teacher_id pada seluruh kelas yang cocok
+          for (const cls of allClasses) {
+            const matchesWaliName = cls.wali_kelas_name && (
+              normalize(cls.wali_kelas_name) === normalize(callerProfile.name) ||
+              (matchedTeacher && normalize(cls.wali_kelas_name) === normalize(matchedTeacher.nama))
+            );
+            const matchesProfileClass = Array.isArray(callerProfile.class_ids) && callerProfile.class_ids.includes(cls.id);
+            const matchesSchoolProfile = sp?.kelas && normalize(cls.name) === normalize(sp.kelas);
+
+            if ((matchesWaliName || matchesProfileClass || matchesSchoolProfile) && matchedTeacher) {
+              if (cls.wali_kelas_teacher_id !== matchedTeacher.id) {
+                try {
+                  await db.from('classes').update({
+                    wali_kelas_teacher_id: matchedTeacher.id,
+                    wali_kelas_name: matchedTeacher.nama || cls.wali_kelas_name || callerProfile.name,
+                  }).eq('id', cls.id);
+                  cls.wali_kelas_teacher_id = matchedTeacher.id;
+                  cls.wali_kelas_name = matchedTeacher.nama || cls.wali_kelas_name || callerProfile.name;
+                } catch (_) {}
+              }
+            }
+          }
+
           const waliClasses = allClasses.filter((c: any) => {
             if (matchedTeacher && c.wali_kelas_teacher_id === matchedTeacher.id) return true;
             if (callerProfile.teacher_id && c.wali_kelas_teacher_id === callerProfile.teacher_id) return true;
+            if (Array.isArray(callerProfile.class_ids) && callerProfile.class_ids.includes(c.id)) return true;
+            if (c.wali_kelas_name && callerProfile.name && normalize(c.wali_kelas_name) === normalize(callerProfile.name)) return true;
+            if (matchedTeacher && c.wali_kelas_name && normalize(c.wali_kelas_name) === normalize(matchedTeacher.nama)) return true;
             return false;
           });
           resolvedClassIds = waliClasses.map((c: any) => c.id);
@@ -992,6 +1040,7 @@ export default async function handler(req: any, res: any) {
                   await db.from('classes').update({
                     wali_kelas_teacher_id: matchedTeacher.id,
                   }).eq('id', matchedSpClass.id);
+                  matchedSpClass.wali_kelas_teacher_id = matchedTeacher.id;
                 } catch (_) {}
               }
             }
