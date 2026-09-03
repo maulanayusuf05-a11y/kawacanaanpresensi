@@ -1065,7 +1065,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       const matchedTeacher = baseTeachers.find(
         (t) => t.id === assignedTeacherId,
       );
-      const waliName = matchedTeacher?.nama || c.wali_kelas_name || c.wali?.nama || null;
+      const waliName = matchedTeacher?.nama || c.wali?.nama || null;
 
       return {
         id: c.id,
@@ -3920,7 +3920,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         updatedClasses = json.classes.map((c: any) => {
           const assignedTeacherId = c.wali_kelas_teacher_id || null;
           const matchedTeacher = updatedTeachers.find((t) => t.id === assignedTeacherId);
-          const waliName = matchedTeacher?.nama || c.wali_kelas_name || c.wali?.nama || null;
+          const waliName = matchedTeacher?.nama || c.wali?.nama || null;
           return {
             id: c.id,
             name: c.name,
@@ -4504,14 +4504,61 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     if (!schoolId || !classId) return null;
 
     if (type === "DAILY") {
+      // Akun WALI KELAS lama dapat memiliki teacher_id NULL karena akun
+      // dibuat sebelum provisioning guru diperbaiki. Sinkronkan sekali melalui
+      // endpoint server yang memakai service_role dan melakukan validasi role,
+      // sekolah, NIP/nama, serta status tugas utama.
+      let teacherId = currentUser?.teacherId || null;
+      if (currentUser?.role === "WALI KELAS" && !teacherId) {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token || "";
+        if (token) {
+          const response = await fetch("/api/sync-wali-kelas", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+          });
+          const body = await response.json().catch(() => ({}));
+          if (response.ok && body.teacherId) {
+            teacherId = String(body.teacherId);
+            setCurrentUser((u) => u ? { ...u, teacherId } : u);
+          }
+        }
+      }
+
       const { data, error } = await supabase
         .from("classes")
-        .select("wali_kelas_teacher_id")
+        .select("id, wali_kelas_teacher_id, academic_year")
         .eq("id", classId)
         .eq("school_id", schoolId)
         .maybeSingle();
       if (error) throw error;
-      return data?.wali_kelas_teacher_id || null;
+      if (!data) return null;
+      if (data.wali_kelas_teacher_id) {
+        // Untuk WALI KELAS, identitas akun dan identitas wali pada kelas
+        // wajib menunjuk teacher_id yang sama. Jangan hanya mempercayai ID
+        // kelas ketika profile akun belum tersinkron.
+        if (currentUser?.role === "WALI KELAS" && (!teacherId || data.wali_kelas_teacher_id !== teacherId)) return null;
+        return data.wali_kelas_teacher_id;
+      }
+
+      if (!teacherId || currentUser?.role !== "WALI KELAS") return null;
+
+      // Kelas tanpa ID wali dapat dipulihkan secara atomic oleh RPC. RPC hanya
+      // menerima teacher_id yang sudah terhubung ke auth.uid().
+      const { data: repairedId, error: repairError } = await supabase.rpc(
+        "repair_wali_kelas_class_link",
+        {
+          p_school_id: schoolId,
+          p_class_id: classId,
+          p_teacher_id: teacherId,
+        },
+      );
+      if (!repairError && repairedId) return repairedId as string;
+
+      return null;
     }
 
     if (!subjectId || !currentUser?.teacherId) return null;

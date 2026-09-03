@@ -185,7 +185,8 @@ export default async function handler(req: any, res: any) {
           teacher = insertedTeacher;
           teacherId = insertedTeacher.id;
         }
-        await admin.from('profiles').update({ teacher_id: teacherId }).eq('id', authUserId);
+        const { error: teacherLinkError } = await admin.from('profiles').update({ teacher_id: teacherId }).eq('id', authUserId);
+        if (teacherLinkError) return json(res, 400, { error: `Gagal menghubungkan akun ke data guru: ${teacherLinkError.message}` });
       }
 
       if (teacherId && role === 'WALI KELAS') {
@@ -307,7 +308,8 @@ export default async function handler(req: any, res: any) {
             teacher = insertedTeacher;
             teacherId = insertedTeacher.id;
           }
-          await admin.from('profiles').update({ teacher_id: teacherId }).eq('id', userId);
+          const { error: teacherLinkError } = await admin.from('profiles').update({ teacher_id: teacherId }).eq('id', userId);
+          if (teacherLinkError) return json(res, 400, { error: `Gagal menghubungkan akun ke data guru: ${teacherLinkError.message}` });
         }
       }
 

@@ -954,10 +954,12 @@ export default async function handler(req: any, res: any) {
             updates.nip = matchedTeacher.nip;
           }
           if (Object.keys(updates).length > 0) {
-            try {
-              await db.from('profiles').update(updates).eq('id', callerProfile.id);
-              callerProfile = { ...callerProfile, ...updates };
-            } catch (_) {}
+            const { error: profileLinkError } = await db.from('profiles').update(updates).eq('id', callerProfile.id);
+            if (profileLinkError) {
+              console.error('[onboarding] gagal menghubungkan profile ke guru:', profileLinkError);
+              throw new Error(`Gagal menghubungkan akun ke data guru: ${profileLinkError.message}`);
+            }
+            callerProfile = { ...callerProfile, ...updates };
           }
         }
 
@@ -966,8 +968,6 @@ export default async function handler(req: any, res: any) {
           const waliClasses = allClasses.filter((c: any) => {
             if (matchedTeacher && c.wali_kelas_teacher_id === matchedTeacher.id) return true;
             if (callerProfile.teacher_id && c.wali_kelas_teacher_id === callerProfile.teacher_id) return true;
-            if (c.wali_kelas_name && callerProfile.name && normalize(c.wali_kelas_name) === normalize(callerProfile.name)) return true;
-            if (matchedTeacher && c.wali_kelas_name && normalize(c.wali_kelas_name) === normalize(matchedTeacher.nama)) return true;
             return false;
           });
           resolvedClassIds = waliClasses.map((c: any) => c.id);
@@ -982,7 +982,6 @@ export default async function handler(req: any, res: any) {
                 try {
                   await db.from('classes').update({
                     wali_kelas_teacher_id: matchedTeacher.id,
-                    wali_kelas_name: matchedTeacher.nama,
                   }).eq('id', matchedSpClass.id);
                 } catch (_) {}
               }
