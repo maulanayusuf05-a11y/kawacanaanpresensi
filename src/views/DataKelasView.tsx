@@ -158,13 +158,16 @@ export const DataKelasView: React.FC = () => {
     return new Set(myAssignedClasses.map((c) => c.id));
   }, [myAssignedClasses]);
 
+  const [classScopeFilter, setClassScopeFilter] = useState<'all' | 'my'>('all');
+
   const accessibleClasses = useMemo(() => {
-    if (isAdmin && !isPersonalWorkspace) return classes;
-    if (isPersonalWorkspace) {
-      return classes;
+    if (isAdmin || isPersonalWorkspace) return classes;
+    if (classScopeFilter === 'my' && myAssignedClasses.length > 0) {
+      return myAssignedClasses;
     }
-    return myAssignedClasses;
-  }, [isAdmin, isPersonalWorkspace, classes, myAssignedClasses]);
+    // Di Ruang Kerja Sekolah, tampilkan seluruh kelas dari Admin Sekolah agar data referensi tidak kosong
+    return classes;
+  }, [isAdmin, isPersonalWorkspace, classes, myAssignedClasses, classScopeFilter]);
 
   const canAddClass = isAdmin || isPersonalWorkspace;
   const canEditClass = isAdmin || isPersonalWorkspace;
@@ -794,20 +797,49 @@ export const DataKelasView: React.FC = () => {
                 />
               </div>
 
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-600">
-                <span>Tampilkan:</span>
-                <select
-                  value={pageSize}
-                  onChange={(e) => {
-                    setPageSize(Number(e.target.value));
-                    setCurrentPage(1);
-                  }}
-                  className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg outline-none cursor-pointer"
-                >
-                  <option value={5}>5 Kelas</option>
-                  <option value={10}>10 Kelas</option>
-                  <option value={25}>25 Kelas</option>
-                </select>
+              <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-600">
+                {!isAdmin && !isPersonalWorkspace && (
+                  <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => setClassScopeFilter('all')}
+                      className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                        classScopeFilter === 'all'
+                          ? 'bg-white text-blue-700 shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Semua Kelas Sekolah ({classes.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setClassScopeFilter('my')}
+                      className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                        classScopeFilter === 'my'
+                          ? 'bg-white text-blue-700 shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      {isWaliKelas ? 'Kelas Binaan Saya' : 'Kelas Diajar Saya'} ({myAssignedClasses.length})
+                    </button>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-1">
+                  <span>Tampilkan:</span>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => {
+                      setPageSize(Number(e.target.value));
+                      setCurrentPage(1);
+                    }}
+                    className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg outline-none cursor-pointer"
+                  >
+                    <option value={5}>5 Kelas</option>
+                    <option value={10}>10 Kelas</option>
+                    <option value={25}>25 Kelas</option>
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -888,6 +920,13 @@ export const DataKelasView: React.FC = () => {
                               >
                                 {fase}
                               </span>
+                              {!isAdmin && !isPersonalWorkspace && accessibleClassIds.has(c.id) && (
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                                  isWaliKelas ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-blue-100 text-blue-800 border border-blue-200'
+                                }`}>
+                                  {isWaliKelas ? 'Kelas Binaan Anda' : 'Kelas Diajar'}
+                                </span>
+                              )}
                             </div>
                           </td>
                           <td className="py-3.5 px-4 text-center font-bold text-blue-600 bg-blue-50/20">

@@ -1246,6 +1246,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     }
 
     setCurrentUser(me);
+    try {
+      localStorage.setItem(CACHE_USER_SESSION_KEY, JSON.stringify(me));
+    } catch (_) {}
     setUsers(hydratedUsers);
     let rawSchoolData = school.data;
     if ((!rawSchoolData || !authoritativeSchoolCode) && schoolId) {
@@ -3958,6 +3961,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         };
 
         setCurrentUser(updatedUser);
+        try {
+          localStorage.setItem(CACHE_USER_SESSION_KEY, JSON.stringify(updatedUser));
+        } catch (_) {}
       }
 
       if (showFeedback) {

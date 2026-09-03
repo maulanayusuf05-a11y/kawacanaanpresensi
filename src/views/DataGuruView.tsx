@@ -70,6 +70,7 @@ export const DataGuruView: React.FC = () => {
   const canDelete = isAdmin || isPersonalWorkspace;
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [teacherScopeFilter, setTeacherScopeFilter] = useState<'all' | 'my'>('all');
   const [editing, setEditing] = useState<Teacher | null>(null);
   const [deleting, setDeleting] = useState<Teacher | null>(null);
   const [isDeletingTeacher, setIsDeletingTeacher] = useState(false);
@@ -202,50 +203,81 @@ export const DataGuruView: React.FC = () => {
   };
 
   const baseTeacherList = useMemo(() => {
-    // Ruang Kerja Sekolah: role Wali Kelas dan Guru Mapel hanya menampilkan data guru sesuai akun masing-masing
-    if (!isAdmin && (isWaliKelas || isGuruMapel || isPersonalWorkspace)) {
+    // Ruang Kerja Individu: selalu 1 guru mandiri
+    if (isPersonalWorkspace) {
       const cleanUserName = normalizeTeacherName(currentUser?.name);
       const userNip = normalizeNip(currentUser?.nip) || (/^\d{8,}$/.test(currentUser?.username || '') ? normalizeNip(currentUser?.username) : '');
+      const found = (teachers || []).find((t) => {
+        if (currentUser?.teacherId && t.id === currentUser.teacherId) return true;
+        if (userNip && normalizeNip(t.nip) === userNip) return true;
+        if (cleanUserName && normalizeTeacherName(t.nama) === cleanUserName) return true;
+        return false;
+      });
+      if (found) {
+        return [{
+          ...found,
+          nip: (found.nip && found.nip !== '-') ? found.nip : (userNip || currentUser?.nip || '-'),
+        }];
+      }
+      return [
+        {
+          id: currentUser?.teacherId || currentUser?.id || 'teacher-self',
+          nama: currentUser?.name || 'Guru',
+          nip: userNip || currentUser?.nip || '-',
+          jenisKelamin: 'L' as const,
+          jabatan: isWaliKelas ? 'Wali Kelas' : 'Guru Mapel',
+          tugasUtama: isWaliKelas ? 'Wali Kelas' : 'Guru Mapel',
+          tugas_utama: isWaliKelas ? 'Wali Kelas' : 'Guru Mapel',
+        },
+      ];
+    }
 
-      if (currentUser?.teacherId) {
-        const found = (teachers || []).filter((t) => t.id === currentUser.teacherId);
-        if (found.length > 0) return found;
+    // Ruang Kerja Sekolah: Data dewan guru sekolah terintegrasi dari Admin Sekolah
+    const cleanUserName = normalizeTeacherName(currentUser?.name);
+    const userNip = normalizeNip(currentUser?.nip) || (/^\d{8,}$/.test(currentUser?.username || '') ? normalizeNip(currentUser?.username) : '');
+
+    // Pastikan data guru yang terhubung dengan akun saat ini memiliki NIP valid
+    const allEnrichedTeachers = (teachers || []).map((t) => {
+      const isMatch =
+        (currentUser?.teacherId && t.id === currentUser.teacherId) ||
+        (userNip && normalizeNip(t.nip) === userNip) ||
+        (cleanUserName && normalizeTeacherName(t.nama) === cleanUserName);
+
+      if (isMatch && (!t.nip || t.nip === '-')) {
+        return {
+          ...t,
+          nip: userNip || currentUser?.nip || t.nip || '-',
+        };
       }
-      if (userNip) {
-        const found = (teachers || []).filter(
-          (t) => normalizeNip(t.nip) === userNip
-        );
-        if (found.length > 0) return found;
-      }
-      if (cleanUserName) {
-        const found = (teachers || []).filter((t) => {
-          const cleanTName = normalizeTeacherName(t.nama);
-          return cleanTName === cleanUserName || (cleanUserName.length >= 4 && (cleanTName.includes(cleanUserName) || cleanUserName.includes(cleanTName)));
-        });
-        if (found.length > 0) return found;
-      }
+      return t;
+    });
+
+    // Jika filter profil saya dipilih oleh non-admin
+    if (!isAdmin && (isWaliKelas || isGuruMapel) && teacherScopeFilter === 'my') {
+      const myOnly = allEnrichedTeachers.filter((t) => {
+        if (currentUser?.teacherId && t.id === currentUser.teacherId) return true;
+        if (userNip && normalizeNip(t.nip) === userNip) return true;
+        if (cleanUserName && normalizeTeacherName(t.nama) === cleanUserName) return true;
+        return false;
+      });
+      if (myOnly.length > 0) return myOnly;
       if (currentUser) {
-        const matchedTeacherInAll = (teachers || []).find((t) => {
-          const cleanTName = normalizeTeacherName(t.nama);
-          return cleanTName === cleanUserName;
-        });
-
         return [
           {
-            id: currentUser.teacherId || matchedTeacherInAll?.id || currentUser.id || 'teacher-self',
-            nama: currentUser.name || matchedTeacherInAll?.nama || 'Guru',
-            nip: currentUser.nip && currentUser.nip !== '-' ? currentUser.nip : (matchedTeacherInAll?.nip || userNip || '-'),
-            jenisKelamin: (matchedTeacherInAll?.jenisKelamin || 'L') as 'L' | 'P',
-            jabatan: matchedTeacherInAll?.jabatan || (isWaliKelas ? 'Wali Kelas' : 'Guru Mapel'),
-            tugasUtama: matchedTeacherInAll?.tugasUtama || (isWaliKelas ? 'Wali Kelas' : 'Guru Mapel'),
-            tugas_utama: matchedTeacherInAll?.tugas_utama || (isWaliKelas ? 'Wali Kelas' : 'Guru Mapel'),
+            id: currentUser.teacherId || currentUser.id || 'teacher-self',
+            nama: currentUser.name || 'Guru',
+            nip: userNip || currentUser.nip || '-',
+            jenisKelamin: 'L' as const,
+            jabatan: isWaliKelas ? 'Wali Kelas' : 'Guru Mapel',
+            tugasUtama: isWaliKelas ? 'Wali Kelas' : 'Guru Mapel',
+            tugas_utama: isWaliKelas ? 'Wali Kelas' : 'Guru Mapel',
           },
         ];
       }
-      return [];
     }
-    return teachers || [];
-  }, [isAdmin, isWaliKelas, isGuruMapel, isPersonalWorkspace, teachers, currentUser]);
+
+    return allEnrichedTeachers;
+  }, [isAdmin, isWaliKelas, isGuruMapel, isPersonalWorkspace, teachers, currentUser, teacherScopeFilter]);
 
   const filteredTeachers = useMemo(() => {
     const q = (searchTerm || '').trim().toLowerCase();
@@ -715,15 +747,44 @@ export const DataGuruView: React.FC = () => {
         </div>
       </div>
 
-      <div className="relative w-full sm:w-80">
-        <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-        <input
-          type="text"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Cari Nama, NIP, atau Tugas Utama (Wali Kelas / Guru Mapel)..."
-          className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-500/10 transition-all"
-        />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="relative w-full sm:w-80">
+          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Cari Nama, NIP, atau Tugas Utama (Wali Kelas / Guru Mapel)..."
+            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-500/10 transition-all"
+          />
+        </div>
+
+        {!isAdmin && !isPersonalWorkspace && (
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs self-start sm:self-auto">
+            <button
+              type="button"
+              onClick={() => setTeacherScopeFilter('all')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                teacherScopeFilter === 'all'
+                  ? 'bg-white text-blue-700 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Semua Guru Sekolah ({(teachers || []).length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setTeacherScopeFilter('my')}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                teacherScopeFilter === 'my'
+                  ? 'bg-white text-blue-700 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Profil Saya (Akun Ini)
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="overflow-x-auto border border-slate-100 rounded-xl">
@@ -742,14 +803,31 @@ export const DataGuruView: React.FC = () => {
             {filteredTeachers.length > 0 ? (
               filteredTeachers.map((t, idx) => {
                 const assignDetails = getTeacherAssignmentDetails(t);
+                const cleanUserName = normalizeTeacherName(currentUser?.name);
+                const userNip = normalizeNip(currentUser?.nip) || (/^\d{8,}$/.test(currentUser?.username || '') ? normalizeNip(currentUser?.username) : '');
+                const isMe =
+                  (currentUser?.teacherId && t.id === currentUser.teacherId) ||
+                  (userNip && normalizeNip(t.nip) === userNip) ||
+                  (cleanUserName && normalizeTeacherName(t.nama) === cleanUserName);
+
+                const displayNip = (t.nip && t.nip !== '-')
+                  ? t.nip
+                  : (isMe && currentUser?.nip && currentUser.nip !== '-' ? currentUser.nip : (isMe && userNip ? userNip : '—'));
 
                 return (
-                  <tr key={t.id} className="hover:bg-slate-50 transition-colors">
+                  <tr key={t.id} className={`hover:bg-slate-50 transition-colors ${isMe ? 'bg-blue-50/30' : ''}`}>
                     <td className="py-3.5 px-4 font-semibold text-slate-400">{idx + 1}</td>
                     <td className="py-3.5 px-4">
-                      <div className="font-bold text-slate-900">{t.nama}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-900">{t.nama}</span>
+                        {isMe && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            Akun Anda
+                          </span>
+                        )}
+                      </div>
                     </td>
-                    <td className="py-3.5 px-4 font-mono font-medium text-slate-600">{t.nip || '—'}</td>
+                    <td className="py-3.5 px-4 font-mono font-medium text-slate-600">{displayNip}</td>
                     <td className="py-3.5 px-4 text-center">
                       <span
                         className={`inline-block px-2 py-0.5 rounded text-[11px] font-bold ${

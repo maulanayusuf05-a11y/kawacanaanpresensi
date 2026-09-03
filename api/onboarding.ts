@@ -1030,6 +1030,19 @@ export default async function handler(req: any, res: any) {
             callerProfile.class_ids.forEach((cid: string) => classIdSet.add(cid));
           }
 
+          // Jika guru mapel juga memiliki penugasan wali kelas
+          if (tId) {
+            allClasses
+              .filter((c: any) => c.wali_kelas_teacher_id === tId)
+              .forEach((c: any) => classIdSet.add(c.id));
+          }
+
+          // Fallback cerdas: Jika belum ada pembatasan mapel spesifik dari Admin,
+          // berikan akses ke seluruh kelas sekolah agar data referensi dan siswa tidak kosong
+          if (classIdSet.size === 0 && allClasses.length > 0) {
+            allClasses.forEach((c: any) => classIdSet.add(c.id));
+          }
+
           resolvedClassIds = Array.from(classIdSet);
         }
       }

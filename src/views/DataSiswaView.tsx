@@ -149,21 +149,35 @@ export const DataSiswaView: React.FC = () => {
     return new Set(myAssignedClasses.map((c) => c.name.trim().toLowerCase()));
   }, [myAssignedClasses]);
 
+  const [studentScopeFilter, setStudentScopeFilter] = useState<'all' | 'my'>('all');
+
   // Data siswa yang diizinkan untuk diakses:
-  // Wali Kelas: hanya menampilkan siswa yang dibina di kelasnya
-  // Guru Mapel: hanya menampilkan siswa yang diajarkannya (misal kelas 6A dan 6B)
+  // Wali Kelas: menampilkan siswa di rombel binaan atau seluruh siswa sekolah jika memilih filter semua
+  // Guru Mapel: menampilkan siswa di rombel yang diajar atau seluruh siswa sekolah
   const accessibleStudents = useMemo(() => {
     if (isAdmin || isPersonalWorkspace) return students;
     if (isWaliKelas || isGuru) {
-      if (myAssignedClasses.length === 0) return [];
-      return students.filter(
-        (s) =>
-          (s.classId && accessibleClassIds.has(s.classId)) ||
-          (s.className && accessibleClassNames.has(s.className.trim().toLowerCase()))
-      );
+      if (studentScopeFilter === 'my' && myAssignedClasses.length > 0) {
+        return students.filter(
+          (s) =>
+            (s.classId && accessibleClassIds.has(s.classId)) ||
+            (s.className && accessibleClassNames.has(s.className.trim().toLowerCase()))
+        );
+      }
+      // Tampilkan seluruh siswa sekolah terintegrasi dari Admin Sekolah
+      return students;
     }
     return students;
-  }, [isAdmin, isPersonalWorkspace, isWaliKelas, isGuru, students, myAssignedClasses.length, accessibleClassIds, accessibleClassNames]);
+  }, [isAdmin, isPersonalWorkspace, isWaliKelas, isGuru, students, myAssignedClasses.length, accessibleClassIds, accessibleClassNames, studentScopeFilter]);
+
+  const myAssignedStudentsCount = useMemo(() => {
+    if (!myAssignedClasses || myAssignedClasses.length === 0) return 0;
+    return students.filter(
+      (s) =>
+        (s.classId && accessibleClassIds.has(s.classId)) ||
+        (s.className && accessibleClassNames.has(s.className.trim().toLowerCase()))
+    ).length;
+  }, [students, myAssignedClasses, accessibleClassIds, accessibleClassNames]);
 
   // Akses aksi data siswa (tambah/edit/hapus/import) & kolom AKSI hanya muncul untuk Role Admin Sekolah / Admin Individu
   // Tidak muncul untuk role Kepala Sekolah, Wali Kelas, dan Guru Mapel
@@ -210,11 +224,11 @@ export const DataSiswaView: React.FC = () => {
 
   // Available classes: integrated from onboarding registration / workspace classes
   const availableClasses = useMemo(() => {
-    if (myAssignedClasses && myAssignedClasses.length > 0) {
+    if (studentScopeFilter === 'my' && myAssignedClasses && myAssignedClasses.length > 0) {
       return myAssignedClasses;
     }
     return classes || [];
-  }, [myAssignedClasses, classes]);
+  }, [studentScopeFilter, myAssignedClasses, classes]);
 
   // Filter and sort students (otomatis urut alfabetis A - Z)
   const filteredStudents = useMemo(() => {
@@ -734,6 +748,41 @@ export const DataSiswaView: React.FC = () => {
           {/* Secondary Controls Bar: Filter by Class and Show Entries */}
           <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100">
             <div className="flex flex-wrap items-center gap-2.5">
+              {!isAdmin && !isPersonalWorkspace && (
+                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStudentScopeFilter('all');
+                      setSelectedClassFilter('ALL');
+                      setCurrentPage(1);
+                    }}
+                    className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                      studentScopeFilter === 'all'
+                        ? 'bg-white text-blue-700 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Semua Siswa Sekolah ({students.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStudentScopeFilter('my');
+                      setSelectedClassFilter('ALL');
+                      setCurrentPage(1);
+                    }}
+                    className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                      studentScopeFilter === 'my'
+                        ? 'bg-white text-blue-700 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    {isWaliKelas ? 'Siswa Binaan Saya' : 'Siswa Diajar Saya'} ({myAssignedStudentsCount})
+                  </button>
+                </div>
+              )}
+
               {/* Filter By Class */}
               <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-700">
                 <Filter size={13} className="text-slate-400" />
@@ -747,9 +796,7 @@ export const DataSiswaView: React.FC = () => {
                   className="bg-transparent font-extrabold text-slate-800 focus:outline-none cursor-pointer text-xs"
                 >
                   <option value="ALL">
-                    {isWaliKelas && availableClasses.length === 1
-                      ? `Semua Siswa Kelas ${availableClasses[0].name} (${accessibleStudents.length})`
-                      : `Semua Kelas (${accessibleStudents.length})`}
+                    Semua Kelas ({accessibleStudents.length})
                   </option>
                   {availableClasses.map((c) => {
                     const count = accessibleStudents.filter(
@@ -853,7 +900,7 @@ export const DataSiswaView: React.FC = () => {
                     </td>
                     <td className="py-3.5 px-4 font-mono font-medium text-slate-600">{s.nisn}</td>
                     <td className="py-3.5 px-4 text-center font-bold text-slate-600">
-                      <div className="inline-flex items-center justify-center gap-1.5">
+                      <div className="inline-flex items-center justify-center gap-1.5 flex-wrap">
                         <span>{s.className || 'Belum ada kelas'}</span>
                         {s.className && (
                           <span
@@ -862,6 +909,16 @@ export const DataSiswaView: React.FC = () => {
                             }`}
                           >
                             {getFaseByClassName(s.className)}
+                          </span>
+                        )}
+                        {!isAdmin && !isPersonalWorkspace && (
+                          (s.classId && accessibleClassIds.has(s.classId)) ||
+                          (s.className && accessibleClassNames.has(s.className.trim().toLowerCase()))
+                        ) && (
+                          <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
+                            isWaliKelas ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-blue-100 text-blue-800 border border-blue-200'
+                          }`}>
+                            {isWaliKelas ? 'Siswa Binaan' : 'Siswa Diajar'}
                           </span>
                         )}
                       </div>

@@ -1,6 +1,7 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import { pathToFileURL } from 'url';
 import { defineConfig, Plugin } from 'vite';
 
 function apiDevMiddleware(): Plugin {
@@ -26,7 +27,8 @@ function apiDevMiddleware(): Plugin {
             if (!targetModule) {
               return next();
             }
-            const handlerModule = await import(targetModule);
+            const absPath = path.resolve(__dirname, targetModule);
+            const handlerModule = await import(pathToFileURL(absPath).href);
             const handler = handlerModule.default;
 
             const processRequest = async (bodyStr: string) => {
