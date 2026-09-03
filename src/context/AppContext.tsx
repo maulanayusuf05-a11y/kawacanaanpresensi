@@ -24,6 +24,7 @@ import {
   INITIAL_SYSTEM_CONFIG,
   DEFAULT_SD_SUBJECTS,
 } from "../data/initialData";
+import { normalizeTeacherName, normalizeNip } from "../utils/userScope";
 
 interface Toast {
   id: string;
@@ -185,6 +186,7 @@ interface AppContextType {
     type: "info" | "warning" | "alert";
     active: boolean;
   }) => Promise<void>;
+  reconcileSchoolData: (showFeedback?: boolean) => Promise<{ success: boolean; message: string }>;
 }
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
@@ -202,6 +204,7 @@ const emptyUser = (p: any): UserAccount => {
   return {
     id: p.id,
     teacherId: p.teacher_id || null,
+    nip: p.nip || null,
     name: p.name || "",
     username: p.username || "",
     password: p.password || undefined,
@@ -215,6 +218,7 @@ const emptyUser = (p: any): UserAccount => {
     mustChangePassword: !!p.must_change_password,
     classIds: p.class_ids || [],
     classNames: p.class_names || [],
+    assignedClassIds: p.assigned_class_ids || p.assignedClassIds || [],
     subscriptionPlan: p.subscription_plan || null,
     subscriptionStatus: p.subscription_status || null,
     subscriptionExpiresAt: p.subscription_expires_at || null,
@@ -1016,15 +1020,52 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           .join(" | "),
       );
 
-    const baseTeachers = (teacherRows.data || []).map(dbTeacher);
+    let baseTeachers = (teacherRows.data || []).map(dbTeacher);
+    let rawClasses = classRows.data || [];
+    let rawStudents = stu.data || [];
+
+    // Authoritative service synchronization: ensures Wali Kelas and Guru Mapel get full Admin data and linked NIP/classes
+    let masterJson: any = null;
+    if (schoolId) {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token || "";
+        const masterRes = await fetch("/api/onboarding", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            action: "get_school_master_data",
+            school_id: schoolId,
+            user_id: baseProfile?.id,
+          }),
+        });
+        const mJson = await masterRes.json();
+        if (mJson?.ok) {
+          masterJson = mJson;
+          if (Array.isArray(mJson.teachers) && (baseTeachers.length === 0 || mJson.teachers.length >= baseTeachers.length)) {
+            baseTeachers = mJson.teachers.map(dbTeacher);
+          }
+          if (Array.isArray(mJson.classes) && (rawClasses.length === 0 || mJson.classes.length >= rawClasses.length)) {
+            rawClasses = mJson.classes;
+          }
+          if (Array.isArray(mJson.students) && (rawStudents.length === 0 || mJson.students.length >= rawStudents.length)) {
+            rawStudents = mJson.students;
+          }
+        }
+      } catch (_) {}
+    }
+
     setTeachers(baseTeachers);
 
-    const classList = (classRows.data || []).map((c: any) => {
+    const classList = rawClasses.map((c: any) => {
       const assignedTeacherId = c.wali_kelas_teacher_id || null;
       const matchedTeacher = baseTeachers.find(
         (t) => t.id === assignedTeacherId,
       );
-      const waliName = matchedTeacher?.nama || c.wali?.nama || null;
+      const waliName = matchedTeacher?.nama || c.wali_kelas_name || c.wali?.nama || null;
 
       return {
         id: c.id,
@@ -1036,8 +1077,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       };
     });
     setClasses(classList);
-    const ss = (stu.data || []).map((x: any) =>
-      dbStudent({ ...x, class_name: x.classes?.name || "" }),
+    const ss = rawStudents.map((x: any) =>
+      dbStudent({ ...x, class_name: x.classes?.name || x.class_name || "" }),
     );
     setStudents(ss);
 
@@ -1144,13 +1185,66 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         (baseProfile as any)?.schoolCode ||
         null,
     };
+
+    // Reconcile and link teacher record to current user
+    let myMatchedTeacher = baseTeachers.find((t) => t.id === me.teacherId);
+    if (!myMatchedTeacher && masterJson?.matchedTeacher) {
+      myMatchedTeacher = dbTeacher(masterJson.matchedTeacher);
+    }
+    if (!myMatchedTeacher) {
+      const uNip = normalizeNip(me.nip) || normalizeNip(me.username);
+      if (uNip && uNip.length >= 8) {
+        myMatchedTeacher = baseTeachers.find((t) => normalizeNip(t.nip) === uNip);
+      }
+    }
+    if (!myMatchedTeacher && me.name) {
+      const cleanMeName = normalizeTeacherName(me.name);
+      myMatchedTeacher = baseTeachers.find((t) => {
+        const cleanTName = normalizeTeacherName(t.nama);
+        return cleanTName === cleanMeName || (cleanMeName.length >= 4 && (cleanTName.includes(cleanMeName) || cleanMeName.includes(cleanTName)));
+      });
+    }
+
+    if (myMatchedTeacher) {
+      me.teacherId = myMatchedTeacher.id;
+      if (myMatchedTeacher.nip && (!me.nip || me.nip === "-")) {
+        me.nip = myMatchedTeacher.nip;
+      }
+    }
+
     if (me.role === "WALI KELAS") {
-      const myWaliClasses = classList.filter(
-        (c: any) => c.waliKelasTeacherId === me.teacherId,
+      const cleanMeName = normalizeTeacherName(me.name);
+      const cleanTName = myMatchedTeacher ? normalizeTeacherName(myMatchedTeacher.nama) : "";
+      let myWaliClasses = classList.filter(
+        (c: any) =>
+          (me.teacherId && c.waliKelasTeacherId === me.teacherId) ||
+          (cleanTName && c.waliKelasName && normalizeTeacherName(c.waliKelasName) === cleanTName) ||
+          (cleanMeName && c.waliKelasName && normalizeTeacherName(c.waliKelasName) === cleanMeName),
       );
+      if (myWaliClasses.length === 0 && school.data?.kelas) {
+        const spClass = classList.find((c: any) => normalizeTeacherName(c.name) === normalizeTeacherName(school.data.kelas));
+        if (spClass) myWaliClasses = [spClass];
+      }
+      if (myWaliClasses.length === 0 && Array.isArray(masterJson?.resolvedClassIds) && masterJson.resolvedClassIds.length > 0) {
+        myWaliClasses = classList.filter((c: any) => masterJson.resolvedClassIds.includes(c.id));
+      }
       me.classIds = myWaliClasses.map((c: any) => c.id);
       me.classNames = myWaliClasses.map((c: any) => c.name);
+    } else if (me.role === "GURU MAPEL") {
+      const targetClassIds = new Set<string>(me.classIds || []);
+      if (Array.isArray(masterJson?.resolvedClassIds) && masterJson.resolvedClassIds.length > 0) {
+        masterJson.resolvedClassIds.forEach((cid: string) => targetClassIds.add(cid));
+      }
+      if (myMatchedTeacher) {
+        const assignedSubIds = subjectTeacherScope.get(myMatchedTeacher.id) || [];
+        assignedSubIds.forEach((sId) => {
+          (subjectClassScope.get(sId) || []).forEach((cId) => targetClassIds.add(cId));
+        });
+      }
+      me.classIds = Array.from(targetClassIds);
+      me.classNames = me.classIds.map((cid: string) => classList.find((c: any) => c.id === cid)?.name || "").filter(Boolean);
     }
+
     setCurrentUser(me);
     setUsers(hydratedUsers);
     let rawSchoolData = school.data;
@@ -3786,6 +3880,97 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const syncUsersWithStudents = async () => {
     await generateAccountsFromReferences({ resetExistingPasswords: false });
   };
+
+  const reconcileSchoolData = async (showFeedback = true): Promise<{ success: boolean; message: string }> => {
+    try {
+      const activeSchoolId = currentUser?.schoolId || activeWorkspace?.workspaceId;
+      if (!activeSchoolId) {
+        throw new Error("ID sekolah tidak ditemukan.");
+      }
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token || "";
+
+      const res = await fetch("/api/onboarding", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          action: "get_school_master_data",
+          school_id: activeSchoolId,
+          user_id: currentUser?.id,
+        }),
+      });
+
+      const json = await res.json();
+      if (!json?.ok) {
+        throw new Error(json?.error || "Gagal menyinkronkan data master sekolah.");
+      }
+
+      let updatedTeachers = teachers;
+      if (Array.isArray(json.teachers) && json.teachers.length > 0) {
+        updatedTeachers = json.teachers.map(dbTeacher);
+        setTeachers(updatedTeachers);
+      }
+
+      let updatedClasses = classes;
+      if (Array.isArray(json.classes) && json.classes.length > 0) {
+        updatedClasses = json.classes.map((c: any) => {
+          const assignedTeacherId = c.wali_kelas_teacher_id || null;
+          const matchedTeacher = updatedTeachers.find((t) => t.id === assignedTeacherId);
+          const waliName = matchedTeacher?.nama || c.wali_kelas_name || c.wali?.nama || null;
+          return {
+            id: c.id,
+            name: c.name,
+            grade: c.grade,
+            academicYear: c.academic_year,
+            waliKelasTeacherId: assignedTeacherId,
+            waliKelasName: waliName,
+          };
+        });
+        setClasses(updatedClasses);
+      }
+
+      if (Array.isArray(json.students) && json.students.length > 0) {
+        const updatedStudents = json.students.map((s: any) =>
+          dbStudent({ ...s, class_name: s.classes?.name || s.class_name || "" }),
+        );
+        setStudents(updatedStudents);
+      }
+
+      if (currentUser) {
+        const matchedTeacher = json.matchedTeacher ? dbTeacher(json.matchedTeacher) : null;
+        const resolvedClassIds: string[] = Array.isArray(json.resolvedClassIds) ? json.resolvedClassIds : [];
+
+        const updatedUser: UserAccount = {
+          ...currentUser,
+          ...(matchedTeacher ? {
+            teacherId: matchedTeacher.id,
+            nip: matchedTeacher.nip || currentUser.nip,
+            name: currentUser.name || matchedTeacher.nama,
+          } : {}),
+          classIds: resolvedClassIds.length > 0 ? resolvedClassIds : currentUser.classIds,
+          classNames: resolvedClassIds.length > 0
+            ? resolvedClassIds.map((cid) => updatedClasses.find((c) => c.id === cid)?.name || "").filter(Boolean)
+            : currentUser.classNames,
+        };
+
+        setCurrentUser(updatedUser);
+      }
+
+      if (showFeedback) {
+        showToast("Integrasi data referensi dengan Admin Sekolah berhasil diperbarui!", "success");
+      }
+      return { success: true, message: "Sinkronisasi berhasil" };
+    } catch (err: any) {
+      if (showFeedback) {
+        showToast(err?.message || "Gagal menyinkronkan data.", "error");
+      }
+      return { success: false, message: err?.message || "Gagal menyinkronkan data" };
+    }
+  };
   const updateUserPassword = async (id: string, p: string) => {
     try {
       await apiUser("password", { userId: id, password: p });
@@ -4827,6 +5012,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         stopImpersonation,
         globalAnnouncement,
         updateGlobalAnnouncement,
+        reconcileSchoolData,
       }}
     >
       {children}

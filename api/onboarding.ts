@@ -852,6 +852,209 @@ export default async function handler(req: any, res: any) {
     }
 
     // -------------------------------------------------------------
+    // 3B. GET SCHOOL MASTER DATA & USER RECONCILIATION
+    // Authoritative service-role endpoint for syncing Admin Sekolah data
+    // with Wali Kelas & Guru Mapel accounts
+    // -------------------------------------------------------------
+    if (action === 'get_school_master_data' || action === 'sync_school_user_data') {
+      const schoolId = String(body.schoolId || body.school_id || '').trim();
+      const userId = String(body.userId || body.user_id || '').trim();
+      if (!schoolId) {
+        return json(res, 400, { error: 'ID sekolah wajib disertakan.' });
+      }
+
+      // Ambil seluruh data master sekolah secara authoritative (Service Role)
+      const [
+        { data: sp },
+        { data: sch },
+        { data: teachersList },
+        { data: classesList },
+        { data: studentsList },
+        { data: subjectsList },
+        { data: teacherAssignments },
+        { data: classAssignments },
+      ] = await Promise.all([
+        db.from('school_profile').select('*').eq('school_id', schoolId).maybeSingle(),
+        db.from('schools').select('id, name, npsn, code, plan, status, workspace_type, is_personal').eq('id', schoolId).maybeSingle(),
+        db.from('teachers').select('*').eq('school_id', schoolId).order('nama'),
+        db.from('classes').select('*, wali:wali_kelas_teacher_id(id,nama)').eq('school_id', schoolId).order('grade').order('name'),
+        db.from('students').select('*, classes:class_id(id,name,grade,academic_year)').eq('school_id', schoolId).order('nama'),
+        db.from('subjects').select('*').eq('school_id', schoolId).order('name'),
+        db.from('subject_teacher_assignments').select('subject_id, teacher_id, academic_year').eq('school_id', schoolId),
+        db.from('subject_class_assignments').select('subject_id, class_id, academic_year').eq('school_id', schoolId),
+      ]);
+
+      const allTeachers = teachersList || [];
+      const allClasses = classesList || [];
+      const allSubjects = subjectsList || [];
+
+      let callerProfile: any = null;
+      let matchedTeacher: any = null;
+      let resolvedClassIds: string[] = [];
+
+      if (userId) {
+        const { data: prof } = await db.from('profiles').select('*').eq('id', userId).maybeSingle();
+        callerProfile = prof;
+      }
+
+      if (callerProfile) {
+        const normalize = (s: string) =>
+          String(s || '')
+            .toLowerCase()
+            .replace(/\b(dr|dra|drs|h|hj|prof|ir)\b\.?/gi, '')
+            .replace(/,\s*(s\.pd|m\.pd|s\.pd\.i|m\.pd\.i|s\.ag|m\.ag|s\.si|m\.si|s\.kom|m\.kom|s\.e|m\.m|gr|b\.a|m\.a)\.?/gi, '')
+            .replace(/\b(s\.pd|m\.pd|s\.pd\.i|m\.pd\.i|s\.ag|m\.ag|s\.si|m\.si|s\.kom|m\.kom|s\.e|m\.m|gr)\b/gi, '')
+            .replace(/[^a-z0-9]/gi, '')
+            .trim();
+        const normNip = (s: string) => String(s || '').replace(/\D/g, '').trim();
+
+        // 1. Cari teacher yang cocok berdasarkan ID
+        if (callerProfile.teacher_id) {
+          matchedTeacher = allTeachers.find((t: any) => t.id === callerProfile.teacher_id);
+        }
+
+        // 2. Cari berdasarkan NIP / Username jika berformat angka NIP
+        if (!matchedTeacher && callerProfile.username) {
+          const userNip = normNip(callerProfile.username);
+          if (userNip && userNip.length >= 8) {
+            matchedTeacher = allTeachers.find((t: any) => normNip(t.nip) === userNip);
+          }
+        }
+
+        if (!matchedTeacher && callerProfile.nip) {
+          const profNip = normNip(callerProfile.nip);
+          if (profNip) {
+            matchedTeacher = allTeachers.find((t: any) => normNip(t.nip) === profNip);
+          }
+        }
+
+        // 3. Cari berdasarkan kemiripan nama
+        if (!matchedTeacher && callerProfile.name) {
+          const cleanCallerName = normalize(callerProfile.name);
+          matchedTeacher = allTeachers.find((t: any) => {
+            const cleanTName = normalize(t.nama);
+            return cleanTName === cleanCallerName || (cleanCallerName.length >= 4 && cleanTName.includes(cleanCallerName)) || (cleanTName.length >= 4 && cleanCallerName.includes(cleanTName));
+          });
+        }
+
+        // 4. Cek apakah ada data wali kelas di school_profile
+        if (!matchedTeacher && sp?.nama_wali_kelas && callerProfile.name) {
+          if (normalize(sp.nama_wali_kelas) === normalize(callerProfile.name)) {
+            matchedTeacher = allTeachers.find((t: any) => normalize(t.nama) === normalize(sp.nama_wali_kelas));
+          }
+        }
+
+        // Jika guru ditemukan, lakukan auto-link ke akun profile agar NIP & relasi permanen
+        if (matchedTeacher) {
+          const updates: any = {};
+          if (callerProfile.teacher_id !== matchedTeacher.id) {
+            updates.teacher_id = matchedTeacher.id;
+          }
+          if (matchedTeacher.nip && callerProfile.nip !== matchedTeacher.nip) {
+            updates.nip = matchedTeacher.nip;
+          }
+          if (Object.keys(updates).length > 0) {
+            try {
+              await db.from('profiles').update(updates).eq('id', callerProfile.id);
+              callerProfile = { ...callerProfile, ...updates };
+            } catch (_) {}
+          }
+        }
+
+        // 5. Resolusi Kelas untuk WALI KELAS
+        if (callerProfile.role === 'WALI KELAS') {
+          const waliClasses = allClasses.filter((c: any) => {
+            if (matchedTeacher && c.wali_kelas_teacher_id === matchedTeacher.id) return true;
+            if (callerProfile.teacher_id && c.wali_kelas_teacher_id === callerProfile.teacher_id) return true;
+            if (c.wali_kelas_name && callerProfile.name && normalize(c.wali_kelas_name) === normalize(callerProfile.name)) return true;
+            if (matchedTeacher && c.wali_kelas_name && normalize(c.wali_kelas_name) === normalize(matchedTeacher.nama)) return true;
+            return false;
+          });
+          resolvedClassIds = waliClasses.map((c: any) => c.id);
+
+          // Fallback dari profil sekolah jika wali kelas ditugaskan di school_profile.kelas
+          if (resolvedClassIds.length === 0 && sp?.kelas) {
+            const matchedSpClass = allClasses.find((c: any) => normalize(c.name) === normalize(sp.kelas));
+            if (matchedSpClass) {
+              resolvedClassIds = [matchedSpClass.id];
+              // Auto-assign wali_kelas_teacher_id pada kelas jika belum ada
+              if (matchedTeacher && !matchedSpClass.wali_kelas_teacher_id) {
+                try {
+                  await db.from('classes').update({
+                    wali_kelas_teacher_id: matchedTeacher.id,
+                    wali_kelas_name: matchedTeacher.nama,
+                  }).eq('id', matchedSpClass.id);
+                } catch (_) {}
+              }
+            }
+          }
+        } else if (callerProfile.role === 'GURU MAPEL') {
+          // 6. Resolusi Kelas untuk GURU MAPEL
+          const classIdSet = new Set<string>();
+          const matchedSubjectIds = new Set<string>();
+
+          allSubjects.forEach((s: any) => {
+            const isMatch =
+              (matchedTeacher && s.teacher_id === matchedTeacher.id) ||
+              (callerProfile.teacher_id && s.teacher_id === callerProfile.teacher_id) ||
+              (callerProfile.subject_id && s.id === callerProfile.subject_id) ||
+              (s.teacher_name && callerProfile.name && normalize(s.teacher_name) === normalize(callerProfile.name)) ||
+              (matchedTeacher && s.teacher_name && normalize(s.teacher_name) === normalize(matchedTeacher.nama));
+
+            if (isMatch) {
+              matchedSubjectIds.add(s.id);
+              if (Array.isArray(s.target_class_ids)) {
+                s.target_class_ids.forEach((cid: string) => classIdSet.add(cid));
+              }
+            }
+          });
+
+          // Cek subject_teacher_assignments
+          const tId = matchedTeacher?.id || callerProfile.teacher_id;
+          if (tId) {
+            (teacherAssignments || []).forEach((ta: any) => {
+              if (ta.teacher_id === tId) {
+                matchedSubjectIds.add(ta.subject_id);
+              }
+            });
+          }
+
+          // Cek subject_class_assignments
+          (classAssignments || []).forEach((ca: any) => {
+            if (matchedSubjectIds.has(ca.subject_id)) {
+              classIdSet.add(ca.class_id);
+            }
+          });
+
+          // Cek penugasan eksplisit di profile jika ada
+          if (Array.isArray(callerProfile.class_ids)) {
+            callerProfile.class_ids.forEach((cid: string) => classIdSet.add(cid));
+          }
+
+          resolvedClassIds = Array.from(classIdSet);
+        }
+      }
+
+      let schoolCode = sch?.code ? String(sch.code).replace(/^SCH-?/i, '').trim().toUpperCase() : '';
+
+      return json(res, 200, {
+        ok: true,
+        success: true,
+        school: sch ? { ...sch, code: schoolCode } : null,
+        schoolProfile: sp ? { ...sp, kode_sekolah: schoolCode, kodeSekolah: schoolCode } : null,
+        teachers: allTeachers,
+        classes: allClasses,
+        students: studentsList || [],
+        subjects: allSubjects,
+        subjectTeacherAssignments: teacherAssignments || [],
+        subjectClassAssignments: classAssignments || [],
+        callerProfile,
+        matchedTeacher,
+        resolvedClassIds,
+      });
+    }
+
+    // -------------------------------------------------------------
     // 4. AUTHENTICATED ACTIONS: ONBOARDING DARI GOOGLE SSO & SESI AKTIF
     // -------------------------------------------------------------
     const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();

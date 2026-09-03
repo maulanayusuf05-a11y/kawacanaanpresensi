@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import { Student } from '../types';
 import { getFaseByClassName, getFaseBadgeColor, formatClassDisplay } from '../utils/faseKurikulum';
 import { BookLoadingModal, BookVisual } from '../components/BookLoader';
+import { normalizeTeacherName, normalizeNip } from '../utils/userScope';
 import {
   Users,
   Search,
@@ -35,6 +36,7 @@ export const DataSiswaView: React.FC = () => {
   const {
     currentUser,
     classes,
+    teachers,
     students,
     subjects,
     schoolProfile,
@@ -66,6 +68,17 @@ export const DataSiswaView: React.FC = () => {
     if (isAdmin || isPersonalWorkspace) return classes;
     const ids = new Set<string>();
 
+    const cleanUserName = normalizeTeacherName(currentUser?.name);
+    const userNip = normalizeNip(currentUser?.nip) || (/^\d{8,}$/.test(currentUser?.username || '') ? normalizeNip(currentUser?.username) : '');
+    const matchedTeacher = (teachers || []).find((t) => {
+      if (currentUser?.teacherId && t.id === currentUser.teacherId) return true;
+      if (userNip && normalizeNip(t.nip) === userNip) return true;
+      if (cleanUserName && normalizeTeacherName(t.nama) === cleanUserName) return true;
+      return false;
+    });
+    const effectiveTeacherId = currentUser?.teacherId || matchedTeacher?.id || null;
+    const cleanTeacherName = matchedTeacher?.nama ? normalizeTeacherName(matchedTeacher.nama) : '';
+
     if (isWaliKelas) {
       if (currentUser?.classIds && currentUser.classIds.length > 0) {
         currentUser.classIds.forEach((id) => ids.add(id));
@@ -74,24 +87,31 @@ export const DataSiswaView: React.FC = () => {
         currentUser.assignedClassIds.forEach((id) => ids.add(id));
       }
       classes.forEach((c) => {
-        if (c.waliKelasTeacherId && (c.waliKelasTeacherId === currentUser?.teacherId)) {
+        if (effectiveTeacherId && c.waliKelasTeacherId === effectiveTeacherId) {
           ids.add(c.id);
         }
-        if (
-          c.waliKelasName &&
-          currentUser?.name &&
-          c.waliKelasName.trim().toLowerCase() === currentUser.name.trim().toLowerCase()
-        ) {
-          ids.add(c.id);
+        if (c.waliKelasName) {
+          const cleanWaliName = normalizeTeacherName(c.waliKelasName);
+          if (cleanUserName && cleanWaliName === cleanUserName) ids.add(c.id);
+          if (cleanTeacherName && cleanWaliName === cleanTeacherName) ids.add(c.id);
         }
       });
+      // Fallback matching against schoolProfile
+      if (ids.size === 0 && schoolProfile?.kelas) {
+        const cleanSpKelas = normalizeTeacherName(schoolProfile.kelas);
+        const spClass = classes.find((c) => normalizeTeacherName(c.name) === cleanSpKelas);
+        if (spClass) ids.add(spClass.id);
+      }
     } else if (isGuru) {
       // Guru Mapel: kelas yang diajar diambil dari targetClassIds / targetClassNames mata pelajaran
       subjects.forEach((s) => {
+        const cleanSubTeacher = s.teacherName ? normalizeTeacherName(s.teacherName) : '';
         const isTeacherMatch =
-          (currentUser?.teacherId && s.teacherId === currentUser.teacherId) ||
+          (effectiveTeacherId && s.teacherId === effectiveTeacherId) ||
           (currentUser?.subjectId && s.id === currentUser.subjectId) ||
-          (s.teacherName && currentUser?.name && s.teacherName.trim().toLowerCase() === currentUser.name.trim().toLowerCase());
+          (cleanSubTeacher && cleanUserName && (cleanSubTeacher === cleanUserName || cleanSubTeacher.includes(cleanUserName))) ||
+          (cleanSubTeacher && cleanTeacherName && (cleanSubTeacher === cleanTeacherName || cleanSubTeacher.includes(cleanTeacherName)));
+
         if (isTeacherMatch) {
           (s.targetClassIds || []).forEach((cid) => ids.add(cid));
           if (s.targetClassNames && s.targetClassNames.length > 0) {
@@ -119,7 +139,7 @@ export const DataSiswaView: React.FC = () => {
       return [];
     }
     return matched;
-  }, [isAdmin, isPersonalWorkspace, classes, currentUser, activeWorkspace, isWaliKelas, isGuru, subjects]);
+  }, [isAdmin, isPersonalWorkspace, classes, currentUser, activeWorkspace, isWaliKelas, isGuru, subjects, teachers, schoolProfile]);
 
   const accessibleClassIds = useMemo(() => {
     return new Set(myAssignedClasses.map((c) => c.id));

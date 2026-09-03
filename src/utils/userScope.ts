@@ -1,5 +1,21 @@
 import { UserAccount, SchoolClass, Subject, Teacher } from '../types';
 
+export function normalizeTeacherName(name: string | null | undefined): string {
+  if (!name) return '';
+  return name
+    .toLowerCase()
+    .replace(/\b(dr|dra|drs|h|hj|prof|ir)\b\.?/gi, '')
+    .replace(/,\s*(s\.pd|m\.pd|s\.pd\.i|m\.pd\.i|s\.ag|m\.ag|s\.si|m\.si|s\.kom|m\.kom|s\.e|m\.m|gr|b\.a|m\.a)\.?/gi, '')
+    .replace(/\b(s\.pd|m\.pd|s\.pd\.i|m\.pd\.i|s\.ag|m\.ag|s\.si|m\.si|s\.kom|m\.kom|s\.e|m\.m|gr)\b/gi, '')
+    .replace(/[^a-z0-9]/gi, '')
+    .trim();
+}
+
+export function normalizeNip(nip: string | null | undefined): string {
+  if (!nip) return '';
+  return nip.replace(/\D/g, '').trim();
+}
+
 export interface UserRoleScope {
   isSuperAdmin: boolean;
   isAdmin: boolean;
@@ -7,6 +23,8 @@ export interface UserRoleScope {
   isWaliKelas: boolean;
   isGuruMapel: boolean;
   isSiswa: boolean;
+
+  currentTeacher: Teacher | null;
 
   assignedWaliClass: SchoolClass | null;
   assignedWaliClassId: string | null;
@@ -46,6 +64,7 @@ export function getUserRoleScope(
     isWaliKelas: false,
     isGuruMapel: false,
     isSiswa: false,
+    currentTeacher: null,
     assignedWaliClass: null,
     assignedWaliClassId: null,
     assignedWaliClassName: null,
@@ -69,25 +88,39 @@ export function getUserRoleScope(
   const isGuruMapel = role === 'GURU MAPEL';
   const isSiswa = role === 'SISWA';
 
-  // Prefer explicit teacher identity, with fallback to NIP / Name matching
+  // Prefer explicit teacher identity, with fallback to NIP / Name matching with normalization
   const currentTeacherId = currentUser.teacherId || null;
+  const cleanUserName = normalizeTeacherName(currentUser.name);
+  const userNip = normalizeNip(currentUser.nip);
+  const usernameNip = /^\d{8,}$/.test(currentUser.username || '') ? normalizeNip(currentUser.username) : '';
+
   const currentTeacher = currentTeacherId
     ? teachers.find((teacher) => teacher.id === currentTeacherId) || null
     : teachers.find((teacher) => {
-        if (currentUser.nip && currentUser.nip !== '-' && teacher.nip && teacher.nip.trim() === currentUser.nip.trim()) return true;
-        if (currentUser.name && teacher.nama && teacher.nama.trim().toLowerCase() === currentUser.name.trim().toLowerCase()) return true;
+        const teacherNip = normalizeNip(teacher.nip);
+        if (userNip && teacherNip && userNip === teacherNip) return true;
+        if (usernameNip && teacherNip && usernameNip === teacherNip) return true;
+        if (cleanUserName && teacher.nama) {
+          const cleanTName = normalizeTeacherName(teacher.nama);
+          if (cleanTName === cleanUserName) return true;
+          if (cleanUserName.length >= 4 && (cleanTName.includes(cleanUserName) || cleanUserName.includes(cleanTName))) return true;
+        }
         return false;
       }) || null;
 
   const effectiveTeacherId = currentTeacherId || currentTeacher?.id || null;
 
   // WALI KELAS: explicit classes.wali_kelas_teacher_id relation, classIds, or verified name
+  const cleanTeacherName = currentTeacher?.nama ? normalizeTeacherName(currentTeacher.nama) : '';
   const assignedWaliClass = isWaliKelas
     ? classes.find((schoolClass) => {
         if (effectiveTeacherId && schoolClass.waliKelasTeacherId === effectiveTeacherId) return true;
         if (currentUser.classIds?.includes(schoolClass.id)) return true;
-        if (currentTeacher?.nama && schoolClass.waliKelasName && schoolClass.waliKelasName.trim().toLowerCase() === currentTeacher.nama.trim().toLowerCase()) return true;
-        if (currentUser.name && schoolClass.waliKelasName && schoolClass.waliKelasName.trim().toLowerCase() === currentUser.name.trim().toLowerCase()) return true;
+        if (schoolClass.waliKelasName) {
+          const cleanWaliName = normalizeTeacherName(schoolClass.waliKelasName);
+          if (cleanTeacherName && cleanWaliName === cleanTeacherName) return true;
+          if (cleanUserName && cleanWaliName === cleanUserName) return true;
+        }
         return false;
       }) || null
     : null;
@@ -104,20 +137,24 @@ export function getUserRoleScope(
         assignedSubjects.push(directSubject);
       }
     }
-    if (currentTeacher?.nama) {
-      const byTeacherName = subjects.filter(
-        (s) => s.teacherName && s.teacherName.trim().toLowerCase() === currentTeacher.nama.trim().toLowerCase()
-      );
+    if (cleanTeacherName) {
+      const byTeacherName = subjects.filter((s) => {
+        if (!s.teacherName) return false;
+        const cleanSubTeacher = normalizeTeacherName(s.teacherName);
+        return cleanSubTeacher === cleanTeacherName || (cleanTeacherName.length >= 4 && cleanSubTeacher.includes(cleanTeacherName));
+      });
       byTeacherName.forEach((s) => {
         if (!assignedSubjects.some((sub) => sub.id === s.id)) {
           assignedSubjects.push(s);
         }
       });
     }
-    if (currentUser.name) {
-      const byUserName = subjects.filter(
-        (s) => s.teacherName && s.teacherName.trim().toLowerCase() === currentUser.name.trim().toLowerCase()
-      );
+    if (cleanUserName) {
+      const byUserName = subjects.filter((s) => {
+        if (!s.teacherName) return false;
+        const cleanSubTeacher = normalizeTeacherName(s.teacherName);
+        return cleanSubTeacher === cleanUserName || (cleanUserName.length >= 4 && cleanSubTeacher.includes(cleanUserName));
+      });
       byUserName.forEach((s) => {
         if (!assignedSubjects.some((sub) => sub.id === s.id)) {
           assignedSubjects.push(s);
@@ -198,6 +235,7 @@ export function getUserRoleScope(
     isWaliKelas,
     isGuruMapel,
     isSiswa,
+    currentTeacher,
     assignedWaliClass,
     assignedWaliClassId: assignedWaliClass?.id || null,
     assignedWaliClassName: assignedWaliClass?.name || null,

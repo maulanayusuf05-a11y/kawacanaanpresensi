@@ -27,6 +27,7 @@ import {
 import { validateTeacherRoleAssignment } from '../utils/packageSystem';
 import { supabase } from '../lib/supabase';
 import { BookLoadingModal } from '../components/BookLoader';
+import { normalizeTeacherName, normalizeNip } from '../utils/userScope';
 
 interface ParsedTeacherItem {
   nama: string;
@@ -203,32 +204,41 @@ export const DataGuruView: React.FC = () => {
   const baseTeacherList = useMemo(() => {
     // Ruang Kerja Sekolah: role Wali Kelas dan Guru Mapel hanya menampilkan data guru sesuai akun masing-masing
     if (!isAdmin && (isWaliKelas || isGuruMapel || isPersonalWorkspace)) {
+      const cleanUserName = normalizeTeacherName(currentUser?.name);
+      const userNip = normalizeNip(currentUser?.nip) || (/^\d{8,}$/.test(currentUser?.username || '') ? normalizeNip(currentUser?.username) : '');
+
       if (currentUser?.teacherId) {
         const found = (teachers || []).filter((t) => t.id === currentUser.teacherId);
         if (found.length > 0) return found;
       }
-      if (currentUser?.nip && currentUser.nip !== '-') {
+      if (userNip) {
         const found = (teachers || []).filter(
-          (t) => t.nip && t.nip.trim() === currentUser.nip.trim()
+          (t) => normalizeNip(t.nip) === userNip
         );
         if (found.length > 0) return found;
       }
-      if (currentUser?.name) {
-        const found = (teachers || []).filter(
-          (t) => t.nama && t.nama.trim().toLowerCase() === currentUser.name.trim().toLowerCase()
-        );
+      if (cleanUserName) {
+        const found = (teachers || []).filter((t) => {
+          const cleanTName = normalizeTeacherName(t.nama);
+          return cleanTName === cleanUserName || (cleanUserName.length >= 4 && (cleanTName.includes(cleanUserName) || cleanUserName.includes(cleanTName)));
+        });
         if (found.length > 0) return found;
       }
       if (currentUser) {
+        const matchedTeacherInAll = (teachers || []).find((t) => {
+          const cleanTName = normalizeTeacherName(t.nama);
+          return cleanTName === cleanUserName;
+        });
+
         return [
           {
-            id: currentUser.teacherId || currentUser.id || 'teacher-self',
-            nama: currentUser.name || 'Guru',
-            nip: currentUser.nip || '-',
-            jenisKelamin: 'L' as const,
-            jabatan: isWaliKelas ? 'Wali Kelas' : 'Guru Mapel',
-            tugasUtama: isWaliKelas ? 'Wali Kelas' : 'Guru Mapel',
-            tugas_utama: isWaliKelas ? 'Wali Kelas' : 'Guru Mapel',
+            id: currentUser.teacherId || matchedTeacherInAll?.id || currentUser.id || 'teacher-self',
+            nama: currentUser.name || matchedTeacherInAll?.nama || 'Guru',
+            nip: currentUser.nip && currentUser.nip !== '-' ? currentUser.nip : (matchedTeacherInAll?.nip || userNip || '-'),
+            jenisKelamin: (matchedTeacherInAll?.jenisKelamin || 'L') as 'L' | 'P',
+            jabatan: matchedTeacherInAll?.jabatan || (isWaliKelas ? 'Wali Kelas' : 'Guru Mapel'),
+            tugasUtama: matchedTeacherInAll?.tugasUtama || (isWaliKelas ? 'Wali Kelas' : 'Guru Mapel'),
+            tugas_utama: matchedTeacherInAll?.tugas_utama || (isWaliKelas ? 'Wali Kelas' : 'Guru Mapel'),
           },
         ];
       }
