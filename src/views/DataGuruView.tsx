@@ -62,6 +62,8 @@ export const DataGuruView: React.FC = () => {
     (currentUser?.subscriptionPlan === 'mulai' && !currentUser?.schoolId);
 
   const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN';
+  const isWaliKelas = currentUser?.role === 'WALI KELAS';
+  const isGuruMapel = currentUser?.role === 'GURU MAPEL';
   const canAdd = isAdmin || isPersonalWorkspace;
   const canEdit = isAdmin || isPersonalWorkspace;
   const canDelete = isAdmin || isPersonalWorkspace;
@@ -199,8 +201,41 @@ export const DataGuruView: React.FC = () => {
   };
 
   const baseTeacherList = useMemo(() => {
+    // Ruang Kerja Sekolah: role Wali Kelas dan Guru Mapel hanya menampilkan data guru sesuai akun masing-masing
+    if (!isAdmin && (isWaliKelas || isGuruMapel || isPersonalWorkspace)) {
+      if (currentUser?.teacherId) {
+        const found = (teachers || []).filter((t) => t.id === currentUser.teacherId);
+        if (found.length > 0) return found;
+      }
+      if (currentUser?.nip && currentUser.nip !== '-') {
+        const found = (teachers || []).filter(
+          (t) => t.nip && t.nip.trim() === currentUser.nip.trim()
+        );
+        if (found.length > 0) return found;
+      }
+      if (currentUser?.name) {
+        const found = (teachers || []).filter(
+          (t) => t.nama && t.nama.trim().toLowerCase() === currentUser.name.trim().toLowerCase()
+        );
+        if (found.length > 0) return found;
+      }
+      if (currentUser) {
+        return [
+          {
+            id: currentUser.teacherId || currentUser.id || 'teacher-self',
+            nama: currentUser.name || 'Guru',
+            nip: currentUser.nip || '-',
+            jenisKelamin: 'L' as const,
+            jabatan: isWaliKelas ? 'Wali Kelas' : 'Guru Mapel',
+            tugasUtama: isWaliKelas ? 'Wali Kelas' : 'Guru Mapel',
+            tugas_utama: isWaliKelas ? 'Wali Kelas' : 'Guru Mapel',
+          },
+        ];
+      }
+      return [];
+    }
     return teachers || [];
-  }, [teachers]);
+  }, [isAdmin, isWaliKelas, isGuruMapel, isPersonalWorkspace, teachers, currentUser]);
 
   const filteredTeachers = useMemo(() => {
     const q = (searchTerm || '').trim().toLowerCase();
@@ -632,6 +667,8 @@ export const DataGuruView: React.FC = () => {
             <p className="text-xs text-slate-500">
               {isPersonalWorkspace
                 ? 'Daftar data pendidik di Ruang Kerja Individu. Anda dapat menambahkan, mengedit, atau menghapus data pendidik.'
+                : !isAdmin && (isWaliKelas || isGuruMapel)
+                ? `Menampilkan data guru yang sesuai dengan akun Anda (${currentUser?.name || 'Pendidik'}).`
                 : 'Master pendidik sekolah. Penugasan Wali Kelas dan Guru Mapel bersifat eksklusif per tahun ajaran.'}
             </p>
           </div>

@@ -353,15 +353,16 @@ export const DataMapelView: React.FC = () => {
   const isPersonalWaliKelas = isPersonalWorkspace && isWaliKelas && !isAdmin;
   const isSchoolWaliKelas = !isPersonalWorkspace && isWaliKelas && !isAdmin;
 
-  const canAdd = !isPersonalWaliKelas && !isSchoolWaliKelas && (isAdmin || isGuruMapel || (isPersonalWorkspace && !isWaliKelas));
+  // Ketentuan: Wali Kelas read-only, Guru Mapel akses dibuka (tambah/edit/jadwal)
+  const canAdd = !isWaliKelas && (isAdmin || isGuruMapel || isPersonalWorkspace);
   const canEditSubject = (sub: Subject) => {
-    if (isPersonalWaliKelas || isSchoolWaliKelas) return false;
+    if (isWaliKelas && !isAdmin) return false;
     if (isAdmin || isPersonalWorkspace) return true;
-    if (isGuruMapel) return true; // Allow Guru Mapel to configure subjects/schedules
+    if (isGuruMapel) return true; // Guru Mapel akses dibuka
     return false;
   };
   const canDeleteSubject = (sub: Subject) => {
-    if (isPersonalWaliKelas || isSchoolWaliKelas) return false;
+    if (isWaliKelas && !isAdmin) return false;
     if (isAdmin || isPersonalWorkspace) return true;
     if (isGuruMapel && isMySubject(sub)) return true;
     return false;
@@ -439,18 +440,21 @@ export const DataMapelView: React.FC = () => {
         </div>
       )}
 
-      {/* Info Banner untuk Wali Kelas */}
-      {isWaliKelas && assignedWaliClass && (
+      {/* Info Banner untuk Wali Kelas (Read-Only) */}
+      {isWaliKelas && !isAdmin && (
         <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-50/90 to-indigo-50/90 border border-blue-200/80 shadow-xs flex items-start gap-3 text-slate-800">
           <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
             <GraduationCap size={16} />
           </div>
           <div className="space-y-1 text-xs">
-            <div className="font-extrabold text-blue-950 text-sm">
-              Mata Pelajaran Kelas Binaan: {assignedWaliClass.name}
+            <div className="font-extrabold text-blue-950 text-sm flex items-center gap-2">
+              <span>Mata Pelajaran {assignedWaliClass ? `Kelas Binaan: ${assignedWaliClass.name}` : 'Kelas Binaan'}</span>
+              <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-bold">
+                Read Only (Hanya Lihat)
+              </span>
             </div>
             <p className="text-slate-600 leading-relaxed">
-              Tampilan ini menyajikan data mata pelajaran yang diisi oleh <strong>Guru Mata Pelajaran</strong> untuk <strong>{assignedWaliClass.name}</strong> (misalnya guru PJOK menginput kelas {assignedWaliClass.name} di hari Kamis, maka otomatis tersinkronisasi di kelas ini).
+              Sebagai Wali Kelas, Anda memiliki akses <strong>hanya lihat (read only)</strong> untuk memantau mata pelajaran yang diajarkan oleh Guru Mata Pelajaran di kelas Anda. Penambahan dan pengelolaan mata pelajaran dilakukan langsung oleh Guru Mapel bersangkutan atau Admin Sekolah.
             </p>
           </div>
         </div>

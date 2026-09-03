@@ -69,53 +69,94 @@ export function getUserRoleScope(
   const isGuruMapel = role === 'GURU MAPEL';
   const isSiswa = role === 'SISWA';
 
-  // Prefer the explicit teacher identity. Do not match by name/NIP because
-  // names are mutable display data and can create accidental authorization.
+  // Prefer explicit teacher identity, with fallback to NIP / Name matching
   const currentTeacherId = currentUser.teacherId || null;
   const currentTeacher = currentTeacherId
     ? teachers.find((teacher) => teacher.id === currentTeacherId) || null
+    : teachers.find((teacher) => {
+        if (currentUser.nip && currentUser.nip !== '-' && teacher.nip && teacher.nip.trim() === currentUser.nip.trim()) return true;
+        if (currentUser.name && teacher.nama && teacher.nama.trim().toLowerCase() === currentUser.name.trim().toLowerCase()) return true;
+        return false;
+      }) || null;
+
+  const effectiveTeacherId = currentTeacherId || currentTeacher?.id || null;
+
+  // WALI KELAS: explicit classes.wali_kelas_teacher_id relation, classIds, or verified name
+  const assignedWaliClass = isWaliKelas
+    ? classes.find((schoolClass) => {
+        if (effectiveTeacherId && schoolClass.waliKelasTeacherId === effectiveTeacherId) return true;
+        if (currentUser.classIds?.includes(schoolClass.id)) return true;
+        if (currentTeacher?.nama && schoolClass.waliKelasName && schoolClass.waliKelasName.trim().toLowerCase() === currentTeacher.nama.trim().toLowerCase()) return true;
+        if (currentUser.name && schoolClass.waliKelasName && schoolClass.waliKelasName.trim().toLowerCase() === currentUser.name.trim().toLowerCase()) return true;
+        return false;
+      }) || null
     : null;
 
-  // WALI KELAS: only an explicit classes.wali_kelas_teacher_id relation.
-  const assignedWaliClass = isWaliKelas && currentTeacherId
-    ? classes.find((schoolClass) => schoolClass.waliKelasTeacherId === currentTeacherId) || null
-    : null;
-
-  // GURU MAPEL: subject assignment must be explicit. The normalized subject
-  // data should expose teacherId + targetClassIds after AppContext hydration.
-  // We deliberately do not fall back to all subjects/classes.
+  // GURU MAPEL: subject assignment must be explicit.
   let assignedSubjects: Subject[] = [];
-  if (isGuruMapel && currentTeacherId) {
-    assignedSubjects = subjects.filter((subject) => subject.teacherId === currentTeacherId);
-
-    // A profile may carry an explicit subjectId as a compatibility bridge,
-    // but it is accepted only when the subject itself points to this teacher.
+  if (isGuruMapel) {
+    if (effectiveTeacherId) {
+      assignedSubjects = subjects.filter((subject) => subject.teacherId === effectiveTeacherId);
+    }
     if (currentUser.subjectId) {
-      const directSubject = subjects.find(
-        (subject) => subject.id === currentUser.subjectId && subject.teacherId === currentTeacherId
-      );
+      const directSubject = subjects.find((subject) => subject.id === currentUser.subjectId);
       if (directSubject && !assignedSubjects.some((subject) => subject.id === directSubject.id)) {
         assignedSubjects.push(directSubject);
       }
     }
+    if (currentTeacher?.nama) {
+      const byTeacherName = subjects.filter(
+        (s) => s.teacherName && s.teacherName.trim().toLowerCase() === currentTeacher.nama.trim().toLowerCase()
+      );
+      byTeacherName.forEach((s) => {
+        if (!assignedSubjects.some((sub) => sub.id === s.id)) {
+          assignedSubjects.push(s);
+        }
+      });
+    }
+    if (currentUser.name) {
+      const byUserName = subjects.filter(
+        (s) => s.teacherName && s.teacherName.trim().toLowerCase() === currentUser.name.trim().toLowerCase()
+      );
+      byUserName.forEach((s) => {
+        if (!assignedSubjects.some((sub) => sub.id === s.id)) {
+          assignedSubjects.push(s);
+        }
+      });
+    }
   }
 
-  // Class scope for Guru Mapel is the intersection implied by their assigned
-  // subjects. An empty assignment intentionally produces an empty scope.
+  // Class scope for Guru Mapel is the classes they teach (targetClassIds / targetClassNames / classIds).
   let accessibleClasses: SchoolClass[] = [];
   if (isSuperAdmin || isAdmin || isKepalaSekolah) {
     accessibleClasses = classes;
   } else if (isWaliKelas) {
     accessibleClasses = assignedWaliClass ? [assignedWaliClass] : [];
+    if (currentUser.classIds && currentUser.classIds.length > 0) {
+      const extra = classes.filter((c) => currentUser.classIds?.includes(c.id));
+      extra.forEach((c) => {
+        if (!accessibleClasses.some((ac) => ac.id === c.id)) {
+          accessibleClasses.push(c);
+        }
+      });
+    }
   } else if (isGuruMapel) {
     const targetClassIds = new Set<string>();
     assignedSubjects.forEach((subject) => {
       (subject.targetClassIds || []).forEach((classId) => targetClassIds.add(classId));
+      if (subject.targetClassNames && subject.targetClassNames.length > 0) {
+        classes.forEach((c) => {
+          if (subject.targetClassNames?.some((cn) => cn.trim().toLowerCase() === c.name.trim().toLowerCase())) {
+            targetClassIds.add(c.id);
+          }
+        });
+      }
     });
+    if (currentUser.classIds && currentUser.classIds.length > 0) {
+      currentUser.classIds.forEach((cid) => targetClassIds.add(cid));
+    }
     accessibleClasses = classes.filter((schoolClass) => targetClassIds.has(schoolClass.id));
   } else if (isSiswa) {
-    // Student UI normally filters its own records using studentId. We do not
-    // use currentUser.classIds as an authorization fallback here.
     accessibleClasses = currentUser.classIds?.length
       ? classes.filter((schoolClass) => currentUser.classIds?.includes(schoolClass.id))
       : [];

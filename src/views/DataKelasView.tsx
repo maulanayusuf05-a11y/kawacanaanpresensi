@@ -76,38 +76,64 @@ export const DataKelasView: React.FC = () => {
   // Active Tab: Rombel & Wali Kelas VS Penugasan Guru Mapel
   const [activeTab, setActiveTab] = useState<'rombel' | 'penugasan_mapel'>('rombel');
 
-  // Daftar kelas binaan pengguna (untuk Wali Kelas / Ruang Kerja Individu)
+  // Daftar kelas binaan pengguna (untuk Wali Kelas) / kelas yang diajar (untuk Guru Mapel)
   const myAssignedClasses = useMemo(() => {
     if (isAdmin && !isPersonalWorkspace) return classes;
     const ids = new Set<string>();
-    if (currentUser?.assignedClassIds && Array.isArray(currentUser.assignedClassIds)) {
-      currentUser.assignedClassIds.forEach((id) => ids.add(id));
-    }
-    if (currentUser?.classIds && Array.isArray(currentUser.classIds)) {
-      currentUser.classIds.forEach((id) => ids.add(id));
-    }
-    classes.forEach((c) => {
-      if (c.waliKelasTeacherId && currentUser?.teacherId && c.waliKelasTeacherId === currentUser.teacherId) {
-        ids.add(c.id);
+
+    if (isWaliKelas) {
+      if (currentUser?.assignedClassIds && Array.isArray(currentUser.assignedClassIds)) {
+        currentUser.assignedClassIds.forEach((id) => ids.add(id));
       }
-      if (
-        c.waliKelasName &&
-        currentUser?.name &&
-        c.waliKelasName.trim().toLowerCase() === currentUser.name.trim().toLowerCase()
-      ) {
-        ids.add(c.id);
+      if (currentUser?.classIds && Array.isArray(currentUser.classIds)) {
+        currentUser.classIds.forEach((id) => ids.add(id));
       }
-    });
+      classes.forEach((c) => {
+        if (c.waliKelasTeacherId && currentUser?.teacherId && c.waliKelasTeacherId === currentUser.teacherId) {
+          ids.add(c.id);
+        }
+        if (
+          c.waliKelasName &&
+          currentUser?.name &&
+          c.waliKelasName.trim().toLowerCase() === currentUser.name.trim().toLowerCase()
+        ) {
+          ids.add(c.id);
+        }
+      });
+    } else if (isGuru) {
+      // Guru Mapel: kelas yang diajar bersumber dari data assignment mata pelajaran (subjects)
+      subjects.forEach((s) => {
+        const isTeacherMatch =
+          (currentUser?.teacherId && s.teacherId === currentUser.teacherId) ||
+          (currentUser?.subjectId && s.id === currentUser.subjectId) ||
+          (s.teacherName && currentUser?.name && s.teacherName.trim().toLowerCase() === currentUser.name.trim().toLowerCase());
+        if (isTeacherMatch) {
+          (s.targetClassIds || []).forEach((cid) => ids.add(cid));
+          if (s.targetClassNames && s.targetClassNames.length > 0) {
+            classes.forEach((c) => {
+              if (s.targetClassNames?.some((cn) => cn.trim().toLowerCase() === c.name.trim().toLowerCase())) {
+                ids.add(c.id);
+              }
+            });
+          }
+        }
+      });
+      if (currentUser?.classIds && Array.isArray(currentUser.classIds)) {
+        currentUser.classIds.forEach((id) => ids.add(id));
+      }
+      if (currentUser?.assignedClassIds && Array.isArray(currentUser.assignedClassIds)) {
+        currentUser.assignedClassIds.forEach((id) => ids.add(id));
+      }
+    }
+
     if (activeWorkspace?.classId) {
       ids.add(activeWorkspace.classId);
     }
     const matched = classes.filter((c) => ids.has(c.id));
-    // Fail closed: di workspace sekolah, Wali/Guru tanpa assignment tidak boleh
-    // otomatis mendapatkan kelas pertama. Untuk ruang kerja individu, semua kelas
-    // tetap tersedia karena memang merupakan workspace pribadi.
+    // Fail closed: di workspace sekolah, jika belum ada kelas terhubung, tidak menampilkan kelas lain
     if (matched.length === 0) return isPersonalWorkspace ? classes : [];
     return matched;
-  }, [isAdmin, isPersonalWorkspace, classes, currentUser, activeWorkspace]);
+  }, [isAdmin, isPersonalWorkspace, classes, currentUser, activeWorkspace, isWaliKelas, isGuru, subjects]);
 
   const accessibleClassIds = useMemo(() => {
     return new Set(myAssignedClasses.map((c) => c.id));
@@ -639,7 +665,7 @@ export const DataKelasView: React.FC = () => {
                   ? 'Data rombongan belajar Anda di Ruang Kerja Individu. Anda dapat melihat dan mengelola siswa kelas ini.'
                   : 'Kelola data rombel kelas, penetapan wali kelas, dan penugasan guru mata pelajaran terintegrasi.'}
               </p>
-              {isPersonalWorkspace && (
+              {isPersonalWorkspace ? (
                 <div className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-800 border border-blue-200 text-[11px] font-bold">
                   <ShieldCheck size={13} className="text-blue-600" />
                   <span>
@@ -649,7 +675,21 @@ export const DataKelasView: React.FC = () => {
                       : 'Belum ada kelas yang didaftarkan. Silakan klik Tambah Kelas untuk menginput rombel binaan Anda.'}
                   </span>
                 </div>
-              )}
+              ) : !isAdmin && (isWaliKelas || isGuru) ? (
+                <div className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-800 border border-indigo-200 text-[11px] font-bold">
+                  <ShieldCheck size={13} className="text-indigo-600" />
+                  <span>
+                    Ruang Kerja Sekolah:{' '}
+                    {accessibleClasses.length > 0
+                      ? isWaliKelas
+                        ? `Menampilkan kelas yang Anda bina (${accessibleClasses.map((c) => c.name).join(', ')})`
+                        : `Menampilkan kelas yang Anda ajar (${accessibleClasses.map((c) => c.name).join(', ')})`
+                      : isWaliKelas
+                      ? 'Belum ada kelas binaan yang ditugaskan kepada Anda.'
+                      : 'Belum ada kelas ajar yang ditugaskan kepada Anda.'}
+                  </span>
+                </div>
+              ) : null}
             </div>
           </div>
 

@@ -36,6 +36,7 @@ export const DataSiswaView: React.FC = () => {
     currentUser,
     classes,
     students,
+    subjects,
     schoolProfile,
     addClass,
     addStudent,
@@ -60,49 +61,89 @@ export const DataSiswaView: React.FC = () => {
   const isGuru = currentUser?.role === 'GURU MAPEL';
   const isKepalaSekolah = currentUser?.role === 'KEPALA SEKOLAH';
 
-  // Kelas yang diampu oleh Wali Kelas / Guru
+  // Kelas yang diampu oleh Wali Kelas (binaan) / Guru Mapel (diajarkan)
   const myAssignedClasses = useMemo(() => {
     if (isAdmin || isPersonalWorkspace) return classes;
     const ids = new Set<string>();
-    if (currentUser?.classIds && currentUser.classIds.length > 0) {
-      currentUser.classIds.forEach((id) => ids.add(id));
+
+    if (isWaliKelas) {
+      if (currentUser?.classIds && currentUser.classIds.length > 0) {
+        currentUser.classIds.forEach((id) => ids.add(id));
+      }
+      if (currentUser?.assignedClassIds && Array.isArray(currentUser.assignedClassIds)) {
+        currentUser.assignedClassIds.forEach((id) => ids.add(id));
+      }
+      classes.forEach((c) => {
+        if (c.waliKelasTeacherId && (c.waliKelasTeacherId === currentUser?.teacherId)) {
+          ids.add(c.id);
+        }
+        if (
+          c.waliKelasName &&
+          currentUser?.name &&
+          c.waliKelasName.trim().toLowerCase() === currentUser.name.trim().toLowerCase()
+        ) {
+          ids.add(c.id);
+        }
+      });
+    } else if (isGuru) {
+      // Guru Mapel: kelas yang diajar diambil dari targetClassIds / targetClassNames mata pelajaran
+      subjects.forEach((s) => {
+        const isTeacherMatch =
+          (currentUser?.teacherId && s.teacherId === currentUser.teacherId) ||
+          (currentUser?.subjectId && s.id === currentUser.subjectId) ||
+          (s.teacherName && currentUser?.name && s.teacherName.trim().toLowerCase() === currentUser.name.trim().toLowerCase());
+        if (isTeacherMatch) {
+          (s.targetClassIds || []).forEach((cid) => ids.add(cid));
+          if (s.targetClassNames && s.targetClassNames.length > 0) {
+            classes.forEach((c) => {
+              if (s.targetClassNames?.some((cn) => cn.trim().toLowerCase() === c.name.trim().toLowerCase())) {
+                ids.add(c.id);
+              }
+            });
+          }
+        }
+      });
+      if (currentUser?.classIds && currentUser.classIds.length > 0) {
+        currentUser.classIds.forEach((id) => ids.add(id));
+      }
+      if (currentUser?.assignedClassIds && Array.isArray(currentUser.assignedClassIds)) {
+        currentUser.assignedClassIds.forEach((id) => ids.add(id));
+      }
     }
-    classes.forEach((c) => {
-      if (c.waliKelasTeacherId && (c.waliKelasTeacherId === currentUser?.teacherId)) {
-        ids.add(c.id);
-      }
-      if (
-        c.waliKelasName &&
-        currentUser?.name &&
-        c.waliKelasName.trim().toLowerCase() === currentUser.name.trim().toLowerCase()
-      ) {
-        ids.add(c.id);
-      }
-    });
+
     if (activeWorkspace?.classId) {
       ids.add(activeWorkspace.classId);
     }
     const matched = classes.filter((c) => ids.has(c.id));
     if (matched.length === 0 && (isWaliKelas || isGuru)) {
-      return classes;
+      return [];
     }
     return matched;
-  }, [isAdmin, isPersonalWorkspace, classes, currentUser, activeWorkspace, isWaliKelas, isGuru]);
+  }, [isAdmin, isPersonalWorkspace, classes, currentUser, activeWorkspace, isWaliKelas, isGuru, subjects]);
 
   const accessibleClassIds = useMemo(() => {
     return new Set(myAssignedClasses.map((c) => c.id));
   }, [myAssignedClasses]);
 
-  // Data siswa yang diizinkan untuk diakses (hanya kelas binaannya sendiri bagi Wali Kelas)
+  const accessibleClassNames = useMemo(() => {
+    return new Set(myAssignedClasses.map((c) => c.name.trim().toLowerCase()));
+  }, [myAssignedClasses]);
+
+  // Data siswa yang diizinkan untuk diakses:
+  // Wali Kelas: hanya menampilkan siswa yang dibina di kelasnya
+  // Guru Mapel: hanya menampilkan siswa yang diajarkannya (misal kelas 6A dan 6B)
   const accessibleStudents = useMemo(() => {
     if (isAdmin || isPersonalWorkspace) return students;
     if (isWaliKelas || isGuru) {
-      if (myAssignedClasses.length > 0 && myAssignedClasses.length < classes.length) {
-        return students.filter((s) => s.classId && accessibleClassIds.has(s.classId));
-      }
+      if (myAssignedClasses.length === 0) return [];
+      return students.filter(
+        (s) =>
+          (s.classId && accessibleClassIds.has(s.classId)) ||
+          (s.className && accessibleClassNames.has(s.className.trim().toLowerCase()))
+      );
     }
     return students;
-  }, [isAdmin, isPersonalWorkspace, isWaliKelas, isGuru, students, myAssignedClasses, accessibleClassIds, classes.length]);
+  }, [isAdmin, isPersonalWorkspace, isWaliKelas, isGuru, students, myAssignedClasses.length, accessibleClassIds, accessibleClassNames]);
 
   // Akses aksi data siswa (tambah/edit/hapus/import) & kolom AKSI hanya muncul untuk Role Admin Sekolah / Admin Individu
   // Tidak muncul untuk role Kepala Sekolah, Wali Kelas, dan Guru Mapel
@@ -602,13 +643,21 @@ export const DataSiswaView: React.FC = () => {
 
         {/* Workspace / Quota Plan Badge */}
         <div className="flex items-center gap-2 flex-wrap">
-          {isPersonalWorkspace && (
+          {isPersonalWorkspace ? (
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-blue-50 border border-blue-200/80 text-blue-800 text-xs font-bold w-fit">
               <span>Ruang Kerja Individu</span>
               <span className="text-blue-300">•</span>
               <span>Kuota: {students.length} / {maxStudentsLimit || 32} Siswa</span>
             </div>
-          )}
+          ) : !isAdmin && (isWaliKelas || isGuru) ? (
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-indigo-50 border border-indigo-200/80 text-indigo-800 text-xs font-bold w-fit">
+              <span>Ruang Kerja Sekolah</span>
+              <span className="text-indigo-300">•</span>
+              <span>
+                {isWaliKelas ? 'Siswa Binaan' : 'Siswa Ajar'}: {accessibleStudents.length} Siswa ({myAssignedClasses.map((c) => c.name).join(', ') || 'Belum ada kelas'})
+              </span>
+            </div>
+          ) : null}
         </div>
       </div>
 

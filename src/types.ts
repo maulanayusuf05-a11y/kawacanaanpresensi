@@ -150,6 +150,7 @@ export interface UserAccount {
   teacherId?: string | null;
   name: string;
   username: string;
+  nip?: string | null;
   password?: string;
   role: UserRole;
   email?: string | null;
@@ -167,6 +168,7 @@ export interface UserAccount {
   maxClasses?: number;
   mustChangePassword?: boolean;
   classIds?: string[];
+  assignedClassIds?: string[];
   classNames?: string[];
   subjectId?: string | null;
   subjectName?: string | null;

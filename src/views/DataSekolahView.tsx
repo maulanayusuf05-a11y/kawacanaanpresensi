@@ -182,9 +182,12 @@ export const DataSekolahView: React.FC = () => {
     activeWorkspace?.workspaceType === 'individu' ||
     (currentUser?.subscriptionPlan === 'mulai' && !currentUser?.schoolId);
 
-  // Mengizinkan semua peran pengelola (Admin, Superadmin, Guru, Wali Kelas, Kepala Sekolah) mengedit profil sekolah
-  const canEditSchool = currentUser?.role !== 'SISWA';
-  const isReadOnly = !canEditSchool;
+  const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN';
+  const isWaliKelas = currentUser?.role === 'WALI KELAS';
+  const isGuruMapel = currentUser?.role === 'GURU MAPEL';
+
+  // Ketentuan: Identitas sekolah memiliki akses read-only untuk role Wali Kelas dan Guru Mapel di Ruang Kerja Sekolah
+  const isReadOnly = !isAdmin && !isPersonalWorkspace;
 
   return (
     <div className="w-full space-y-6 animate-in fade-in duration-200">
