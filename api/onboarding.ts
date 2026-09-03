@@ -1633,9 +1633,13 @@ export default async function handler(req: any, res: any) {
         await db.from('school_profile').update({ nama_wali_kelas: '', nip_wali_kelas: '' }).eq('school_id', schoolId).eq('nama_wali_kelas', teacherName);
       }
 
-      // 3. Hapus teacher_class_assignments
+      // 3. Hapus seluruh penugasan guru secara terpadu (teacher_assignments & subject_teacher_assignments)
       if (teacherId) {
-        await db.from('teacher_class_assignments').delete().eq('teacher_id', teacherId);
+        await Promise.all([
+          db.from('teacher_assignments').delete().eq('teacher_id', teacherId),
+          db.from('subject_teacher_assignments').delete().eq('teacher_id', teacherId),
+          db.from('teacher_class_assignments').delete().eq('teacher_id', teacherId),
+        ]);
       }
 
       return json(res, 200, {

@@ -495,6 +495,7 @@ export default async function handler(req:any,res:any){
         if (error) throw new Error(`Gagal menghapus ${table}: ${error.message}`);
       };
       // Urutan mengikuti dependensi FK.
+      await deleteTenantRows('teacher_assignments');
       await deleteTenantRows('teacher_class_assignments');
       await deleteTenantRows('teacher_class_assignments_legacy_archive');
       await deleteTenantRows('attendance_records');

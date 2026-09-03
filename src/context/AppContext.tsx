@@ -2807,6 +2807,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           "Guru belum mempunyai assignment Wali Kelas atau Guru Mapel. Tetapkan role melalui Data Guru terlebih dahulu.",
         );
       }
+
+      // Sinkronkan ke tabel terpadu teacher_assignments
+      supabase.auth.getSession().then(({ data }) => {
+        const token = data.session?.access_token;
+        if (token) {
+          fetch('/api/sync-teacher-assignments', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ schoolId, academicYear }),
+          }).catch((err) => console.warn('[assignTeacherClasses] background sync warning:', err));
+        }
+      }).catch(() => {});
+
       await loadData(currentUser?.id || "");
       showToast("Penugasan guru berhasil diperbarui");
     } catch (e: any) {
@@ -2866,6 +2882,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             .eq("school_id", schoolId)
             .eq("id", targetClassId);
           if (assignError) throw assignError;
+
+          // Sinkronkan ke tabel terpadu teacher_assignments
+          await supabase
+            .from("teacher_assignments")
+            .delete()
+            .eq("school_id", schoolId)
+            .eq("teacher_id", teacherId);
+
+          await supabase
+            .from("teacher_assignments")
+            .delete()
+            .eq("school_id", schoolId)
+            .eq("class_id", targetClassId)
+            .eq("role", "WALI_KELAS");
+
+          await supabase
+            .from("teacher_assignments")
+            .insert({
+              school_id: schoolId,
+              teacher_id: teacherId,
+              role: "WALI_KELAS",
+              class_id: targetClassId,
+              subject_id: null,
+              academic_year: activeAcademicYear,
+              is_active: true,
+            });
         }
 
         // Perbarui tabel teachers agar kolom STATUS PENUGASAN (ADMIN) otomatis tersimpan & terbaca
@@ -2969,6 +3011,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               .insert(classInserts);
             if (scaInsertError) throw scaInsertError;
           }
+
+          // Sinkronkan ke tabel terpadu teacher_assignments
+          await supabase
+            .from("teacher_assignments")
+            .delete()
+            .eq("school_id", schoolId)
+            .eq("teacher_id", teacherId);
+
+          const taInserts = uniqueTargetClassIds.length
+            ? uniqueTargetClassIds.map((cid) => ({
+                school_id: schoolId,
+                teacher_id: teacherId,
+                role: "GURU_MAPEL" as const,
+                class_id: cid,
+                subject_id: subjectId,
+                academic_year: activeAcademicYear,
+                is_active: true,
+              }))
+            : [
+                {
+                  school_id: schoolId,
+                  teacher_id: teacherId,
+                  role: "GURU_MAPEL" as const,
+                  class_id: null,
+                  subject_id: subjectId,
+                  academic_year: activeAcademicYear,
+                  is_active: true,
+                },
+              ];
+
+          await supabase.from("teacher_assignments").insert(taInserts);
         }
 
         // Perbarui tabel teachers agar kolom STATUS PENUGASAN (ADMIN) otomatis tersimpan & terbaca
@@ -3019,6 +3092,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           .eq("school_id", schoolId)
           .eq("teacher_id", teacherId);
 
+        // Bersihkan dari tabel terpadu teacher_assignments
+        await supabase
+          .from("teacher_assignments")
+          .delete()
+          .eq("school_id", schoolId)
+          .eq("teacher_id", teacherId);
+
         // Perbarui tabel teachers agar kolom STATUS PENUGASAN (ADMIN) otomatis tersimpan & terbaca
         await supabase
           .from("teachers")
@@ -3054,6 +3134,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             .eq("school_id", schoolId);
         }
       }
+
+      // Pastikan rekonsiliasi menyeluruh tabel teacher_assignments berjalan di background
+      supabase.auth.getSession().then(({ data }) => {
+        const token = data.session?.access_token;
+        if (token) {
+          fetch('/api/sync-teacher-assignments', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ schoolId, academicYear: activeAcademicYear }),
+          }).catch((err) => console.warn('[executeTeacherAssignment] background sync warning:', err));
+        }
+      }).catch(() => {});
 
       await loadData(currentUser?.id || "");
       showToast("Penugasan guru berhasil disimpan ke database.");

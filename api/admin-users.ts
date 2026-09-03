@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { reconcileTeacherAssignments } from './sync-teacher-assignments';
 
 const json = (res: any, status: number, body: unknown) =>
   res.status(status).setHeader('Content-Type', 'application/json').end(JSON.stringify(body));
@@ -233,6 +234,15 @@ export default async function handler(req: any, res: any) {
         }
       }
 
+      if (teacherId || role === 'WALI KELAS' || role === 'GURU MAPEL') {
+        try {
+          const year = await getAcademicYear(schoolId);
+          await reconcileTeacherAssignments(admin, schoolId, year);
+        } catch (e: any) {
+          console.warn('[admin-users] reconcileTeacherAssignments create warning:', e?.message);
+        }
+      }
+
       await admin.from('audit_logs').insert({
         actor_id: caller.user.id,
         actor_name: profile.role,
@@ -357,6 +367,15 @@ export default async function handler(req: any, res: any) {
           student_id: target.student_id, teacher_id: target.teacher_id
         }).eq('id', userId);
         return json(res, 400, { error: `Perubahan database berhasil dibatalkan karena sinkronisasi Auth gagal: ${authError.message}` });
+      }
+
+      if (teacherId || role === 'WALI KELAS' || role === 'GURU MAPEL' || target.role === 'WALI KELAS' || target.role === 'GURU MAPEL') {
+        try {
+          const year = await getAcademicYear(target.school_id);
+          await reconcileTeacherAssignments(admin, target.school_id, year);
+        } catch (e: any) {
+          console.warn('[admin-users] reconcileTeacherAssignments edit warning:', e?.message);
+        }
       }
 
       return json(res, 200, { ok: true, teacherId });
