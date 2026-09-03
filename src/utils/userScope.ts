@@ -84,8 +84,6 @@ export function getUserRoleScope(
   const isSuperAdmin = role === 'SUPER_ADMIN';
   const isAdmin = role === 'ADMIN' || isSuperAdmin;
   const isKepalaSekolah = role === 'KEPALA SEKOLAH';
-  const isWaliKelas = role === 'WALI KELAS';
-  const isGuruMapel = role === 'GURU MAPEL';
   const isSiswa = role === 'SISWA';
 
   // Prefer explicit teacher identity, with fallback to NIP / Name matching with normalization
@@ -109,9 +107,42 @@ export function getUserRoleScope(
       }) || null;
 
   const effectiveTeacherId = currentTeacherId || currentTeacher?.id || null;
+  const cleanTeacherName = currentTeacher?.nama ? normalizeTeacherName(currentTeacher.nama) : '';
+
+  // Authoritative role resolution for teachers:
+  // In Supabase DB: "For teacher assignment scope, classes and subject_*_assignments are authoritative."
+  const hasAuthoritativeWaliClass = !!classes.find((schoolClass) => {
+    if (effectiveTeacherId && schoolClass.waliKelasTeacherId === effectiveTeacherId) return true;
+    if (currentUser.classIds?.includes(schoolClass.id)) return true;
+    if (schoolClass.waliKelasName) {
+      const cleanWaliName = normalizeTeacherName(schoolClass.waliKelasName);
+      if (cleanTeacherName && cleanWaliName === cleanTeacherName) return true;
+      if (cleanUserName && cleanWaliName === cleanUserName) return true;
+    }
+    return false;
+  });
+
+  const hasAuthoritativeSubjects = !!(
+    (effectiveTeacherId && subjects.some((s) => s.teacherId === effectiveTeacherId)) ||
+    (currentUser.subjectId && subjects.some((s) => s.id === currentUser.subjectId))
+  );
+
+  let isWaliKelas = role === 'WALI KELAS';
+  let isGuruMapel = role === 'GURU MAPEL';
+
+  if (!isAdmin && !isSuperAdmin && !isKepalaSekolah && !isSiswa) {
+    if (isGuruMapel && hasAuthoritativeWaliClass && !hasAuthoritativeSubjects) {
+      // Role akun GURU MAPEL tetapi guru secara sah ditugaskan sebagai Wali Kelas di classes
+      isWaliKelas = true;
+      isGuruMapel = false;
+    } else if (isWaliKelas && hasAuthoritativeSubjects && !hasAuthoritativeWaliClass) {
+      // Role akun WALI KELAS tetapi guru ditugaskan mengampu mapel tanpa rombel binaan
+      isWaliKelas = false;
+      isGuruMapel = true;
+    }
+  }
 
   // WALI KELAS: explicit classes.wali_kelas_teacher_id relation, classIds, or verified name
-  const cleanTeacherName = currentTeacher?.nama ? normalizeTeacherName(currentTeacher.nama) : '';
   const assignedWaliClass = isWaliKelas
     ? classes.find((schoolClass) => {
         if (effectiveTeacherId && schoolClass.waliKelasTeacherId === effectiveTeacherId) return true;

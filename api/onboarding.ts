@@ -873,6 +873,10 @@ export default async function handler(req: any, res: any) {
         { data: subjectsList },
         { data: teacherAssignments },
         { data: classAssignments },
+        { data: scheduleDays },
+        { data: attendanceList },
+        { data: effectiveDaysList },
+        { data: eventsList },
       ] = await Promise.all([
         db.from('school_profile').select('*').eq('school_id', schoolId).maybeSingle(),
         db.from('schools').select('id, name, npsn, code, plan, status, workspace_type, is_personal').eq('id', schoolId).maybeSingle(),
@@ -882,6 +886,10 @@ export default async function handler(req: any, res: any) {
         db.from('subjects').select('*').eq('school_id', schoolId).order('name'),
         db.from('subject_teacher_assignments').select('subject_id, teacher_id, academic_year').eq('school_id', schoolId),
         db.from('subject_class_assignments').select('subject_id, class_id, academic_year').eq('school_id', schoolId),
+        db.from('subject_schedule_days').select('subject_id, day_of_week, lesson_period').eq('school_id', schoolId),
+        db.from('attendance_records').select('*').eq('school_id', schoolId),
+        db.from('effective_days').select('*').eq('school_id', schoolId),
+        db.from('academic_events').select('*').eq('school_id', schoolId),
       ]);
 
       const allTeachers = teachersList || [];
@@ -944,22 +952,23 @@ export default async function handler(req: any, res: any) {
           }
         }
 
-        // Jika guru ditemukan, lakukan auto-link ke akun profile agar NIP & relasi permanen
+        // Jika guru ditemukan, lakukan auto-link ke akun profile agar relasi teacher_id terhubung
         if (matchedTeacher) {
           const updates: any = {};
           if (callerProfile.teacher_id !== matchedTeacher.id) {
             updates.teacher_id = matchedTeacher.id;
           }
-          if (matchedTeacher.nip && callerProfile.nip !== matchedTeacher.nip) {
-            updates.nip = matchedTeacher.nip;
-          }
           if (Object.keys(updates).length > 0) {
-            const { error: profileLinkError } = await db.from('profiles').update(updates).eq('id', callerProfile.id);
-            if (profileLinkError) {
-              console.error('[onboarding] gagal menghubungkan profile ke guru:', profileLinkError);
-              throw new Error(`Gagal menghubungkan akun ke data guru: ${profileLinkError.message}`);
+            try {
+              const { error: profileLinkError } = await db.from('profiles').update(updates).eq('id', callerProfile.id);
+              if (profileLinkError) {
+                console.warn('[onboarding] link profile ke teacher_id gagal:', profileLinkError.message);
+              } else {
+                callerProfile = { ...callerProfile, ...updates };
+              }
+            } catch (err: any) {
+              console.warn('[onboarding] link profile exception:', err?.message);
             }
-            callerProfile = { ...callerProfile, ...updates };
           }
         }
 
@@ -1060,6 +1069,10 @@ export default async function handler(req: any, res: any) {
         subjects: allSubjects,
         subjectTeacherAssignments: teacherAssignments || [],
         subjectClassAssignments: classAssignments || [],
+        subjectScheduleDays: scheduleDays || [],
+        attendanceRecords: attendanceList || [],
+        effectiveDays: effectiveDaysList || [],
+        academicEvents: eventsList || [],
         callerProfile,
         matchedTeacher,
         resolvedClassIds,

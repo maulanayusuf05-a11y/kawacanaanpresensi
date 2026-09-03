@@ -1110,14 +1110,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         "[loadData] subject_class_assignments read failed:",
         scopeClassRows.error.message,
       );
-    (scopeTeacherRows.data || [])
+    const effectiveScopeTeacherRows =
+      scopeTeacherRows.data && scopeTeacherRows.data.length > 0
+        ? scopeTeacherRows.data
+        : (masterJson?.subjectTeacherAssignments || []);
+    const effectiveScopeClassRows =
+      scopeClassRows.data && scopeClassRows.data.length > 0
+        ? scopeClassRows.data
+        : (masterJson?.subjectClassAssignments || []);
+
+    effectiveScopeTeacherRows
       .filter((a: any) => !a.academic_year || a.academic_year === activeAcademicYear)
       .forEach((a: any) => {
         const ids = subjectTeacherScope.get(a.teacher_id) || [];
         ids.push(a.subject_id);
         subjectTeacherScope.set(a.teacher_id, ids);
       });
-    (scopeClassRows.data || [])
+    effectiveScopeClassRows
       .filter((a: any) => !a.academic_year || a.academic_year === activeAcademicYear)
       .forEach((a: any) => {
         const ids = subjectClassScope.get(a.subject_id) || [];
@@ -1235,11 +1244,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       if (Array.isArray(masterJson?.resolvedClassIds) && masterJson.resolvedClassIds.length > 0) {
         masterJson.resolvedClassIds.forEach((cid: string) => targetClassIds.add(cid));
       }
+      let hasSub = false;
       if (myMatchedTeacher) {
         const assignedSubIds = subjectTeacherScope.get(myMatchedTeacher.id) || [];
+        if (assignedSubIds.length > 0) hasSub = true;
         assignedSubIds.forEach((sId) => {
           (subjectClassScope.get(sId) || []).forEach((cId) => targetClassIds.add(cId));
         });
+      }
+      // Rekonsiliasi otomatis: jika akun tercatat GURU MAPEL tetapi guru secara sah ditugaskan sebagai Wali Kelas di classes
+      if (!hasSub && targetClassIds.size === 0 && me.teacherId) {
+        const homeroomClass = classList.find((c: any) => c.waliKelasTeacherId === me.teacherId);
+        if (homeroomClass) {
+          targetClassIds.add(homeroomClass.id);
+        }
       }
       me.classIds = Array.from(targetClassIds);
       me.classNames = me.classIds.map((cid: string) => classList.find((c: any) => c.id === cid)?.name || "").filter(Boolean);
@@ -1340,13 +1358,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     const cfg = config.data ? dbConfig(config.data) : INITIAL_SYSTEM_CONFIG;
     setSystemConfig(cfg);
     setActiveStudyDays(cfg.activeStudyDays || [1, 2, 3, 4, 5]);
-    setAcademicEvents((events.data || []).map(dbEvent));
+
+    const finalEvents =
+      events.data && events.data.length > 0
+        ? events.data
+        : (masterJson?.academicEvents || []);
+    setAcademicEvents(finalEvents.map(dbEvent));
+
+    const finalEffective =
+      effective.data && effective.data.length > 0
+        ? effective.data
+        : (masterJson?.effectiveDays || []);
     const ed: any = {};
-    (effective.data || []).forEach((x: any) => (ed[x.month_key] = x.days));
+    finalEffective.forEach((x: any) => (ed[x.month_key] = x.days));
     setEffectiveDaysConfig(ed);
+
+    const finalAttendance =
+      attendance.data && attendance.data.length > 0
+        ? attendance.data
+        : (masterJson?.attendanceRecords || []);
     setAttendanceRecords(
-      (attendance.data || []).map((r: any) => dbAttendance(r, ss)),
+      finalAttendance.map((r: any) => dbAttendance(r, ss)),
     );
+
     const { data: subjectRows, error: subjectRowsError } = await supabase
       .from("subjects")
       .select("*")
@@ -1389,6 +1423,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         "[loadData] subject_schedule_days read failed:",
         subjectScheduleRowsError.message,
       );
+
+    const effectiveSubjectRows =
+      subjectRows && subjectRows.length > 0
+        ? subjectRows
+        : (masterJson?.subjects || []);
+    const effectiveSubjectTeacherRows =
+      subjectTeacherRows && subjectTeacherRows.length > 0
+        ? subjectTeacherRows
+        : (masterJson?.subjectTeacherAssignments || []);
+    const effectiveSubjectClassRows =
+      subjectClassRows && subjectClassRows.length > 0
+        ? subjectClassRows
+        : (masterJson?.subjectClassAssignments || []);
+    const effectiveSubjectScheduleRows =
+      subjectScheduleRows && subjectScheduleRows.length > 0
+        ? subjectScheduleRows
+        : (masterJson?.subjectScheduleDays || []);
+
     const teacherMap = new Map<string, any>(
       (baseTeachers || []).map((t: any) => [t.id, t]),
     );
@@ -1396,23 +1448,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       (classList || []).map((c: any) => [c.id, c]),
     );
     const teacherBySubject = new Map<string, string>();
-    (subjectTeacherRows || []).forEach((r: any) =>
+    effectiveSubjectTeacherRows.forEach((r: any) =>
       teacherBySubject.set(r.subject_id, r.teacher_id),
     );
     const classesBySubject = new Map<string, string[]>();
-    (subjectClassRows || []).forEach((r: any) => {
+    effectiveSubjectClassRows.forEach((r: any) => {
       const arr = classesBySubject.get(r.subject_id) || [];
       arr.push(r.class_id);
       classesBySubject.set(r.subject_id, arr);
     });
     const schedulesBySubject = new Map<string, any[]>();
-    (subjectScheduleRows || []).forEach((r: any) => {
+    effectiveSubjectScheduleRows.forEach((r: any) => {
       const arr = schedulesBySubject.get(r.subject_id) || [];
       arr.push(r);
       schedulesBySubject.set(r.subject_id, arr);
     });
     setSubjects(
-      (subjectRows || []).map((row: any) =>
+      effectiveSubjectRows.map((row: any) =>
         dbSubject(
           {
             ...row,
@@ -4038,6 +4090,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         setStudents(updatedStudents);
       }
 
+      if (Array.isArray(json.subjects) && json.subjects.length > 0) {
+        const teacherMap = new Map<string, any>(
+          (updatedTeachers || []).map((t: any) => [t.id, t]),
+        );
+        const classMap = new Map<string, any>(
+          (updatedClasses || []).map((c: any) => [c.id, c]),
+        );
+        const teacherBySubject = new Map<string, string>();
+        (json.subjectTeacherAssignments || []).forEach((r: any) =>
+          teacherBySubject.set(r.subject_id, r.teacher_id),
+        );
+        const classesBySubject = new Map<string, string[]>();
+        (json.subjectClassAssignments || []).forEach((r: any) => {
+          const arr = classesBySubject.get(r.subject_id) || [];
+          arr.push(r.class_id);
+          classesBySubject.set(r.subject_id, arr);
+        });
+        const schedulesBySubject = new Map<string, any[]>();
+        (json.subjectScheduleDays || []).forEach((r: any) => {
+          const arr = schedulesBySubject.get(r.subject_id) || [];
+          arr.push(r);
+          schedulesBySubject.set(r.subject_id, arr);
+        });
+        setSubjects(
+          json.subjects.map((row: any) =>
+            dbSubject(
+              {
+                ...row,
+                teacher_id: teacherBySubject.get(row.id) || null,
+                _targetClassIds: classesBySubject.get(row.id) || [],
+              },
+              teacherMap,
+              classMap,
+              schedulesBySubject,
+            ),
+          ),
+        );
+      }
+
       if (currentUser) {
         const matchedTeacher = json.matchedTeacher ? dbTeacher(json.matchedTeacher) : null;
         const resolvedClassIds: string[] = Array.isArray(json.resolvedClassIds) ? json.resolvedClassIds : [];
@@ -5068,6 +5159,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       return { success: false, message };
     }
   };
+
+  // Sinkronisasi data sekolah otomatis secara realtime (berkala & saat window focus)
+  useEffect(() => {
+    const isSchoolWs =
+      currentUser?.schoolId &&
+      activeWorkspace?.workspaceType !== "personal" &&
+      activeWorkspace?.workspaceType !== "individu";
+
+    if (!isSchoolWs) return;
+
+    const onFocus = () => {
+      reconcileSchoolData(false).catch(() => {});
+    };
+
+    const interval = setInterval(() => {
+      reconcileSchoolData(false).catch(() => {});
+    }, 30000);
+
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      clearInterval(interval);
+    };
+  }, [currentUser?.schoolId, activeWorkspace?.workspaceType]);
+
   return (
     <AppContext.Provider
       value={{
