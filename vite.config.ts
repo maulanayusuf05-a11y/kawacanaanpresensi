@@ -24,6 +24,7 @@ function apiDevMiddleware(): Plugin {
               'onboarding': './api/onboarding.ts',
               'sync-teacher-assignments': './api/sync-teacher-assignments.ts',
               'sync-wali-kelas': './api/sync-wali-kelas.ts',
+              'attendance': './api/attendance.ts',
             };
             const targetModule = safeRoutes[pathname];
             if (!targetModule) {

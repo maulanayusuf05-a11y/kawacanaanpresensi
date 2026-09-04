@@ -4882,25 +4882,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 
       const targetStudentIds = records.map((r) => r.studentId).filter(Boolean);
 
-      // Always delete existing records for the targeted students on this date & mode
-      if (targetStudentIds.length > 0) {
-        let del = supabase
-          .from("attendance_records")
-          .delete()
-          .eq("date", date)
-          .eq("type", targetType)
-          .in("student_id", targetStudentIds);
-
-        if (currentUser?.schoolId) {
-          del = del.eq("school_id", currentUser.schoolId);
-        }
-        if (targetType === "SUBJECT" && targetSubjectId) {
-          del = del.eq("subject_id", targetSubjectId);
-        }
-        const { error: delError } = await del;
-        if (delError) throw delError;
-      }
-
       const payload = records
         .filter((r) => r.status && r.status !== "-")
         .map((r) => ({
@@ -4923,11 +4904,75 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           updated_by: currentUser?.id || null,
         }));
 
-      if (payload.length > 0) {
-        const { error: insertError } = await supabase
-          .from("attendance_records")
-          .insert(payload);
-        if (insertError) throw insertError;
+      // Eksekusi penyimpanan: coba lewat client Supabase terlebih dahulu
+      try {
+        if (targetStudentIds.length > 0) {
+          let del = supabase
+            .from("attendance_records")
+            .delete()
+            .eq("date", date)
+            .eq("type", targetType)
+            .in("student_id", targetStudentIds);
+
+          if (currentUser?.schoolId) {
+            del = del.eq("school_id", currentUser.schoolId);
+          }
+          if (targetType === "SUBJECT" && targetSubjectId) {
+            del = del.eq("subject_id", targetSubjectId);
+          }
+          const { error: delError } = await del;
+          if (delError) throw delError;
+        }
+
+        if (payload.length > 0) {
+          const { error: insertError } = await supabase
+            .from("attendance_records")
+            .insert(payload);
+          if (insertError) throw insertError;
+        }
+      } catch (clientErr: any) {
+        const errMsg = String(clientErr?.message || "").toLowerCase();
+        const isRlsError =
+          errMsg.includes("row-level security") ||
+          errMsg.includes("violates") ||
+          errMsg.includes("permission denied") ||
+          clientErr?.code === "42501";
+
+        if (isRlsError) {
+          console.warn(
+            "[saveDailyAttendance] Terdeteksi pembatasan RLS Supabase pada role ini. Menggunakan sinkronisasi backend...",
+            clientErr.message
+          );
+          const { data: sessionData } = await supabase.auth.getSession();
+          const token = sessionData?.session?.access_token || "";
+          if (!token) throw clientErr;
+
+          const response = await fetch("/api/attendance", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              action: "save_daily",
+              schoolId: currentUser?.schoolId,
+              date,
+              type: targetType,
+              subjectId: targetSubjectId,
+              targetStudentIds,
+              payload,
+            }),
+          });
+
+          const resData = await response.json().catch(() => ({}));
+          if (!response.ok || !resData.ok) {
+            throw new Error(
+              resData?.error || clientErr?.message || "Gagal menyimpan absensi melalui server."
+            );
+          }
+        } else {
+          throw clientErr;
+        }
       }
 
       const activeRecords: AttendanceRecord[] = records
@@ -5134,23 +5179,60 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           updatePayload.notes = notes || "Sakit";
         }
 
-        if (existingRecord?.id) {
-          const { data: upData, error: upErr } = await supabase
-            .from("attendance_records")
-            .update(updatePayload)
-            .eq("id", existingRecord.id)
-            .select()
-            .single();
-          if (upErr) throw upErr;
-          mappedResult = dbAttendance(upData, students);
-        } else {
-          const { data: inData, error: inErr } = await supabase
-            .from("attendance_records")
-            .insert(updatePayload)
-            .select()
-            .single();
-          if (inErr) throw inErr;
-          mappedResult = dbAttendance(inData, students);
+        try {
+          if (existingRecord?.id) {
+            const { data: upData, error: upErr } = await supabase
+              .from("attendance_records")
+              .update(updatePayload)
+              .eq("id", existingRecord.id)
+              .select()
+              .single();
+            if (upErr) throw upErr;
+            mappedResult = dbAttendance(upData, students);
+          } else {
+            const { data: inData, error: inErr } = await supabase
+              .from("attendance_records")
+              .insert(updatePayload)
+              .select()
+              .single();
+            if (inErr) throw inErr;
+            mappedResult = dbAttendance(inData, students);
+          }
+        } catch (clientErr: any) {
+          const errMsg = String(clientErr?.message || "").toLowerCase();
+          const isRlsError =
+            errMsg.includes("row-level security") ||
+            errMsg.includes("violates") ||
+            errMsg.includes("permission denied") ||
+            clientErr?.code === "42501";
+
+          if (isRlsError) {
+            const { data: sessionData } = await supabase.auth.getSession();
+            const token = sessionData?.session?.access_token || "";
+            if (!token) throw clientErr;
+
+            const res = await fetch("/api/attendance", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                action: "submit_student",
+                schoolId: currentUser.schoolId,
+                existingId: existingRecord?.id,
+                payload: updatePayload,
+              }),
+            });
+            const resBody = await res.json().catch(() => ({}));
+            if (res.ok && resBody.record) {
+              mappedResult = dbAttendance(resBody.record, students);
+            } else {
+              throw new Error(resBody?.error || clientErr.message);
+            }
+          } else {
+            throw clientErr;
+          }
         }
       }
 
