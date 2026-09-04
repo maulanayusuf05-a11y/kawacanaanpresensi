@@ -110,6 +110,7 @@ export const DataGuruView: React.FC = () => {
   const [fileName, setFileName] = useState('');
   const [detectedDocType, setDetectedDocType] = useState<string>('');
   const [isParsingFile, setIsParsingFile] = useState(false);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const [parsedTeachers, setParsedTeachers] = useState<ParsedTeacherItem[]>([]);
   const [isImporting, setIsImporting] = useState(false);
@@ -534,10 +535,7 @@ export const DataGuruView: React.FC = () => {
     );
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const processTeacherFile = async (file: File) => {
     setFileName(file.name);
     setIsParsingFile(true);
 
@@ -574,6 +572,12 @@ export const DataGuruView: React.FC = () => {
     } finally {
       setIsParsingFile(false);
     }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await processTeacherFile(file);
   };
 
   const handlePasteChange = (text: string) => {
@@ -1029,7 +1033,24 @@ export const DataGuruView: React.FC = () => {
               {/* Upload File Body */}
               {importTab === 'upload' ? (
                 <div>
-                  <label className="border-2 border-dashed border-slate-200 hover:border-emerald-500 rounded-2xl p-6 flex flex-col items-center justify-center gap-2.5 cursor-pointer bg-slate-50 hover:bg-emerald-50/20 transition-all">
+                  <label
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setIsDraggingFile(true);
+                    }}
+                    onDragLeave={() => setIsDraggingFile(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setIsDraggingFile(false);
+                      const file = e.dataTransfer.files?.[0];
+                      if (file) processTeacherFile(file);
+                    }}
+                    className={`border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center gap-2.5 cursor-pointer transition-all ${
+                      isDraggingFile
+                        ? 'border-emerald-500 bg-emerald-50/60 scale-[1.01] shadow-sm'
+                        : 'border-slate-200 hover:border-emerald-500 bg-slate-50 hover:bg-emerald-50/20'
+                    }`}
+                  >
                     {isParsingFile ? (
                       <div className="flex flex-col items-center gap-2 py-2">
                         <div className="w-8 h-8 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin" />

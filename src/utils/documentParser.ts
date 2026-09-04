@@ -9,10 +9,14 @@ async function getPdfJs() {
     pdfjsLib = await import('pdfjs-dist');
     try {
       if (pdfjsLib.GlobalWorkerOptions) {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-          'pdfjs-dist/build/pdf.worker.min.mjs',
-          import.meta.url
-        ).toString();
+        try {
+          pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+            'pdfjs-dist/build/pdf.worker.min.mjs',
+            import.meta.url
+          ).toString();
+        } catch {
+          pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version || '6.3.289'}/build/pdf.worker.min.mjs`;
+        }
       }
     } catch (e) {
       console.warn('[documentParser] Unable to set pdfjs workerSrc:', e);
@@ -179,7 +183,7 @@ export async function parseDocxFile(file: File): Promise<ParsedDocumentResult> {
 export async function parsePdfFile(file: File): Promise<ParsedDocumentResult> {
   const pdfjs = await getPdfJs();
   const arrayBuffer = await file.arrayBuffer();
-  const loadingTask = pdfjs.getDocument({ data: arrayBuffer });
+  const loadingTask = pdfjs.getDocument({ data: new Uint8Array(arrayBuffer) });
   const pdf = await loadingTask.promise;
 
   const allRows: string[][] = [];
@@ -394,14 +398,15 @@ export function mapRowsToTeachers(rows: string[][], rawTextFallback: string = ''
         nama = candidateTokens[0] || '';
       }
       if (candidateTokens.length >= 2) {
+        const token1Clean = candidateTokens[1].replace(/\s+/g, '');
         // Is token 1 a NIP or Gender?
-        if (/^\d{8,18}$/.test(candidateTokens[1]) || candidateTokens[1] === '-') {
-          nip = candidateTokens[1];
+        if (/^\d{8,18}$/.test(token1Clean) || candidateTokens[1] === '-') {
+          nip = token1Clean;
           genderRaw = candidateTokens[2] || 'L';
           tugasUtama = candidateTokens[3] || 'Belum Ditugaskan';
         } else if (['L', 'P', 'LAKI-LAKI', 'PEREMPUAN'].includes(candidateTokens[1].toUpperCase())) {
           genderRaw = candidateTokens[1];
-          nip = candidateTokens[2] || '-';
+          nip = candidateTokens[2] ? candidateTokens[2].replace(/\s+/g, '') : '-';
           tugasUtama = candidateTokens[3] || 'Belum Ditugaskan';
         } else {
           nip = candidateTokens[1];
@@ -421,6 +426,11 @@ export function mapRowsToTeachers(rows: string[][], rawTextFallback: string = ''
     let cleanNip = nip.trim();
     if (cleanNip === '' || cleanNip === '-' || cleanNip === '0') {
       cleanNip = '-';
+    } else {
+      const stripped = cleanNip.replace(/\s+/g, '');
+      if (/^\d{8,18}$/.test(stripped)) {
+        cleanNip = stripped;
+      }
     }
 
     // Clean tugas utama

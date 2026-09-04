@@ -89,6 +89,34 @@ export const DashboardView: React.FC = () => {
     [currentUser, classes, subjects, teachers]
   );
 
+  const isPersonalWorkspace = useMemo(() => {
+    return (
+      activeWorkspace?.workspaceType === 'personal' ||
+      activeWorkspace?.workspaceType === 'individu' ||
+      currentUser?.subscriptionPlan === 'guru_uji_coba' ||
+      currentUser?.subscriptionPlan === 'teacher' ||
+      currentUser?.subscriptionPlan === 'guru_pro' ||
+      currentUser?.subscriptionPlan === 'mulai' ||
+      currentUser?.subscriptionPlan === 'guru_gratis' ||
+      (!currentUser?.schoolId && currentUser?.role !== 'SUPER_ADMIN')
+    );
+  }, [activeWorkspace?.workspaceType, currentUser?.subscriptionPlan, currentUser?.schoolId, currentUser?.role]);
+
+  // Status role Admin Sekolah atau Kepala Sekolah di Ruang Kerja Sekolah
+  const isSchoolAdminOrKS = useMemo(() => {
+    if (isPersonalWorkspace) return false;
+    const role = currentUser?.role;
+    return (
+      role === 'ADMIN' ||
+      role === 'SUPER_ADMIN' ||
+      role === 'SUPER ADMIN' ||
+      role === 'KEPALA SEKOLAH' ||
+      userScope.isAdmin ||
+      userScope.isSuperAdmin ||
+      userScope.isKepalaSekolah
+    );
+  }, [isPersonalWorkspace, currentUser?.role, userScope]);
+
   // Month & time calculation
   const now = useMemo(() => new Date(), []);
   const currentYear = now.getFullYear();
@@ -114,7 +142,11 @@ export const DashboardView: React.FC = () => {
   const effectiveDaysThisMonth = getEffectiveDaysForMonth(currentYear, currentMonth);
 
   // Scoped students calculation based on role
+  // Untuk Admin Sekolah & Kepala Sekolah di Ruang Kerja Sekolah: akumulasi seluruh siswa dari semua kelas
   const scopedStudents = useMemo(() => {
+    if (isSchoolAdminOrKS) {
+      return students;
+    }
     if (userScope.isWaliKelas) {
       if (userScope.assignedWaliClassId) {
         return students.filter((s) => s.classId === userScope.assignedWaliClassId);
@@ -132,12 +164,12 @@ export const DashboardView: React.FC = () => {
       return students;
     }
     return students;
-  }, [userScope, students, currentUser]);
+  }, [isSchoolAdminOrKS, userScope, students, currentUser]);
 
   const scopedStudentIds = useMemo(() => new Set(scopedStudents.map((s) => s.id)), [scopedStudents]);
 
   // Metrics for scoped students
-  const scopedTotal = scopedStudents.length || cachedSummary?.scopedTotal || 0;
+  const scopedTotal = (isSchoolAdminOrKS ? students.length : scopedStudents.length) || cachedSummary?.scopedTotal || 0;
   const scopedMale = scopedStudents.filter((s) => s.gender === 'L').length || cachedSummary?.scopedMale || 0;
   const scopedFemale = scopedStudents.filter((s) => s.gender === 'P').length || cachedSummary?.scopedFemale || 0;
 
@@ -167,10 +199,16 @@ export const DashboardView: React.FC = () => {
   const isCacheValidForToday = cachedSummary?.cachedDate === todayFormatted;
 
   // Today's attendance calculation (strictly following hari berjalan)
+  // Untuk Admin Sekolah & Kepala Sekolah: mencakup akumulasi presensi semua kelas di sekolah tersebut
   const todayRecords = useMemo(() => {
     return attendanceRecords.filter((r) => {
       // Mengikuti hari berjalan secara akurat
       if (r.date !== todayFormatted) return false;
+
+      if (isSchoolAdminOrKS) {
+        // Akumulasi data absensi semua kelas di sekolah tersebut
+        return true;
+      }
 
       if (userScope.isWaliKelas) {
         return scopedStudentIds.has(r.studentId) && r.type !== 'SUBJECT';
@@ -189,13 +227,19 @@ export const DashboardView: React.FC = () => {
       }
       return r.type !== 'SUBJECT';
     });
-  }, [attendanceRecords, todayFormatted, userScope, scopedStudentIds]);
+  }, [attendanceRecords, todayFormatted, isSchoolAdminOrKS, userScope, scopedStudentIds]);
 
   // Pemetaan status unik per siswa untuk hari berjalan (mencegah duplikasi perhitungan)
+  // Prioritaskan presensi harian (DAILY) jika siswa juga memiliki record mapel (SUBJECT)
   const todayStudentStatusMap = useMemo(() => {
     const map = new Map<string, string>();
-    for (const r of todayRecords) {
-      if (!map.has(r.studentId)) {
+    const sorted = [...todayRecords].sort((a, b) => {
+      if (a.type !== 'SUBJECT' && b.type === 'SUBJECT') return -1;
+      if (a.type === 'SUBJECT' && b.type !== 'SUBJECT') return 1;
+      return 0;
+    });
+    for (const r of sorted) {
+      if (!map.has(r.studentId) && r.status) {
         map.set(r.studentId, r.status);
       }
     }
@@ -235,7 +279,7 @@ export const DashboardView: React.FC = () => {
   }, [todayStudentStatusMap]);
 
   // Target total siswa yang harus diinput presensinya hari ini
-  const targetTotal = scopedTotal || (scopedStudents.length > 0 ? scopedStudents.length : students.length) || 0;
+  const targetTotal = (isSchoolAdminOrKS ? students.length : scopedTotal) || students.length || 0;
 
   // Jumlah siswa yang datanya telah di-input hari ini
   const totalInputted = todayStudentStatusMap.size;
@@ -257,6 +301,7 @@ export const DashboardView: React.FC = () => {
   const hadirPercentOfInputted = totalInputted > 0 ? Math.round((hadirCount / totalInputted) * 100) : 0;
 
   // 7-day trend data (Sab, Min, Sen, Sel, Rab, Kam, Jum)
+  // Untuk Admin Sekolah & Kepala Sekolah: mengakumulasi seluruh data kehadiran dari semua kelas di sekolah
   const dayNames = useMemo(() => ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'], []);
   const trendData = useMemo(() => {
     if (attendanceRecords.length === 0 && cachedSummary?.trendData && isCacheValidForToday) {
@@ -269,6 +314,31 @@ export const DashboardView: React.FC = () => {
       const dm = String(d.getMonth() + 1).padStart(2, '0');
       const dd = String(d.getDate()).padStart(2, '0');
       const dStr = `${dy}-${dm}-${dd}`;
+
+      if (isSchoolAdminOrKS) {
+        // Akumulasi data absensi semua kelas di sekolah tersebut
+        const dayMap = new Map<string, string>();
+        const dayRecs = attendanceRecords.filter((r) => r.date === dStr);
+        const sortedDayRecs = [...dayRecs].sort((a, b) => {
+          if (a.type !== 'SUBJECT' && b.type === 'SUBJECT') return -1;
+          if (a.type === 'SUBJECT' && b.type !== 'SUBJECT') return 1;
+          return 0;
+        });
+        for (const r of sortedDayRecs) {
+          if (!dayMap.has(r.studentId) && r.status) {
+            dayMap.set(r.studentId, r.status);
+          }
+        }
+        let hCount = 0;
+        for (const status of dayMap.values()) {
+          if (status === 'Hadir') hCount++;
+        }
+        return {
+          day: dayNames[d.getDay()],
+          count: hCount,
+        };
+      }
+
       const recs = attendanceRecords.filter((r) => {
         if (r.date !== dStr) return false;
         if (userScope.isWaliKelas) {
@@ -294,7 +364,7 @@ export const DashboardView: React.FC = () => {
         count: hCount,
       };
     });
-  }, [attendanceRecords, cachedSummary?.trendData, isCacheValidForToday, dayNames, userScope, scopedStudentIds]);
+  }, [attendanceRecords, cachedSummary?.trendData, isCacheValidForToday, dayNames, isSchoolAdminOrKS, userScope, scopedStudentIds]);
 
   // Save calculated summary to localStorage cache for lightning-fast next load
   useEffect(() => {
@@ -468,16 +538,6 @@ export const DashboardView: React.FC = () => {
 
   // Role-specific widgets definition
   const isTeacherOrWali = userScope.isWaliKelas || userScope.isGuruMapel;
-
-  const isPersonalWorkspace =
-    activeWorkspace?.workspaceType === 'personal' ||
-    activeWorkspace?.workspaceType === 'individu' ||
-    currentUser?.subscriptionPlan === 'guru_uji_coba' ||
-    currentUser?.subscriptionPlan === 'teacher' ||
-    currentUser?.subscriptionPlan === 'guru_pro' ||
-    currentUser?.subscriptionPlan === 'mulai' ||
-    currentUser?.subscriptionPlan === 'guru_gratis' ||
-    (!currentUser?.schoolId && currentUser?.role !== 'SUPER_ADMIN');
 
   const toneClasses: Record<string, string> = {
     blue: 'bg-blue-50 border-blue-100 text-blue-600',
@@ -656,7 +716,9 @@ export const DashboardView: React.FC = () => {
             <div className="flex items-center gap-2">
               <TrendingUp size={16} className="text-blue-600" />
               <h2 className="font-bold text-slate-900 text-xs sm:text-sm">
-                {userScope.isWaliKelas
+                {isSchoolAdminOrKS
+                  ? 'Tren Kehadiran Semua Kelas (7 Hari)'
+                  : userScope.isWaliKelas
                   ? `Tren Kehadiran Kelas ${userScope.assignedWaliClassName || ''} (7 Hari)`
                   : userScope.isGuruMapel
                   ? `Tren Kehadiran Mapel ${userScope.primarySubject?.name || ''} (7 Hari)`
@@ -664,7 +726,7 @@ export const DashboardView: React.FC = () => {
               </h2>
             </div>
             <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-              SISWA HADIR
+              {isSchoolAdminOrKS ? `AKUMULASI ${classes.length} ROMBEL` : 'SISWA HADIR'}
             </span>
           </div>
 
@@ -680,7 +742,7 @@ export const DashboardView: React.FC = () => {
 
               {/* Grid Lines & Y-axis labels */}
               {(() => {
-                const maxVal = Math.max(scopedTotal || students.length || 1, 1);
+                const maxVal = Math.max((isSchoolAdminOrKS ? students.length : scopedTotal) || students.length || 1, 1);
                 const stepValues = [
                   maxVal,
                   Math.round(maxVal * 0.75),
@@ -703,7 +765,7 @@ export const DashboardView: React.FC = () => {
 
               {/* Dynamic Path Calculation based on trendData */}
               {(() => {
-                const maxVal = Math.max(scopedTotal || students.length || 1, 1);
+                const maxVal = Math.max((isSchoolAdminOrKS ? students.length : scopedTotal) || students.length || 1, 1);
                 const points = trendData.map((item, idx) => {
                   const x = 35 + idx * 70;
                   const ratio = Math.min(Math.max(item.count / maxVal, 0), 1);
@@ -722,7 +784,9 @@ export const DashboardView: React.FC = () => {
                     <path d={areaPath} fill="url(#blueAreaGradient)" />
                     <path d={linePath} fill="none" stroke="#2563EB" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
                     {points.map((pt, idx) => (
-                      <circle key={idx} cx={pt.x} cy={pt.y} r="3.5" className="fill-blue-600 stroke-white stroke-2" />
+                      <circle key={idx} cx={pt.x} cy={pt.y} r="3.5" className="fill-blue-600 stroke-white stroke-2">
+                        <title>{`${trendData[idx]?.day}: ${trendData[idx]?.count} Siswa Hadir (${isSchoolAdminOrKS ? 'Semua Kelas' : 'Kelas'})`}</title>
+                      </circle>
                     ))}
                   </>
                 );
@@ -747,7 +811,9 @@ export const DashboardView: React.FC = () => {
           <div className="w-full flex items-center justify-between gap-2 mb-1">
             <div className="flex items-center gap-1.5 min-w-0">
               <Percent size={16} className="text-blue-600 shrink-0" />
-              <h2 className="font-bold text-slate-900 text-xs sm:text-sm truncate">Status Hari Ini</h2>
+              <h2 className="font-bold text-slate-900 text-xs sm:text-sm truncate">
+                {isSchoolAdminOrKS ? 'Status Hari Ini (Semua Kelas)' : 'Status Hari Ini'}
+              </h2>
             </div>
             <div className="flex items-center gap-1 shrink-0 bg-blue-50 border border-blue-200/70 px-2 py-0.5 rounded-lg text-blue-700">
               <CalendarCheck size={12} className="text-blue-600" />
@@ -759,7 +825,35 @@ export const DashboardView: React.FC = () => {
 
           {/* Status Badge: Mengikuti data yang telah di-input atau belum di-input */}
           <div className="w-full my-1">
-            {!isAttendanceInputtedToday ? (
+            {isSchoolAdminOrKS ? (
+              isAttendanceInputtedToday ? (
+                isAttendanceFullyInputted ? (
+                  <div className="flex items-center justify-between gap-1.5 p-2 rounded-xl bg-emerald-50/80 border border-emerald-200 text-emerald-900 text-left">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
+                      <p className="text-[11px] font-bold truncate">
+                        Presensi Semua Kelas Lengkap ({totalInputted}/{targetTotal} Siswa - 100%)
+                      </p>
+                    </div>
+                    <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md shrink-0">
+                      Lengkap
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-1.5 p-2 rounded-xl bg-blue-50/80 border border-blue-200 text-blue-900 text-left">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <Clock size={13} className="text-blue-600 shrink-0" />
+                      <p className="text-[11px] font-bold truncate">
+                        Akumulasi Terdata: {totalInputted} dari {targetTotal} Siswa ({inputPercent}%)
+                      </p>
+                    </div>
+                    <span className="text-[10px] font-bold text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-md shrink-0">
+                      {classes.length} Kelas
+                    </span>
+                  </div>
+                )
+              ) : null
+            ) : !isAttendanceInputtedToday ? (
               <div className="flex items-center justify-between gap-1.5 p-2 rounded-xl bg-amber-50/80 border border-amber-200 text-amber-900 text-left">
                 <div className="flex items-center gap-1.5 min-w-0">
                   <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0 animate-pulse" />
@@ -886,8 +980,8 @@ export const DashboardView: React.FC = () => {
                   <span className="text-xl sm:text-2xl font-black text-slate-400 tracking-tight leading-none">
                     0%
                   </span>
-                  <span className="text-[8px] sm:text-[9px] font-bold text-amber-600 tracking-wider uppercase mt-1">
-                    BELUM DI-INPUT
+                  <span className="text-[8px] sm:text-[9px] font-bold text-slate-400 tracking-wider uppercase mt-1">
+                    {isSchoolAdminOrKS ? 'HADIR' : 'BELUM DI-INPUT'}
                   </span>
                 </>
               )}
@@ -912,20 +1006,22 @@ export const DashboardView: React.FC = () => {
               <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
               <span>ALFA ({alfaCount})</span>
             </div>
-            <div
-              className={`flex items-center gap-1 px-2 py-0.5 rounded-md border ${
-                totalBelumInput > 0
-                  ? 'text-amber-800 bg-amber-50 border-amber-300 font-bold'
-                  : 'text-slate-500 bg-slate-50 border-slate-200'
-              }`}
-            >
-              <span
-                className={`w-2 h-2 rounded-full shrink-0 ${
-                  totalBelumInput > 0 ? 'bg-amber-500' : 'bg-slate-300'
+            {!isSchoolAdminOrKS && (
+              <div
+                className={`flex items-center gap-1 px-2 py-0.5 rounded-md border ${
+                  totalBelumInput > 0
+                    ? 'text-amber-800 bg-amber-50 border-amber-300 font-bold'
+                    : 'text-slate-500 bg-slate-50 border-slate-200'
                 }`}
-              />
-              <span>BELUM INPUT ({totalBelumInput})</span>
-            </div>
+              >
+                <span
+                  className={`w-2 h-2 rounded-full shrink-0 ${
+                    totalBelumInput > 0 ? 'bg-amber-500' : 'bg-slate-300'
+                  }`}
+                />
+                <span>BELUM INPUT ({totalBelumInput})</span>
+              </div>
+            )}
           </div>
         </div>
       </div>

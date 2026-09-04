@@ -212,6 +212,7 @@ export const DataSiswaView: React.FC = () => {
   const [fileName, setFileName] = useState<string>('');
   const [detectedDocType, setDetectedDocType] = useState<string>('');
   const [isParsingFile, setIsParsingFile] = useState(false);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Progressive Book Loading for Student Import
@@ -347,10 +348,7 @@ export const DataSiswaView: React.FC = () => {
     );
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const processStudentFile = async (file: File) => {
     setFileName(file.name);
     setIsParsingFile(true);
 
@@ -392,6 +390,12 @@ export const DataSiswaView: React.FC = () => {
     } finally {
       setIsParsingFile(false);
     }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await processStudentFile(file);
   };
 
   const handlePasteChange = (text: string) => {
@@ -965,7 +969,22 @@ export const DataSiswaView: React.FC = () => {
                 {importTab === 'file' ? (
                   <div
                     onClick={() => fileInputRef.current?.click()}
-                    className="border-2 border-dashed border-blue-200 hover:border-emerald-500 bg-gradient-to-b from-blue-50/30 to-emerald-50/20 hover:bg-emerald-50/40 rounded-2xl p-6 text-center cursor-pointer transition-all space-y-3 group"
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setIsDraggingFile(true);
+                    }}
+                    onDragLeave={() => setIsDraggingFile(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setIsDraggingFile(false);
+                      const file = e.dataTransfer.files?.[0];
+                      if (file) processStudentFile(file);
+                    }}
+                    className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all space-y-3 group ${
+                      isDraggingFile
+                        ? 'border-emerald-500 bg-emerald-50/60 scale-[1.01] shadow-sm'
+                        : 'border-blue-200 hover:border-emerald-500 bg-gradient-to-b from-blue-50/30 to-emerald-50/20 hover:bg-emerald-50/40'
+                    }`}
                   >
                     <input
                       ref={fileInputRef}
