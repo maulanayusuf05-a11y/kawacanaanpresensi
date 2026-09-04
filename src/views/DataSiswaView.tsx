@@ -20,17 +20,12 @@ import {
   ClipboardPaste,
   Filter,
 } from 'lucide-react';
-
-interface ParsedStudentItem {
-  nama: string;
-  gender: 'L' | 'P';
-  nisn: string;
-  classNameInput?: string;
-  matchedClassId?: string | null;
-  matchedClassName?: string;
-  isValid: boolean;
-  error?: string;
-}
+import {
+  parseImportDocument,
+  mapRowsToStudents,
+  downloadStudentTemplateFile,
+  ParsedStudentItem,
+} from '../utils/documentParser';
 
 export const DataSiswaView: React.FC = () => {
   const {
@@ -215,6 +210,8 @@ export const DataSiswaView: React.FC = () => {
   const [pasteText, setPasteText] = useState('');
   const [parsedStudents, setParsedStudents] = useState<ParsedStudentItem[]>([]);
   const [fileName, setFileName] = useState<string>('');
+  const [detectedDocType, setDetectedDocType] = useState<string>('');
+  const [isParsingFile, setIsParsingFile] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Progressive Book Loading for Student Import
@@ -338,226 +335,73 @@ export const DataSiswaView: React.FC = () => {
     return classList.find((c) => c.name.toLowerCase().includes(clean) || clean.includes(c.name.toLowerCase()));
   };
 
-  // Download Template CSV (Standardized for Excel with UTF-8 BOM)
+  // Download Template Siswa (Excel atau CSV)
   // Format: NAMA LENGKAP, L/P, NISN, KELAS
-  const handleDownloadTemplate = () => {
-    const header = 'NAMA LENGKAP,L/P,NISN,KELAS\n';
-    const sampleRows = [
-      'ADLAN AR RASHAFI SUBHAN,L,3140787024,Kelas 1A',
-      'AINUN FAJARIAH,P,3141380962,Kelas 1A',
-      'AISYAH AZ ZAHRA,P,3149811568,Kelas 1B',
-      'ALBY FAKHRI ARSYAD,L,3145450700,Kelas 2A',
-      'AQILA SHAFA MAHYA,P,3148157704,Kelas 2B',
-      'BAGAS SATRIA PRATAMA,L,3146473211,Kelas 3A',
-      'CITRA LESTARI DEWI,P,3149021145,Kelas 3B',
-    ].join('\n');
-
-    const csvContent = '\uFEFF' + header + sampleRows;
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', 'Template_Import_Data_Siswa_Kelas.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    showToast('Template file CSV berhasil diunduh. Silakan isi dan unggah kembali.', 'success');
+  const handleDownloadTemplate = (format: 'xlsx' | 'csv' = 'xlsx') => {
+    const currentClass = availableClasses.find((c) => c.id === selectedImportClassId) || availableClasses[0];
+    const defaultClassName = currentClass ? currentClass.name : 'Kelas 1A';
+    downloadStudentTemplateFile(format, defaultClassName);
+    showToast(
+      `Template file ${format === 'xlsx' ? 'Excel (.xlsx)' : 'CSV (.csv)'} Siswa berhasil diunduh. Silakan lengkapi dan unggah kembali.`,
+      'success'
+    );
   };
 
-  // Parser helper function for CSV / TSV text
-  // Urutan kolom utama: NAMA LENGKAP, L/P, NISN, KELAS
-  const parseRawTextToStudents = (text: string): ParsedStudentItem[] => {
-    if (!text.trim()) return [];
-
-    const lines = text
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0);
-
-    if (lines.length === 0) return [];
-
-    const results: ParsedStudentItem[] = [];
-
-    // Helper token split
-    const splitTokens = (lineStr: string): string[] => {
-      let t: string[] = [];
-      if (lineStr.includes('\t')) {
-        t = lineStr.split('\t');
-      } else if (lineStr.includes(';')) {
-        t = lineStr.split(';');
-      } else {
-        t = lineStr.split(',');
-      }
-      return t.map((x) => x.trim().replace(/^["']|["']$/g, ''));
-    };
-
-    // Detect if first line is header
-    const firstLineLower = lines[0].toLowerCase();
-    const hasHeader =
-      firstLineLower.includes('nisn') ||
-      firstLineLower.includes('nama') ||
-      firstLineLower.includes('siswa') ||
-      firstLineLower.includes('jenis') ||
-      firstLineLower.includes('gender') ||
-      firstLineLower.includes('l/p') ||
-      firstLineLower.includes('kelas') ||
-      firstLineLower.includes('rombel');
-
-    let nameCol = 0;
-    let genderCol = 1;
-    let nisnCol = 2;
-    let classCol = 3;
-
-    if (hasHeader) {
-      const headerTokens = splitTokens(lines[0]).map((t) => t.toLowerCase());
-      headerTokens.forEach((tok, idx) => {
-        if (tok.includes('nama') || tok.includes('name') || tok.includes('siswa')) nameCol = idx;
-        else if (
-          tok.includes('l/p') ||
-          tok.includes('lp') ||
-          tok.includes('jenis') ||
-          tok.includes('gender') ||
-          tok.includes('kelamin') ||
-          tok.includes('jk')
-        )
-          genderCol = idx;
-        else if (tok.includes('nisn') || tok.includes('nis') || tok.includes('induk')) nisnCol = idx;
-        else if (tok.includes('kelas') || tok.includes('rombel') || tok.includes('tingkat') || tok.includes('class'))
-          classCol = idx;
-      });
-    }
-
-    const dataLines = hasHeader ? lines.slice(1) : lines;
-
-    dataLines.forEach((line) => {
-      const tokens = splitTokens(line);
-      if (tokens.length < 2) return;
-
-      let nama = '';
-      let genderRaw = '';
-      let nisn = '';
-      let classRaw = '';
-
-      if (hasHeader) {
-        nama = tokens[nameCol] || '';
-        genderRaw = tokens[genderCol] || '';
-        nisn = tokens[nisnCol] || '';
-        classRaw = tokens[classCol] || '';
-      } else if (tokens.length >= 4) {
-        // Standard requested order: NAMA LENGKAP, L/P, NISN, KELAS
-        // Check if token[0] is digits (legacy NISN, NAMA, L/P, KELAS)
-        if (/^\d{6,15}$/.test(tokens[0]) && !/^\d{6,15}$/.test(tokens[2])) {
-          nisn = tokens[0];
-          nama = tokens[1];
-          genderRaw = tokens[2];
-          classRaw = tokens[3];
-        } else {
-          nama = tokens[0];
-          genderRaw = tokens[1];
-          nisn = tokens[2];
-          classRaw = tokens[3];
-        }
-      } else if (tokens.length === 3) {
-        // 3 tokens: check if token[0] is digits vs token[2] is digits
-        if (/^\d{6,15}$/.test(tokens[0])) {
-          // NISN, NAMA, L/P
-          nisn = tokens[0];
-          nama = tokens[1];
-          genderRaw = tokens[2];
-        } else if (/^\d{6,15}$/.test(tokens[2])) {
-          // NAMA, L/P, NISN
-          nama = tokens[0];
-          genderRaw = tokens[1];
-          nisn = tokens[2];
-        } else {
-          // NAMA, L/P, KELAS
-          nama = tokens[0];
-          genderRaw = tokens[1];
-          classRaw = tokens[2];
-          nisn = '';
-        }
-      } else {
-        // 2 tokens: NAMA, NISN or NISN, NAMA
-        if (/^\d{6,15}$/.test(tokens[0])) {
-          nisn = tokens[0];
-          nama = tokens[1];
-        } else {
-          nama = tokens[0];
-          nisn = tokens[1];
-        }
-      }
-
-      // Clean gender
-      let gender: 'L' | 'P' = 'L';
-      const gUpper = (genderRaw || '').trim().toUpperCase();
-      if (
-        gUpper === 'P' ||
-        gUpper.startsWith('PEREMPUAN') ||
-        gUpper.startsWith('PUTRI') ||
-        gUpper.startsWith('WANITA') ||
-        gUpper === 'F' ||
-        gUpper === 'FEMALE' ||
-        gUpper === 'W'
-      ) {
-        gender = 'P';
-      } else {
-        gender = 'L';
-      }
-
-      // Clean class match
-      const cleanClassInput = (classRaw || '').trim();
-      const matchedClass = cleanClassInput ? findMatchingClass(cleanClassInput, availableClasses) : undefined;
-      const matchedClassId = matchedClass?.id || selectedImportClassId || availableClasses[0]?.id || null;
-      const matchedClassName =
-        matchedClass?.name ||
-        cleanClassInput ||
-        availableClasses.find((c) => c.id === matchedClassId)?.name ||
-        '';
-
-      // Validation
-      const isValid = (nama || '').trim().length > 0 && (nisn || '').trim().length > 0;
-      let error = undefined;
-      if (!nama.trim()) error = 'Nama lengkap kosong';
-      else if (!nisn.trim()) error = 'NISN kosong';
-
-      results.push({
-        nama: nama.trim().toUpperCase(),
-        gender,
-        nisn: nisn.trim(),
-        classNameInput: cleanClassInput || undefined,
-        matchedClassId,
-        matchedClassName,
-        isValid,
-        error,
-      });
-    });
-
-    return results;
-  };
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const content = event.target?.result as string;
-      const parsed = parseRawTextToStudents(content);
+    setIsParsingFile(true);
+
+    try {
+      const docResult = await parseImportDocument(file);
+      const parsed = mapRowsToStudents(
+        docResult.rows,
+        availableClasses,
+        selectedImportClassId || availableClasses[0]?.id || '',
+        docResult.rawText
+      );
       setParsedStudents(parsed);
+
+      let typeName = 'File';
+      if (docResult.fileType === 'excel') typeName = 'Excel (.xlsx / .xls)';
+      else if (docResult.fileType === 'docx') typeName = 'Word (.docx)';
+      else if (docResult.fileType === 'pdf') typeName = 'Dokumen PDF (.pdf)';
+      else if (docResult.fileType === 'csv') typeName = 'File CSV (.csv)';
+
+      setDetectedDocType(typeName);
+
       if (parsed.length === 0) {
-        showToast('Tidak ada data siswa yang dapat dibaca dari file ini', 'error');
+        showToast(
+          `Tidak ada data siswa yang terbaca dari ${file.name}. Pastikan file berisi tabel siswa dengan kolom Nama Lengkap, L/P, NISN, dan Kelas.`,
+          'error'
+        );
       } else {
-        showToast(`Berhasil membaca ${parsed.length} baris data dari ${file.name}`);
+        showToast(
+          `Berhasil membaca ${parsed.length} baris data siswa dari format ${typeName} (${file.name})`,
+          'success'
+        );
       }
-    };
-    reader.readAsText(file);
+    } catch (err: any) {
+      console.error('[DataSiswaView] Error parsing file:', err);
+      showToast(
+        `Gagal membaca file: ${err?.message || 'Format dokumen tidak didukung atau file rusak'}`,
+        'error'
+      );
+    } finally {
+      setIsParsingFile(false);
+    }
   };
 
   const handlePasteChange = (text: string) => {
     setPasteText(text);
-    const parsed = parseRawTextToStudents(text);
+    const parsed = mapRowsToStudents(
+      [],
+      availableClasses,
+      selectedImportClassId || availableClasses[0]?.id || '',
+      text
+    );
     setParsedStudents(parsed);
   };
 
@@ -1009,10 +853,10 @@ export const DataSiswaView: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="font-black text-slate-900 text-base">
-                    Import Data Siswa (Excel / CSV)
+                    Import Data Siswa Masal
                   </h3>
                   <p className="text-xs text-slate-500 font-medium">
-                    Masukkan banyak siswa secara instan menggunakan file spreadsheet atau salin-tempel
+                    Mendukung file Excel (.xlsx), CSV, Word (.docx), &amp; PDF
                   </p>
                 </div>
               </div>
@@ -1059,17 +903,29 @@ export const DataSiswaView: React.FC = () => {
                     <code className="bg-white px-1.5 py-0.5 rounded font-mono font-bold text-blue-950">KELAS</code>.
                   </p>
                   <p className="text-[10px] text-blue-700 mt-0.5">
-                    Kolom KELAS otomatis terintegrasi dengan Data Kelas (otomatis menghitung siswa L/P & total per kelas).
+                    Kolom KELAS otomatis terintegrasi dengan Data Kelas (otomatis menghitung siswa L/P &amp; total per kelas).
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleDownloadTemplate}
-                  className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 shrink-0 cursor-pointer"
-                >
-                  <Download size={14} />
-                  <span>Unduh Template CSV</span>
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadTemplate('xlsx')}
+                    className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                    title="Unduh format template Excel"
+                  >
+                    <FileSpreadsheet size={14} />
+                    <span>Template Excel (.xlsx)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadTemplate('csv')}
+                    className="px-3 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                    title="Unduh format template CSV"
+                  >
+                    <Download size={14} />
+                    <span>Template CSV</span>
+                  </button>
+                </div>
               </div>
 
               {/* Step 2: Choose Method (Upload File vs Paste Text) */}
@@ -1089,7 +945,7 @@ export const DataSiswaView: React.FC = () => {
                       }`}
                     >
                       <Upload size={13} />
-                      <span>Unggah File CSV</span>
+                      <span>Unggah Dokumen (Excel / CSV / Word / PDF)</span>
                     </button>
                     <button
                       type="button"
@@ -1114,25 +970,53 @@ export const DataSiswaView: React.FC = () => {
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept=".csv, .txt, .tsv"
+                      accept=".xlsx, .xls, .csv, .docx, .pdf, .txt, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel, text/csv, application/vnd.openxmlformats-officedocument.wordprocessingml.document, application/pdf, text/plain"
                       onChange={handleFileUpload}
                       className="hidden"
                     />
-                    <div className="flex justify-center py-1">
-                      <BookVisual size="sm" showGlow={true} />
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-slate-800">
-                        {fileName ? (
-                          <span className="text-emerald-700 font-extrabold">{fileName}</span>
-                        ) : (
-                          'Klik di sini untuk memilih file (.csv / .txt) dari komputer'
-                        )}
-                      </p>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
-                        Mendukung file hasil ekspor Excel (CSV UTF-8) atau teks dengan pemisah koma / titik koma / tab
-                      </p>
-                    </div>
+                    {isParsingFile ? (
+                      <div className="flex flex-col items-center justify-center py-4 gap-2">
+                        <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                        <p className="text-xs font-bold text-blue-900">Membaca dan memproses isi dokumen siswa...</p>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex justify-center py-1">
+                          <BookVisual size="sm" showGlow={true} />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-800">
+                            {fileName ? (
+                              <span className="text-emerald-700 font-extrabold">{fileName}</span>
+                            ) : (
+                              'Klik di sini untuk memilih file dokumen dari komputer'
+                            )}
+                          </p>
+                          {detectedDocType && (
+                            <span className="inline-block mt-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase">
+                              Format Terbaca: {detectedDocType}
+                            </span>
+                          )}
+                          <p className="text-[11px] text-slate-500 mt-1">
+                            Mendukung file Excel (.xlsx / .xls), CSV, Word (.docx), dan Dokumen PDF (.pdf)
+                          </p>
+                          <div className="flex flex-wrap items-center justify-center gap-1.5 mt-2">
+                            <span className="px-2 py-0.5 rounded bg-emerald-100/80 text-emerald-900 text-[10px] font-bold">
+                              📊 Excel (.xlsx / .xls)
+                            </span>
+                            <span className="px-2 py-0.5 rounded bg-sky-100/80 text-sky-900 text-[10px] font-bold">
+                              📄 CSV (.csv)
+                            </span>
+                            <span className="px-2 py-0.5 rounded bg-blue-100/80 text-blue-900 text-[10px] font-bold">
+                              📝 Word (.docx)
+                            </span>
+                            <span className="px-2 py-0.5 rounded bg-rose-100/80 text-rose-900 text-[10px] font-bold">
+                              📑 PDF (.pdf)
+                            </span>
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 ) : (
                   <div className="space-y-1.5">

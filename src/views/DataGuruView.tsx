@@ -29,15 +29,12 @@ import { supabase } from '../lib/supabase';
 import { BookLoadingModal } from '../components/BookLoader';
 import { normalizeTeacherName, normalizeNip } from '../utils/userScope';
 import { formatHomeroomDutyLabel, formatSubjectTeacherDutyLabel } from '../utils/formatTeacherTitle';
-
-interface ParsedTeacherItem {
-  nama: string;
-  nip: string;
-  jenisKelamin: 'L' | 'P';
-  tugasUtama: string;
-  isValid: boolean;
-  error?: string;
-}
+import {
+  parseImportDocument,
+  mapRowsToTeachers,
+  downloadTeacherTemplateFile,
+  ParsedTeacherItem,
+} from '../utils/documentParser';
 
 export const DataGuruView: React.FC = () => {
   const {
@@ -111,6 +108,8 @@ export const DataGuruView: React.FC = () => {
   const [importTab, setImportTab] = useState<'upload' | 'paste'>('upload');
   const [importMode, setImportMode] = useState<'append' | 'replace'>('append');
   const [fileName, setFileName] = useState('');
+  const [detectedDocType, setDetectedDocType] = useState<string>('');
+  const [isParsingFile, setIsParsingFile] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const [parsedTeachers, setParsedTeachers] = useState<ParsedTeacherItem[]>([]);
   const [isImporting, setIsImporting] = useState(false);
@@ -526,141 +525,60 @@ export const DataGuruView: React.FC = () => {
     }
   };
 
-  // Download Template CSV Guru
-  const handleDownloadTemplate = () => {
-    const header = 'NAMA GURU,NIP,JENIS KELAMIN,TUGAS UTAMA\n';
-    const sampleRows = [
-      'Budi Santoso, S.Pd.,198503152010011012,L,Wali Kelas',
-      'Siti Aminah, M.Pd.,199008222015022003,P,Guru Mapel',
-      'Rahmat Hidayat, S.Pd.,198811102012011005,L,Guru Mapel',
-      'Dewi Lestari, S.Pd.,-,P,Wali Kelas',
-    ].join('\n');
-
-    const csvContent = '\uFEFF' + header + sampleRows;
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', 'Template_Import_Data_Guru.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    showToast('Template file CSV Guru berhasil diunduh. Silakan isi dan unggah kembali.', 'success');
+  // Download Template Guru (Excel atau CSV)
+  const handleDownloadTemplate = (format: 'xlsx' | 'csv' = 'xlsx') => {
+    downloadTeacherTemplateFile(format);
+    showToast(
+      `Template file ${format === 'xlsx' ? 'Excel (.xlsx)' : 'CSV (.csv)'} Guru berhasil diunduh. Silakan lengkapi dan unggah kembali.`,
+      'success'
+    );
   };
 
-  // Parser helper function for CSV / TSV text for Teachers
-  const parseRawTextToTeachers = (text: string): ParsedTeacherItem[] => {
-    if (!text.trim()) return [];
-
-    const lines = text
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0);
-
-    if (lines.length === 0) return [];
-
-    const results: ParsedTeacherItem[] = [];
-    const seenNipsInBatch = new Set<string>();
-
-    // Detect if first line is header
-    const firstLineLower = lines[0].toLowerCase();
-    const hasHeader =
-      firstLineLower.includes('nama') ||
-      firstLineLower.includes('nip') ||
-      firstLineLower.includes('guru') ||
-      firstLineLower.includes('gender') ||
-      firstLineLower.includes('jenis kelamin') ||
-      firstLineLower.includes('jabatan');
-
-    const dataLines = hasHeader ? lines.slice(1) : lines;
-
-    dataLines.forEach((line) => {
-      let tokens: string[] = [];
-      if (line.includes('\t')) {
-        tokens = line.split('\t');
-      } else if (line.includes(';')) {
-        tokens = line.split(';');
-      } else {
-        tokens = line.split(',');
-      }
-
-      tokens = tokens.map((t) => t.trim().replace(/^["']|["']$/g, ''));
-
-      if (tokens.length >= 1 && tokens[0]) {
-        const rawNama = tokens[0] || '';
-        const rawNip = tokens[1] || '-';
-        const rawGender = tokens[2] || 'L';
-
-        const rawTugas = tokens[3] || 'Belum Ditugaskan';
-
-        // Clean gender
-        let gender: 'L' | 'P' = 'L';
-        const gUpper = rawGender.trim().toUpperCase();
-        if (
-          gUpper === 'P' ||
-          gUpper.startsWith('PEREMPUAN') ||
-          gUpper.startsWith('PUTRI') ||
-          gUpper === 'F' ||
-          gUpper === 'W'
-        ) {
-          gender = 'P';
-        } else {
-          gender = 'L';
-        }
-
-        const cleanNip = rawNip.trim() && rawNip.trim() !== '-' ? rawNip.trim() : null;
-
-        let isValid = rawNama.trim().length > 0;
-        let error = undefined;
-        if (!rawNama.trim()) {
-          isValid = false;
-          error = 'Nama guru kosong';
-        } else if (cleanNip) {
-          if (seenNipsInBatch.has(cleanNip)) {
-            isValid = false;
-            error = 'Duplikat NIP dalam file';
-          } else {
-            seenNipsInBatch.add(cleanNip);
-          }
-        }
-
-        results.push({
-          nama: rawNama.trim(),
-          nip: cleanNip || '-',
-          jenisKelamin: gender,
-          tugasUtama: rawTugas.trim() || 'Belum Ditugaskan',
-          isValid,
-          error,
-        });
-      }
-    });
-
-    return results;
-  };
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const content = event.target?.result as string;
-      const parsed = parseRawTextToTeachers(content);
+    setIsParsingFile(true);
+
+    try {
+      const docResult = await parseImportDocument(file);
+      const parsed = mapRowsToTeachers(docResult.rows, docResult.rawText);
       setParsedTeachers(parsed);
+
+      let typeName = 'File';
+      if (docResult.fileType === 'excel') typeName = 'Excel (.xlsx / .xls)';
+      else if (docResult.fileType === 'docx') typeName = 'Word (.docx)';
+      else if (docResult.fileType === 'pdf') typeName = 'Dokumen PDF (.pdf)';
+      else if (docResult.fileType === 'csv') typeName = 'File CSV (.csv)';
+
+      setDetectedDocType(typeName);
+
       if (parsed.length === 0) {
-        showToast('Tidak ada data guru yang dapat dibaca dari file ini', 'error');
+        showToast(
+          `Tidak ada data guru yang terbaca dari ${file.name}. Pastikan file berisi tabel guru dengan kolom Nama, NIP/NUPTK, Jenis Kelamin, dan Tugas Utama.`,
+          'error'
+        );
       } else {
-        showToast(`Berhasil membaca ${parsed.length} baris data dari ${file.name}`);
+        showToast(
+          `Berhasil membaca ${parsed.length} baris data guru dari format ${typeName} (${file.name})`,
+          'success'
+        );
       }
-    };
-    reader.readAsText(file);
+    } catch (err: any) {
+      console.error('[DataGuruView] Error parsing file:', err);
+      showToast(
+        `Gagal membaca file: ${err?.message || 'Pastikan file tidak terkunci atau rusak'}`,
+        'error'
+      );
+    } finally {
+      setIsParsingFile(false);
+    }
   };
 
   const handlePasteChange = (text: string) => {
     setPasteText(text);
-    const parsed = parseRawTextToTeachers(text);
+    const parsed = mapRowsToTeachers([], text);
     setParsedTeachers(parsed);
   };
 
@@ -1037,7 +955,7 @@ export const DataGuruView: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-900 text-base">Import Data Guru Masal</h3>
-                  <p className="text-xs text-slate-500">Unggah file CSV/Excel atau tempel teks data pendidik</p>
+                  <p className="text-xs text-slate-500">Mendukung file Excel (.xlsx), CSV, Word (.docx), &amp; PDF</p>
                 </div>
               </div>
               <button
@@ -1050,21 +968,33 @@ export const DataGuruView: React.FC = () => {
 
             <div className="space-y-4 py-4 overflow-y-auto flex-1 pr-1">
               {/* Step 1: Download Template */}
-              <div className="p-3.5 bg-emerald-50/50 rounded-2xl border border-emerald-100 flex items-center justify-between gap-3">
+              <div className="p-3.5 bg-emerald-50/50 rounded-2xl border border-emerald-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div>
                   <h4 className="font-extrabold text-xs text-emerald-950">Gunakan Template Standar</h4>
                   <p className="text-[11px] text-emerald-800 mt-0.5">
-                    Format: <strong>NAMA GURU, NIP, JENIS KELAMIN (L/P), TUGAS UTAMA</strong>
+                    Kolom: <strong>NAMA GURU, NIP/NUPTK, JENIS KELAMIN (L/P), TUGAS UTAMA</strong>
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleDownloadTemplate}
-                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 shrink-0 cursor-pointer"
-                >
-                  <Download size={13} />
-                  <span>Unduh Template CSV</span>
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadTemplate('xlsx')}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                    title="Unduh format template Excel"
+                  >
+                    <FileSpreadsheet size={13} />
+                    <span>Template Excel (.xlsx)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadTemplate('csv')}
+                    className="px-3 py-1.5 bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-300 font-extrabold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                    title="Unduh format template CSV"
+                  >
+                    <Download size={13} />
+                    <span>Template CSV</span>
+                  </button>
+                </div>
               </div>
 
               {/* Step 2: Tab Selector (Upload File vs Tempel Teks) */}
@@ -1077,21 +1007,21 @@ export const DataGuruView: React.FC = () => {
                     type="button"
                     onClick={() => setImportTab('upload')}
                     className={`flex-1 py-2 rounded-lg flex items-center justify-center gap-2 transition cursor-pointer ${
-                      importTab === 'upload' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                      importTab === 'upload' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
                     <UploadCloud size={14} />
-                    <span>Unggah File (.csv / .txt)</span>
+                    <span>Unggah Dokumen (Excel / CSV / Word / PDF)</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setImportTab('paste')}
                     className={`flex-1 py-2 rounded-lg flex items-center justify-center gap-2 transition cursor-pointer ${
-                      importTab === 'paste' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                      importTab === 'paste' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
                     <FileText size={14} />
-                    <span>Tempel Data (Salin dari Excel)</span>
+                    <span>Tempel Data (Salin dari Spreadsheet)</span>
                   </button>
                 </div>
               </div>
@@ -1099,15 +1029,51 @@ export const DataGuruView: React.FC = () => {
               {/* Upload File Body */}
               {importTab === 'upload' ? (
                 <div>
-                  <label className="border-2 border-dashed border-slate-200 hover:border-blue-500 rounded-2xl p-6 flex flex-col items-center justify-center gap-2 cursor-pointer bg-slate-50 hover:bg-blue-50/20 transition-all">
-                    <UploadCloud size={28} className="text-slate-400" />
-                    <span className="text-xs font-extrabold text-slate-700">
-                      {fileName ? `File terpilih: ${fileName}` : 'Klik untuk memilih file CSV / TXT'}
-                    </span>
-                    <span className="text-[11px] text-slate-400">Mendukung format file dengan pemisah koma, titik koma, atau tab</span>
+                  <label className="border-2 border-dashed border-slate-200 hover:border-emerald-500 rounded-2xl p-6 flex flex-col items-center justify-center gap-2.5 cursor-pointer bg-slate-50 hover:bg-emerald-50/20 transition-all">
+                    {isParsingFile ? (
+                      <div className="flex flex-col items-center gap-2 py-2">
+                        <div className="w-8 h-8 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                        <span className="text-xs font-bold text-emerald-800">
+                          Membaca dan memproses isi dokumen...
+                        </span>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="w-10 h-10 rounded-full bg-emerald-100/70 text-emerald-700 flex items-center justify-center">
+                          <UploadCloud size={22} />
+                        </div>
+                        <div className="text-center">
+                          <span className="text-xs font-extrabold text-slate-800 block">
+                            {fileName ? `File: ${fileName}` : 'Klik untuk memilih file dari komputer'}
+                          </span>
+                          {detectedDocType && (
+                            <span className="inline-block mt-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase">
+                              Format Terbaca: {detectedDocType}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center justify-center gap-1.5 mt-1">
+                          <span className="px-2 py-0.5 rounded bg-emerald-100/80 text-emerald-900 text-[10px] font-bold">
+                            📊 Excel (.xlsx / .xls)
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-sky-100/80 text-sky-900 text-[10px] font-bold">
+                            📄 CSV (.csv)
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-blue-100/80 text-blue-900 text-[10px] font-bold">
+                            📝 Word (.docx)
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-rose-100/80 text-rose-900 text-[10px] font-bold">
+                            📑 PDF (.pdf)
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-slate-400">
+                          Sistem otomatis membaca baris tabel dan memetakan kolom nama guru, NIP, gender, &amp; tugas utama
+                        </span>
+                      </>
+                    )}
                     <input
                       type="file"
-                      accept=".csv, .txt, text/csv, text/plain"
+                      accept=".xlsx, .xls, .csv, .docx, .pdf, .txt, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel, text/csv, application/vnd.openxmlformats-officedocument.wordprocessingml.document, application/pdf, text/plain"
                       onChange={handleFileUpload}
                       className="hidden"
                     />
@@ -1119,8 +1085,8 @@ export const DataGuruView: React.FC = () => {
                     rows={4}
                     value={pasteText}
                     onChange={(e) => handlePasteChange(e.target.value)}
-                    placeholder="Tempel data guru dari spreadsheet Excel di sini...&#10;Contoh:&#10;Budi Santoso, S.Pd.&#9;198503152010011012&#9;L&#9;PNS&#9;081234567890&#10;Siti Aminah, M.Pd.&#9;199008222015022003&#9;P&#9;PPPK&#9;081398765432"
-                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-500/10"
+                    placeholder="Tempel data guru dari spreadsheet Excel di sini...&#10;Contoh:&#10;Budi Santoso, S.Pd.&#9;198503152010011012&#9;L&#9;Wali Kelas&#10;Siti Aminah, M.Pd.&#9;199008222015022003&#9;P&#9;Guru Mapel"
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-800 placeholder-slate-400 focus:outline-none focus:border-emerald-600 focus:bg-white focus:ring-2 focus:ring-emerald-500/10"
                   />
                 </div>
               )}
@@ -1145,7 +1111,8 @@ export const DataGuruView: React.FC = () => {
                           <th className="p-2">Nama Guru</th>
                           <th className="p-2">NIP</th>
                           <th className="p-2 text-center w-12">JK</th>
-                              <th className="p-2 text-center w-16">Validasi</th>
+                          <th className="p-2">Tugas Utama</th>
+                          <th className="p-2 text-center w-16">Validasi</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
