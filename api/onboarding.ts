@@ -132,7 +132,7 @@ export default async function handler(req: any, res: any) {
   }) => {
     const { data: profile, error: profileReadError } = await db
       .from('profiles')
-      .select('id,teacher_id')
+      .select('id,teacher_id,school_id')
       .eq('id', opts.profileId)
       .maybeSingle();
     if (profileReadError) throw profileReadError;
@@ -142,13 +142,14 @@ export default async function handler(req: any, res: any) {
       const { data: existingTeacher, error: teacherReadError } = await db
         .from('teachers').select('*').eq('id', teacherId).maybeSingle();
       if (teacherReadError) throw teacherReadError;
-      if (existingTeacher) {
+      // Hanya perbarui guru yang ada jika memang berada pada school_id yang sama.
+      // JANGAN PERNAH mengubah school_id guru dari sekolah lain, karena melanggar constraint database
+      // "Profile dan guru harus berada pada sekolah yang sama" dan merusak data sekolah asal.
+      if (existingTeacher && existingTeacher.school_id === opts.schoolId) {
         const { data: updatedTeacher, error } = await db.from('teachers').update({
-          school_id: opts.schoolId,
           nama: opts.nama,
           nip: (opts.nip || existingTeacher.nip || '').trim() || null,
           jenis_kelamin: opts.jenisKelamin || existingTeacher.jenis_kelamin || 'L',
-          // Role assignment is deliberately NOT stored on teachers.
           tugas_utama: opts.tugas_utama || opts.tugasUtama || null,
         }).eq('id', teacherId).select().single();
         if (error) throw error;
@@ -156,31 +157,36 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // Reuse master guru yang sudah ada berdasarkan school_id + NIP.
-    // Ini mencegah bentrok UNIQUE(school_id, nip).
+    // Reuse master guru yang sudah ada di opts.schoolId berdasarkan school_id + NIP.
     const normalizedNip = String(opts.nip || '').trim();
     if (normalizedNip && normalizedNip !== '-') {
       const { data: existingByNip, error: nipLookupError } = await db
         .from('teachers').select('*').eq('school_id', opts.schoolId).eq('nip', normalizedNip).maybeSingle();
       if (nipLookupError) throw nipLookupError;
       if (existingByNip) {
-        const { error: linkError } = await db.from('profiles').update({ teacher_id: existingByNip.id }).eq('id', opts.profileId);
-        if (linkError) throw linkError;
         return existingByNip;
       }
     }
 
+    // Reuse master guru di opts.schoolId berdasarkan Nama
+    if (opts.nama) {
+      const { data: existingByName } = await db
+        .from('teachers').select('*').eq('school_id', opts.schoolId).ilike('nama', opts.nama.trim()).maybeSingle();
+      if (existingByName) {
+        return existingByName;
+      }
+    }
+
+    // Buat data guru baru khusus untuk target ruang kerja (opts.schoolId)
     const { data: insertedTeacher, error: insertError } = await db.from('teachers').insert({
       school_id: opts.schoolId,
       nama: opts.nama,
-      nip: normalizedNip || null,
+      nip: normalizedNip && normalizedNip !== '-' ? normalizedNip : null,
       jenis_kelamin: opts.jenisKelamin || 'L',
       tugas_utama: opts.tugas_utama || opts.tugasUtama || null,
     }).select().single();
     if (insertError) throw insertError;
 
-    const { error: linkError } = await db.from('profiles').update({ teacher_id: insertedTeacher.id }).eq('id', opts.profileId);
-    if (linkError) throw linkError;
     return insertedTeacher;
   };
 
@@ -554,9 +560,10 @@ export default async function handler(req: any, res: any) {
       // Daftarkan data guru untuk user ini di ruang kerja individu
       linkedTeacher = await ensureTeacherForAccount({ profileId: userId, schoolId: newSchool.id, nama: fullName, nip, jenisKelamin: 'L', tugasUtama: role === 'WALI KELAS' ? 'Wali Kelas' : 'Guru Mapel' });
 
-      // Update profil aktif
+      // Update profil aktif secara atomik
       await db.from('profiles').update({
         school_id: newSchool.id,
+        teacher_id: linkedTeacher?.id || null,
         workspace_type: 'personal',
       }).eq('id', userId);
 
@@ -575,6 +582,112 @@ export default async function handler(req: any, res: any) {
       };
 
       return json(res, 200, { ok: true, success: true, workspace: wsObj, isNew: true });
+    }
+
+    // -------------------------------------------------------------
+    // 3.1b. SWITCH ACTIVE WORKSPACE ATOMICALLY
+    // -------------------------------------------------------------
+    if (action === 'switch_workspace') {
+      const switchToken = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+      if (!switchToken) {
+        return json(res, 401, { error: 'Sesi login diperlukan untuk beralih ruang kerja.' });
+      }
+      const { data: switchAuth, error: switchAuthErr } = await db.auth.getUser(switchToken);
+      if (switchAuthErr || !switchAuth.user) {
+        return json(res, 401, { error: 'Sesi login tidak valid atau telah kedaluwarsa.' });
+      }
+      const userId = switchAuth.user.id;
+      const targetWorkspaceId = String(body.workspace_id || body.workspaceId || '').trim();
+      if (!targetWorkspaceId) {
+        return json(res, 400, { error: 'Target workspace_id wajib disertakan.' });
+      }
+
+      // Ambil data sekolah target
+      const { data: targetSchool, error: schoolErr } = await db
+        .from('schools')
+        .select('*')
+        .eq('id', targetWorkspaceId)
+        .maybeSingle();
+      if (schoolErr || !targetSchool) {
+        return json(res, 404, { error: 'Ruang kerja target tidak ditemukan.' });
+      }
+
+      const isPersonal =
+        targetSchool.workspace_type === 'personal' ||
+        targetSchool.is_personal === true ||
+        targetSchool.plan === 'teacher' ||
+        targetSchool.plan === 'mulai' ||
+        targetSchool.owner_id === userId;
+
+      const { data: currentProfile } = await db
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+
+      const fullName = currentProfile?.name || currentProfile?.username || 'Pendidik';
+      const nip = currentProfile?.nip || null;
+      let targetRole = body.role
+        ? String(body.role).toUpperCase()
+        : (currentProfile?.role ? String(currentProfile.role).toUpperCase() : 'WALI KELAS');
+
+      let linkedTeacher: any = null;
+      if (['WALI KELAS', 'GURU MAPEL'].includes(targetRole)) {
+        try {
+          linkedTeacher = await ensureTeacherForAccount({
+            profileId: userId,
+            schoolId: targetWorkspaceId,
+            nama: fullName,
+            nip,
+            jenisKelamin: 'L',
+            tugasUtama: targetRole === 'WALI KELAS' ? 'Wali Kelas' : 'Guru Mapel',
+          });
+        } catch (ensureErr: any) {
+          console.warn('[switch_workspace] ensureTeacherForAccount warning:', ensureErr?.message);
+        }
+      }
+
+      // Update profil secara atomik: school_id dan teacher_id di-update bersamaan!
+      const profileUpdates: any = {
+        school_id: targetWorkspaceId,
+        teacher_id: linkedTeacher?.id || null,
+        workspace_type: isPersonal ? 'personal' : 'school',
+      };
+      if (targetRole) {
+        profileUpdates.role = targetRole;
+      }
+
+      const { error: profileUpdateErr } = await db
+        .from('profiles')
+        .update(profileUpdates)
+        .eq('id', userId);
+
+      if (profileUpdateErr) {
+        console.error('[switch_workspace] profile update error:', profileUpdateErr);
+        return json(res, 500, { error: `Gagal memperbarui profil ruang kerja: ${profileUpdateErr.message}` });
+      }
+
+      const { data: sp } = await db
+        .from('school_profile')
+        .select('nama_sekolah, npsn')
+        .eq('school_id', targetWorkspaceId)
+        .maybeSingle();
+
+      const wsObj = {
+        id: `ws-mem-${userId}-${targetWorkspaceId}`,
+        userId,
+        workspaceId: targetWorkspaceId,
+        workspaceCode: targetSchool.code ? String(targetSchool.code).replace(/^SCH-?/i, '').trim().toUpperCase() : null,
+        role: targetRole,
+        workspaceName: isPersonal ? 'Ruang Kerja Individu' : (targetSchool.name || sp?.nama_sekolah || 'Ruang Kerja Sekolah'),
+        workspaceType: isPersonal ? 'personal' : 'school',
+        registrationMode: isPersonal ? 'personal' : 'school',
+        npsn: targetSchool.npsn || sp?.npsn || null,
+        subscriptionPlan: targetSchool.plan || (isPersonal ? 'teacher' : 'sekolah'),
+        joinedAt: targetSchool.created_at || new Date().toISOString(),
+      };
+
+      return json(res, 200, { ok: true, success: true, workspace: wsObj, teacher: linkedTeacher });
     }
 
     // -------------------------------------------------------------
@@ -980,8 +1093,14 @@ export default async function handler(req: any, res: any) {
           if (callerProfile.teacher_id !== matchedTeacher.id) {
             updates.teacher_id = matchedTeacher.id;
           }
+          if (callerProfile.school_id !== schoolId) {
+            updates.school_id = schoolId;
+          }
           if (Object.keys(updates).length > 0) {
             try {
+              if (updates.teacher_id && !updates.school_id && callerProfile.school_id !== schoolId) {
+                updates.school_id = schoolId;
+              }
               const { error: profileLinkError } = await db.from('profiles').update(updates).eq('id', callerProfile.id);
               if (profileLinkError) {
                 console.warn('[onboarding] link profile ke teacher_id gagal:', profileLinkError.message);

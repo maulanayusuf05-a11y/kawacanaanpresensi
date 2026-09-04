@@ -1506,7 +1506,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       }
       localStorage.setItem("kawacanaan_last_workspace_id", ws.workspaceId);
 
-      setSwitchingWorkspaceProgress(60);
+      setSwitchingWorkspaceProgress(45);
+      setSwitchingWorkspaceMessage(
+        "Menyinkronkan status profil dan otorisasi ruang kerja...",
+      );
+
+      // Sinkronkan active workspace di profiles (Supabase) secara atomik di server
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token || "";
+        if (token) {
+          const switchRes = await fetch("/api/onboarding", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              action: "switch_workspace",
+              workspace_id: ws.workspaceId,
+              role: ws.role,
+              workspace_type: ws.workspaceType,
+            }),
+          });
+          const switchJson = await switchRes.json();
+          if (!switchJson.ok && !switchJson.success && switchJson.error) {
+            console.warn("[switchWorkspace] server warning:", switchJson.error);
+          }
+        }
+      } catch (switchErr: any) {
+        console.warn("[switchWorkspace] sync warning:", switchErr?.message);
+      }
+
+      setSwitchingWorkspaceProgress(70);
       setSwitchingWorkspaceMessage(
         "Memuat data rombel, profil pendidik, dan kalender presensi...",
       );
