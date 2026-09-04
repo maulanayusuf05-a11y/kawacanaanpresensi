@@ -22,6 +22,8 @@ function apiDevMiddleware(): Plugin {
               'resolve-login': './api/resolve-login.ts',
               'setup-superadmin': './api/setup-superadmin.ts',
               'onboarding': './api/onboarding.ts',
+              'sync-teacher-assignments': './api/sync-teacher-assignments.ts',
+              'sync-wali-kelas': './api/sync-wali-kelas.ts',
             };
             const targetModule = safeRoutes[pathname];
             if (!targetModule) {
