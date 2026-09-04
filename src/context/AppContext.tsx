@@ -4216,6 +4216,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   };
   const checkCalendarAdminAuth = (): boolean => {
     if (!currentUser) return false;
+    const isSchoolWs =
+      currentUser.schoolId &&
+      activeWorkspace?.workspaceType !== 'personal' &&
+      activeWorkspace?.workspaceType !== 'individu';
+
+    if (isSchoolWs) {
+      if (currentUser.role !== 'ADMIN' && currentUser.role !== 'SUPER_ADMIN') {
+        showToast(
+          'Akses Ditolak: Di ruang kerja sekolah, kalender akademik berstatus Read-Only dan hanya Admin Sekolah yang dapat mengelolanya.',
+          'error'
+        );
+        return false;
+      }
+    }
     return true;
   };
   const addAcademicEvent = async (e: Omit<AcademicEvent, "id">) => {

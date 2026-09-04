@@ -14,6 +14,8 @@ import {
   CalendarCheck2,
   Building,
   ExternalLink,
+  Lock,
+  ShieldCheck,
 } from 'lucide-react';
 
 /**
@@ -37,6 +39,8 @@ export const parseAcademicYears = (tpStr: string) => {
 
 export const KalenderAkademikView: React.FC = () => {
   const {
+    currentUser,
+    activeWorkspace,
     schoolProfile,
     academicEvents,
     addAcademicEvent,
@@ -46,6 +50,15 @@ export const KalenderAkademikView: React.FC = () => {
     getBaseStudyDaysForMonth,
     setActiveView,
   } = useApp();
+
+  const isSchoolWorkspace =
+    activeWorkspace?.workspaceType !== 'personal' &&
+    activeWorkspace?.workspaceType !== 'individu' &&
+    !!currentUser?.schoolId;
+
+  // Di ruang kerja sekolah: Role Wali Kelas dan Guru Mapel berstatus Read Only. Hanya Admin Sekolah (atau Super Admin) yang dapat mengelola agenda.
+  const canManageCalendar = !isSchoolWorkspace || currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN';
+  const isReadOnly = !canManageCalendar;
 
   // Extract startYear and endYear from schoolProfile.tahunPelajaran
   const { startYear, endYear, academicYearLabel } = useMemo(() => {
@@ -204,6 +217,7 @@ export const KalenderAkademikView: React.FC = () => {
 
   const handleAddEvent = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canManageCalendar) return;
     if (!eventTitle.trim()) return;
 
     const [ey, em, ed] = eventDate.split('-').map(Number);
@@ -232,6 +246,7 @@ export const KalenderAkademikView: React.FC = () => {
   };
 
   const openAddModalForMonth = () => {
+    if (!canManageCalendar) return;
     setEventDate(`${selectedYear}-${selectedMonth}-01`);
     setIsModalOpen(true);
   };
@@ -256,15 +271,25 @@ export const KalenderAkademikView: React.FC = () => {
         </button>
 
         {/* School Profile Year Link Badge */}
-        <button
-          onClick={() => setActiveView('profil')}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50/80 border border-blue-200 text-xs font-semibold text-blue-800 hover:bg-blue-100/70 transition-colors cursor-pointer"
-          title="Klik untuk mengubah Tahun Pelajaran di Identitas Sekolah"
-        >
-          <Building size={14} className="text-blue-600" />
-          <span>Tahun Pelajaran: <b>{schoolProfile.tahunPelajaran || `${startYear}/${endYear}`}</b></span>
-          <ExternalLink size={12} className="text-blue-500 ml-0.5" />
-        </button>
+        {canManageCalendar ? (
+          <button
+            onClick={() => setActiveView('profil')}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50/80 border border-blue-200 text-xs font-semibold text-blue-800 hover:bg-blue-100/70 transition-colors cursor-pointer"
+            title="Klik untuk mengubah Tahun Pelajaran di Identitas Sekolah"
+          >
+            <Building size={14} className="text-blue-600" />
+            <span>Tahun Pelajaran: <b>{schoolProfile.tahunPelajaran || `${startYear}/${endYear}`}</b></span>
+            <ExternalLink size={12} className="text-blue-500 ml-0.5" />
+          </button>
+        ) : (
+          <div
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-700 shadow-xs"
+            title="Tahun Pelajaran Sekolah"
+          >
+            <Building size={14} className="text-slate-500" />
+            <span>Tahun Pelajaran: <b>{schoolProfile.tahunPelajaran || `${startYear}/${endYear}`}</b></span>
+          </div>
+        )}
       </div>
 
       {/* Main Header */}
@@ -283,6 +308,26 @@ export const KalenderAkademikView: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Read-Only Notice for non-admin in school workspace */}
+      {isReadOnly && (
+        <div className="flex items-start sm:items-center gap-3 p-3.5 sm:p-4 rounded-2xl bg-amber-50/90 border border-amber-200 text-amber-950 shadow-xs">
+          <div className="w-8 h-8 rounded-xl bg-amber-100 border border-amber-300 text-amber-800 flex items-center justify-center shrink-0">
+            <Lock size={16} />
+          </div>
+          <div className="space-y-0.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-bold text-xs sm:text-sm">Mode Akses: Lihat Saja (Read-Only)</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-200/80 text-amber-900 border border-amber-300">
+                {currentUser?.role === 'WALI KELAS' ? 'WALI KELAS' : currentUser?.role === 'GURU MAPEL' ? 'GURU MAPEL' : currentUser?.role || 'READ ONLY'}
+              </span>
+            </div>
+            <p className="text-[11px] sm:text-xs text-amber-800 leading-relaxed">
+              Di ruang kerja sekolah, hanya Admin Sekolah yang berhak menambah, mengubah, atau menghapus agenda kalender akademik. Pendidik dapat melihat agenda dan rincian Hari Efektif Belajar (HEB).
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Section 1: Agenda Bulanan & Analisis Efektivitas */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
@@ -338,14 +383,24 @@ export const KalenderAkademikView: React.FC = () => {
               </div>
             </div>
 
-            <button
-              onClick={openAddModalForMonth}
-              id="btn-tambah-agenda"
-              className="w-full sm:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 min-h-[40px] shrink-0 cursor-pointer"
-            >
-              <Plus size={15} />
-              <span>+ Agenda</span>
-            </button>
+            {canManageCalendar ? (
+              <button
+                onClick={openAddModalForMonth}
+                id="btn-tambah-agenda"
+                className="w-full sm:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 min-h-[40px] shrink-0 cursor-pointer"
+              >
+                <Plus size={15} />
+                <span>+ Agenda</span>
+              </button>
+            ) : (
+              <div
+                className="w-full sm:w-auto px-3.5 py-2 bg-slate-100 border border-slate-200 text-slate-500 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 min-h-[40px] shrink-0 cursor-default"
+                title="Akses Read-Only: Hanya Admin Sekolah yang dapat menambah agenda"
+              >
+                <Lock size={13} className="text-slate-400" />
+                <span>Lihat Saja (Read Only)</span>
+              </div>
+            )}
           </div>
 
           {/* Agenda Table */}
@@ -362,7 +417,7 @@ export const KalenderAkademikView: React.FC = () => {
                   <tr className="border-b border-slate-200 text-[10px] font-bold text-blue-700 uppercase tracking-widest bg-blue-50/60">
                     <th className="py-3 px-3 sm:px-4 w-28 sm:w-32">Tanggal</th>
                     <th className="py-3 px-3 sm:px-4">Nama Kegiatan</th>
-                    <th className="py-3 px-3 sm:px-4 text-center w-20">Aksi</th>
+                    {canManageCalendar && <th className="py-3 px-3 sm:px-4 text-center w-20">Aksi</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs">
@@ -383,20 +438,22 @@ export const KalenderAkademikView: React.FC = () => {
                             {ev.isEffective ? 'Hari Efektif Belajar' : 'Hari Libur / Non-Efektif'}
                           </span>
                         </td>
-                        <td className="py-3.5 px-3 sm:px-4 text-center">
-                          <button
-                            onClick={() => deleteAcademicEvent(ev.id)}
-                            className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors min-h-[36px] min-w-[36px] inline-flex items-center justify-center cursor-pointer"
-                            title="Hapus Agenda"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </td>
+                        {canManageCalendar && (
+                          <td className="py-3.5 px-3 sm:px-4 text-center">
+                            <button
+                              onClick={() => deleteAcademicEvent(ev.id)}
+                              className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors min-h-[36px] min-w-[36px] inline-flex items-center justify-center cursor-pointer"
+                              title="Hapus Agenda"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={3} className="text-center py-8 text-slate-400 font-medium">
+                      <td colSpan={canManageCalendar ? 3 : 2} className="text-center py-8 text-slate-400 font-medium">
                         Belum ada agenda kegiatan untuk bulan {monthNames[selectedMonth]} {selectedYear}.
                       </td>
                     </tr>
@@ -709,7 +766,7 @@ export const KalenderAkademikView: React.FC = () => {
       </div>
 
       {/* Add Event Modal */}
-      {isModalOpen && (
+      {canManageCalendar && isModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 text-slate-800 my-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">

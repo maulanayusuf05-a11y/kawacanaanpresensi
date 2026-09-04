@@ -1,4 +1,5 @@
 import { UserAccount, SchoolClass, Subject, Teacher } from '../types';
+import { formatHomeroomDutyLabel } from './formatTeacherTitle';
 
 export function normalizeTeacherName(name: string | null | undefined): string {
   if (!name) return '';
@@ -244,9 +245,10 @@ export function getUserRoleScope(
     scopeDescription = 'Akses supervisi & rekapitulasi data sekolah';
   } else if (isWaliKelas) {
     const className = assignedWaliClass?.name || 'Tidak ada kelas';
-    roleBadgeLabel = `Wali Kelas ${className}`;
+    roleBadgeLabel = assignedWaliClass ? formatHomeroomDutyLabel(className) : 'Wali Kelas';
+    const displayClassName = className.replace(/^kelas\s*/i, '').trim();
     scopeDescription = assignedWaliClass
-      ? `Kewenangan khusus Kelas ${className}`
+      ? `Kewenangan khusus Kelas ${displayClassName}`
       : 'Belum memiliki assignment Wali Kelas';
   } else if (isGuruMapel) {
     const subjectNames = assignedSubjects.map((subject) => subject.name).join(', ') || 'Tidak ada mapel';

@@ -28,6 +28,7 @@ import { validateTeacherRoleAssignment } from '../utils/packageSystem';
 import { supabase } from '../lib/supabase';
 import { BookLoadingModal } from '../components/BookLoader';
 import { normalizeTeacherName, normalizeNip } from '../utils/userScope';
+import { formatHomeroomDutyLabel, formatSubjectTeacherDutyLabel } from '../utils/formatTeacherTitle';
 
 interface ParsedTeacherItem {
   nama: string;
@@ -144,6 +145,7 @@ export const DataGuruView: React.FC = () => {
     const badges: Array<{
       type: 'Wali Kelas' | 'Guru Mapel' | 'Belum Ditugaskan';
       label: string;
+      title?: string;
       badgeColor: string;
     }> = [];
 
@@ -152,7 +154,8 @@ export const DataGuruView: React.FC = () => {
       homeroomClasses.forEach((hc) => {
         badges.push({
           type: 'Wali Kelas',
-          label: `Wali Kelas ${hc.name || ''}`.trim(),
+          label: formatHomeroomDutyLabel(hc.name),
+          title: `Wali Kelas untuk ${hc.name}`,
           badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200',
         });
       });
@@ -160,27 +163,38 @@ export const DataGuruView: React.FC = () => {
       badges.push({
         type: 'Wali Kelas',
         label: 'Wali Kelas',
+        title: 'Wali Kelas (Belum ada rombel terhubung)',
         badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200',
       });
     }
 
     // Prioritas 2: Penugasan Mapel aktif atau status eksplisit Guru Mapel
     if (assignedSubjects.length > 0) {
+      const seenDutyLabels = new Set<string>();
       assignedSubjects.forEach((sub) => {
+        const dutyLabel = formatSubjectTeacherDutyLabel(sub.name, sub.code);
         const targetNames = (sub.targetClassIds || [])
           .map((cid) => (classes || []).find((c) => c.id === cid)?.name || '')
           .filter(Boolean);
-        const classText = targetNames.length > 0 ? ` (${targetNames.join(', ')})` : '';
-        badges.push({
-          type: 'Guru Mapel',
-          label: `${sub.name || 'Guru Mapel'}${classText}`,
-          badgeColor: 'bg-amber-50 text-amber-800 border-amber-200',
-        });
+        const tooltipText = targetNames.length > 0
+          ? `${sub.name} (Kelas: ${targetNames.join(', ')})`
+          : sub.name;
+
+        if (!seenDutyLabels.has(dutyLabel)) {
+          seenDutyLabels.add(dutyLabel);
+          badges.push({
+            type: 'Guru Mapel',
+            label: dutyLabel,
+            title: tooltipText,
+            badgeColor: 'bg-amber-50 text-amber-800 border-amber-200',
+          });
+        }
       });
     } else if ((t.tugasUtama || t.tugas_utama || '').trim() === 'Guru Mapel' && badges.length === 0) {
       badges.push({
         type: 'Guru Mapel',
         label: 'Guru Mapel',
+        title: 'Guru Mapel (Belum ada mapel terhubung)',
         badgeColor: 'bg-amber-50 text-amber-800 border-amber-200',
       });
     }
@@ -190,6 +204,7 @@ export const DataGuruView: React.FC = () => {
       badges.push({
         type: 'Belum Ditugaskan',
         label: 'BELUM DITUGASKAN',
+        title: 'Pendidik belum ditentukan tugas utamanya',
         badgeColor: 'bg-slate-100 text-slate-600 border-slate-200',
       });
     }
@@ -842,6 +857,7 @@ export const DataGuruView: React.FC = () => {
                         {assignDetails.badges.map((b, bIdx) => (
                           <span
                             key={bIdx}
+                            title={b.title || b.label}
                             className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${b.badgeColor}`}
                           >
                             {b.type === 'Wali Kelas' && <GraduationCap size={13} className="shrink-0" />}

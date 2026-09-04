@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import { UserAccount, UserRole, UserAccountInput, GeneratedAccountResult } from '../types';
 import { exportGeneratedAccountsPdf } from '../utils/exportGeneratedAccountsPdf';
 import { BookLoadingModal } from '../components/BookLoader';
+import { formatHomeroomDutyLabel } from '../utils/formatTeacherTitle';
 import {
   ArrowLeft,
   UserCheck,
@@ -237,7 +238,7 @@ export const DataPenggunaView: React.FC = () => {
         type: 'WALI_KELAS' as const,
         roleLabel: 'WALI KELAS',
         badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-        assignmentText: assignedClassStr ? `Wali Kelas ${assignedClassStr}` : 'Wali Kelas (Belum Dipetakan)',
+        assignmentText: assignedClassStr ? formatHomeroomDutyLabel(assignedClassStr) : 'Wali Kelas (Belum Dipetakan)',
         classes: classList,
         subjects: [],
         matchedTeacher,
