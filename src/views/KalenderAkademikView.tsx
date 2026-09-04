@@ -65,9 +65,37 @@ export const KalenderAkademikView: React.FC = () => {
     return parseAcademicYears(schoolProfile.tahunPelajaran);
   }, [schoolProfile.tahunPelajaran]);
 
-  const [selectedMonth, setSelectedMonth] = useState<string>('08');
-  const [selectedYear, setSelectedYear] = useState<string>(() => String(startYear));
+  // Dapatkan bulan dan tahun berjalan (current running month & year)
+  const now = useMemo(() => new Date(), []);
+  const currentRunningMonth = useMemo(() => {
+    return String(now.getMonth() + 1).padStart(2, '0');
+  }, [now]);
+  const currentRunningYear = useMemo(() => {
+    return now.getFullYear();
+  }, [now]);
+
+  // Default selalu menampilkan bulan berjalan (current running month)
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+    const m = new Date().getMonth() + 1;
+    return String(m).padStart(2, '0');
+  });
+  const [selectedYear, setSelectedYear] = useState<string>(() => {
+    const currentM = new Date().getMonth() + 1;
+    const currentY = new Date().getFullYear();
+    if (currentY === startYear || currentY === endYear) {
+      return String(currentY);
+    }
+    return String(currentM >= 7 ? startYear : endYear);
+  });
   const [searchAgenda, setSearchAgenda] = useState<string>('');
+
+  // Pastikan kalender selalu menampilkan bulan berjalan saat berpindah ruang kerja sekolah maupun individu
+  useEffect(() => {
+    const m = String(new Date().getMonth() + 1).padStart(2, '0');
+    setSelectedMonth(m);
+    const isSemester1 = ['07', '08', '09', '10', '11', '12'].includes(m);
+    setSelectedYear(String(isSemester1 ? startYear : endYear));
+  }, [activeWorkspace?.workspaceId, startYear, endYear]);
 
   // Automatically adjust selectedYear based on selectedMonth and schoolProfile.tahunPelajaran
   // Semester 1 (Juli - Desember) uses startYear, Semester 2 (Januari - Juni) uses endYear
@@ -79,7 +107,13 @@ export const KalenderAkademikView: React.FC = () => {
 
   // Add Event Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [eventDate, setEventDate] = useState(() => `${startYear}-08-17`);
+  const [eventDate, setEventDate] = useState(() => {
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const d = String(today.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  });
   const [eventTitle, setEventTitle] = useState('');
   const [isEffective, setIsEffective] = useState(false); // false means holiday / reduces effective day
   const [eventNotes, setEventNotes] = useState('');
@@ -345,10 +379,27 @@ export const KalenderAkademikView: React.FC = () => {
               >
                 {Object.entries(monthNames).map(([k, v]) => (
                   <option key={k} value={k}>
-                    {v}
+                    {v} {k === currentRunningMonth ? '• (Bulan Berjalan)' : ''}
                   </option>
                 ))}
               </select>
+
+              {/* Quick Jump to Bulan Berjalan Button if different month selected */}
+              {selectedMonth !== currentRunningMonth && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedMonth(currentRunningMonth);
+                    const isSemester1 = ['07', '08', '09', '10', '11', '12'].includes(currentRunningMonth);
+                    setSelectedYear(String(isSemester1 ? startYear : endYear));
+                  }}
+                  className="px-2.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 shrink-0 min-h-[40px]"
+                  title="Kembali ke Bulan Berjalan"
+                >
+                  <CalendarCheck2 size={14} className="text-emerald-600" />
+                  <span>Bulan Berjalan ({monthNames[currentRunningMonth]})</span>
+                </button>
+              )}
 
               {/* Integrated Year Selector based on Tahun Pelajaran */}
               <select
@@ -605,6 +656,7 @@ export const KalenderAkademikView: React.FC = () => {
 
                   const heb = Math.max(0, baseDays - liburAgenda);
                   const isCurrentSelected = row.m === selectedMonth && String(row.y) === selectedYear;
+                  const isBulanBerjalan = row.m === currentRunningMonth && (row.y === currentRunningYear || !academicMonthsList.some(r => r.m === currentRunningMonth && r.y === currentRunningYear));
 
                   return (
                     <tr
@@ -615,8 +667,13 @@ export const KalenderAkademikView: React.FC = () => {
                     >
                       <td className="py-3 px-3 sm:px-4 font-bold text-slate-900 text-left">
                         {row.name}
+                        {isBulanBerjalan && (
+                          <span className="ml-2 px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            Bulan Berjalan
+                          </span>
+                        )}
                         {isCurrentSelected && (
-                          <span className="ml-2 px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-600 text-white">
+                          <span className="ml-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-600 text-white">
                             Terpilih
                           </span>
                         )}
@@ -686,6 +743,7 @@ export const KalenderAkademikView: React.FC = () => {
 
                   const heb = Math.max(0, baseDays - liburAgenda);
                   const isCurrentSelected = row.m === selectedMonth && String(row.y) === selectedYear;
+                  const isBulanBerjalan = row.m === currentRunningMonth && (row.y === currentRunningYear || !academicMonthsList.some(r => r.m === currentRunningMonth && r.y === currentRunningYear));
 
                   return (
                     <tr
@@ -696,8 +754,13 @@ export const KalenderAkademikView: React.FC = () => {
                     >
                       <td className="py-3 px-3 sm:px-4 font-bold text-slate-900 text-left">
                         {row.name}
+                        {isBulanBerjalan && (
+                          <span className="ml-2 px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            Bulan Berjalan
+                          </span>
+                        )}
                         {isCurrentSelected && (
-                          <span className="ml-2 px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-600 text-white">
+                          <span className="ml-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-600 text-white">
                             Terpilih
                           </span>
                         )}

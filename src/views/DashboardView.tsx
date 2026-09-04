@@ -47,6 +47,7 @@ interface SummaryCache {
   hadirPercent: number;
   trendData: { day: string; count: number }[];
   timestamp: number;
+  cachedDate?: string;
 }
 
 export const DashboardView: React.FC = () => {
@@ -140,13 +141,36 @@ export const DashboardView: React.FC = () => {
   const scopedMale = scopedStudents.filter((s) => s.gender === 'L').length || cachedSummary?.scopedMale || 0;
   const scopedFemale = scopedStudents.filter((s) => s.gender === 'P').length || cachedSummary?.scopedFemale || 0;
 
-  // Today's attendance calculation (Context-aware for Wali Kelas vs Guru Mapel vs Admin/KS)
-  const todayStr = useMemo(() => now.toISOString().split('T')[0], [now]);
+  // Tanggal hari berjalan (current running day) secara lokal
+  const todayDate = useMemo(() => new Date(), []);
+  const todayFormatted = useMemo(() => {
+    const y = todayDate.getFullYear();
+    const m = String(todayDate.getMonth() + 1).padStart(2, '0');
+    const d = String(todayDate.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }, [todayDate]);
 
+  const dayNamesIndo = useMemo(
+    () => ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'],
+    []
+  );
+  const monthShortIndo = useMemo(
+    () => ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agt', 'Sep', 'Okt', 'Nov', 'Des'],
+    []
+  );
+  const todayFormattedDisplay = useMemo(() => {
+    return `${dayNamesIndo[todayDate.getDay()]}, ${todayDate.getDate()} ${
+      monthShortIndo[todayDate.getMonth()]
+    } ${todayDate.getFullYear()}`;
+  }, [todayDate, dayNamesIndo, monthShortIndo]);
+
+  const isCacheValidForToday = cachedSummary?.cachedDate === todayFormatted;
+
+  // Today's attendance calculation (strictly following hari berjalan)
   const todayRecords = useMemo(() => {
     return attendanceRecords.filter((r) => {
-      const isDateMatch = r.date === todayStr || r.date === currentAttendanceDate;
-      if (!isDateMatch) return false;
+      // Mengikuti hari berjalan secara akurat
+      if (r.date !== todayFormatted) return false;
 
       if (userScope.isWaliKelas) {
         return scopedStudentIds.has(r.studentId) && r.type !== 'SUBJECT';
@@ -165,31 +189,86 @@ export const DashboardView: React.FC = () => {
       }
       return r.type !== 'SUBJECT';
     });
-  }, [attendanceRecords, todayStr, currentAttendanceDate, userScope, scopedStudentIds]);
+  }, [attendanceRecords, todayFormatted, userScope, scopedStudentIds]);
 
-  const hadirCount = todayRecords.filter((r) => r.status === 'Hadir').length || cachedSummary?.hadirCount || 0;
-  const sakitCount = todayRecords.filter((r) => r.status === 'Sakit').length || cachedSummary?.sakitCount || 0;
-  const izinCount = todayRecords.filter((r) => r.status === 'Izin').length || cachedSummary?.izinCount || 0;
-  const alfaCount = todayRecords.filter((r) => r.status === 'Alfa').length || cachedSummary?.alfaCount || 0;
-  const recordTotal =
-    hadirCount + sakitCount + izinCount + alfaCount ||
-    scopedTotal ||
-    students.length ||
-    cachedSummary?.recordTotal ||
-    0;
-  const hadirPercent =
-    recordTotal > 0 ? Math.round((hadirCount / recordTotal) * 100) : cachedSummary?.hadirPercent || 0;
+  // Pemetaan status unik per siswa untuk hari berjalan (mencegah duplikasi perhitungan)
+  const todayStudentStatusMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of todayRecords) {
+      if (!map.has(r.studentId)) {
+        map.set(r.studentId, r.status);
+      }
+    }
+    return map;
+  }, [todayRecords]);
+
+  const hadirCount = useMemo(() => {
+    let count = 0;
+    for (const status of todayStudentStatusMap.values()) {
+      if (status === 'Hadir') count++;
+    }
+    return count;
+  }, [todayStudentStatusMap]);
+
+  const sakitCount = useMemo(() => {
+    let count = 0;
+    for (const status of todayStudentStatusMap.values()) {
+      if (status === 'Sakit') count++;
+    }
+    return count;
+  }, [todayStudentStatusMap]);
+
+  const izinCount = useMemo(() => {
+    let count = 0;
+    for (const status of todayStudentStatusMap.values()) {
+      if (status === 'Izin') count++;
+    }
+    return count;
+  }, [todayStudentStatusMap]);
+
+  const alfaCount = useMemo(() => {
+    let count = 0;
+    for (const status of todayStudentStatusMap.values()) {
+      if (status === 'Alfa') count++;
+    }
+    return count;
+  }, [todayStudentStatusMap]);
+
+  // Target total siswa yang harus diinput presensinya hari ini
+  const targetTotal = scopedTotal || (scopedStudents.length > 0 ? scopedStudents.length : students.length) || 0;
+
+  // Jumlah siswa yang datanya telah di-input hari ini
+  const totalInputted = todayStudentStatusMap.size;
+
+  // Jumlah siswa yang belum di-input hari ini
+  const totalBelumInput = Math.max(0, targetTotal - totalInputted);
+
+  // Status kelengkapan penginputan presensi hari berjalan
+  const isAttendanceInputtedToday = totalInputted > 0;
+  const isAttendanceFullyInputted = targetTotal > 0 && totalInputted >= targetTotal;
+
+  // Persentase data yang telah di-input
+  const inputPercent = targetTotal > 0 ? Math.round((totalInputted / targetTotal) * 100) : 0;
+
+  // Persentase kehadiran hari ini disesuaikan dengan data yang telah di-input atau belum di-input:
+  // - Jika belum di-input sama sekali -> 0%
+  // - Jika sudah di-input -> (Hadir / Target Total Siswa) * 100
+  const hadirPercent = targetTotal > 0 ? Math.round((hadirCount / targetTotal) * 100) : 0;
+  const hadirPercentOfInputted = totalInputted > 0 ? Math.round((hadirCount / totalInputted) * 100) : 0;
 
   // 7-day trend data (Sab, Min, Sen, Sel, Rab, Kam, Jum)
   const dayNames = useMemo(() => ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'], []);
   const trendData = useMemo(() => {
-    if (attendanceRecords.length === 0 && cachedSummary?.trendData) {
+    if (attendanceRecords.length === 0 && cachedSummary?.trendData && isCacheValidForToday) {
       return cachedSummary.trendData;
     }
     return Array.from({ length: 7 }, (_, i) => {
       const d = new Date();
       d.setDate(d.getDate() - (6 - i));
-      const dStr = d.toISOString().split('T')[0];
+      const dy = d.getFullYear();
+      const dm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      const dStr = `${dy}-${dm}-${dd}`;
       const recs = attendanceRecords.filter((r) => {
         if (r.date !== dStr) return false;
         if (userScope.isWaliKelas) {
@@ -215,7 +294,7 @@ export const DashboardView: React.FC = () => {
         count: hCount,
       };
     });
-  }, [attendanceRecords, cachedSummary?.trendData, dayNames, userScope, scopedStudentIds]);
+  }, [attendanceRecords, cachedSummary?.trendData, isCacheValidForToday, dayNames, userScope, scopedStudentIds]);
 
   // Save calculated summary to localStorage cache for lightning-fast next load
   useEffect(() => {
@@ -237,10 +316,11 @@ export const DashboardView: React.FC = () => {
         sakitCount,
         izinCount,
         alfaCount,
-        recordTotal,
+        recordTotal: targetTotal,
         hadirPercent,
         trendData,
         timestamp: Date.now(),
+        cachedDate: todayFormatted,
       };
       try {
         localStorage.setItem(cacheKey, JSON.stringify(summaryToCache));
@@ -259,9 +339,10 @@ export const DashboardView: React.FC = () => {
     sakitCount,
     izinCount,
     alfaCount,
-    recordTotal,
+    targetTotal,
     hadirPercent,
     trendData,
+    todayFormatted,
   ]);
 
   // Agenda Mendatang: hanya untuk bulan berjalan dan tanggal yang belum terlewat (>= tanggal hari ini)
@@ -662,81 +743,188 @@ export const DashboardView: React.FC = () => {
 
         {/* Right Chart: % Status Hari Ini */}
         <div className="lg:col-span-4 bg-white rounded-2xl p-3.5 sm:p-4.5 border border-slate-200 shadow-sm flex flex-col justify-between items-center text-center">
-          <div className="w-full flex items-center justify-start gap-2 mb-1">
-            <Percent size={16} className="text-blue-600" />
-            <h2 className="font-bold text-slate-900 text-xs sm:text-sm">Status Hari Ini</h2>
+          {/* Header with Title and Hari Berjalan Display */}
+          <div className="w-full flex items-center justify-between gap-2 mb-1">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Percent size={16} className="text-blue-600 shrink-0" />
+              <h2 className="font-bold text-slate-900 text-xs sm:text-sm truncate">Status Hari Ini</h2>
+            </div>
+            <div className="flex items-center gap-1 shrink-0 bg-blue-50 border border-blue-200/70 px-2 py-0.5 rounded-lg text-blue-700">
+              <CalendarCheck size={12} className="text-blue-600" />
+              <span className="text-[10px] sm:text-[11px] font-bold">
+                {todayFormattedDisplay}
+              </span>
+            </div>
+          </div>
+
+          {/* Status Badge: Mengikuti data yang telah di-input atau belum di-input */}
+          <div className="w-full my-1">
+            {!isAttendanceInputtedToday ? (
+              <div className="flex items-center justify-between gap-1.5 p-2 rounded-xl bg-amber-50/80 border border-amber-200 text-amber-900 text-left">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0 animate-pulse" />
+                  <p className="text-[11px] font-bold truncate">
+                    Presensi Belum Di-input (0/{targetTotal} Siswa)
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveView('absensi')}
+                  className="text-[10px] font-extrabold text-blue-700 hover:text-blue-900 shrink-0 px-2 py-0.5 rounded-md bg-white border border-blue-200 hover:bg-blue-50 transition-colors cursor-pointer"
+                >
+                  Input Sekarang →
+                </button>
+              </div>
+            ) : isAttendanceFullyInputted ? (
+              <div className="flex items-center justify-between gap-1.5 p-2 rounded-xl bg-emerald-50/80 border border-emerald-200 text-emerald-900 text-left">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
+                  <p className="text-[11px] font-bold truncate">
+                    Presensi Lengkap ({totalInputted}/{targetTotal} Siswa - 100%)
+                  </p>
+                </div>
+                <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md shrink-0">
+                  Selesai
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-1.5 p-2 rounded-xl bg-blue-50/80 border border-blue-200 text-blue-900 text-left">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Clock size={13} className="text-blue-600 shrink-0" />
+                  <p className="text-[11px] font-bold truncate">
+                    Sebagian Di-input: {totalInputted} dari {targetTotal} Siswa ({inputPercent}%)
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveView('absensi')}
+                  className="text-[10px] font-extrabold text-blue-700 hover:text-blue-900 underline shrink-0 cursor-pointer"
+                >
+                  Lengkapi ({totalBelumInput} sisa) →
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Donut Chart */}
           <div className="relative w-32 h-32 sm:w-36 sm:h-36 flex items-center justify-center my-1">
             <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
-              {/* Background Track */}
+              {/* Background Track (representing total expected students / uninputted portion) */}
               <circle cx="50" cy="50" r="38" fill="none" stroke="#F1F5F9" strokeWidth="11" />
 
               {/* Segment 1: Hadir (Emerald Green) */}
-              <circle
-                cx="50"
-                cy="50"
-                r="38"
-                fill="none"
-                stroke="#10b981"
-                strokeWidth="11"
-                strokeDasharray={`${(hadirCount / Math.max(recordTotal, 1)) * 238.76} 238.76`}
-                strokeDashoffset="0"
-                strokeLinecap="round"
-              />
+              {hadirCount > 0 && (
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="38"
+                  fill="none"
+                  stroke="#10b981"
+                  strokeWidth="11"
+                  strokeDasharray={`${(hadirCount / Math.max(targetTotal, 1)) * 238.76} 238.76`}
+                  strokeDashoffset="0"
+                  strokeLinecap="round"
+                />
+              )}
 
               {/* Segment 2: Sakit (Blue) */}
-              <circle
-                cx="50"
-                cy="50"
-                r="38"
-                fill="none"
-                stroke="#38bdf8"
-                strokeWidth="11"
-                strokeDasharray={`${(sakitCount / Math.max(recordTotal, 1)) * 238.76} 238.76`}
-                strokeDashoffset={`-${(hadirCount / Math.max(recordTotal, 1)) * 238.76}`}
-              />
+              {sakitCount > 0 && (
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="38"
+                  fill="none"
+                  stroke="#38bdf8"
+                  strokeWidth="11"
+                  strokeDasharray={`${(sakitCount / Math.max(targetTotal, 1)) * 238.76} 238.76`}
+                  strokeDashoffset={`-${(hadirCount / Math.max(targetTotal, 1)) * 238.76}`}
+                />
+              )}
 
-              {/* Segment 3: Alfa (Rose Red) */}
-              <circle
-                cx="50"
-                cy="50"
-                r="38"
-                fill="none"
-                stroke="#f43f5e"
-                strokeWidth="11"
-                strokeDasharray={`${(alfaCount / Math.max(recordTotal, 1)) * 238.76} 238.76`}
-                strokeDashoffset={`-${((hadirCount + sakitCount) / Math.max(recordTotal, 1)) * 238.76}`}
-              />
+              {/* Segment 3: Izin (Amber Yellow) */}
+              {izinCount > 0 && (
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="38"
+                  fill="none"
+                  stroke="#fbbf24"
+                  strokeWidth="11"
+                  strokeDasharray={`${(izinCount / Math.max(targetTotal, 1)) * 238.76} 238.76`}
+                  strokeDashoffset={`-${((hadirCount + sakitCount) / Math.max(targetTotal, 1)) * 238.76}`}
+                />
+              )}
+
+              {/* Segment 4: Alfa (Rose Red) */}
+              {alfaCount > 0 && (
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="38"
+                  fill="none"
+                  stroke="#f43f5e"
+                  strokeWidth="11"
+                  strokeDasharray={`${(alfaCount / Math.max(targetTotal, 1)) * 238.76} 238.76`}
+                  strokeDashoffset={`-${((hadirCount + sakitCount + izinCount) / Math.max(targetTotal, 1)) * 238.76}`}
+                />
+              )}
             </svg>
 
             {/* Center Percentage Display */}
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-lg sm:text-xl font-black text-slate-900">{hadirPercent}%</span>
-              <span className="text-[8px] sm:text-[9px] font-bold text-blue-600 tracking-widest uppercase">
-                HADIR
-              </span>
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              {isAttendanceInputtedToday ? (
+                <>
+                  <span className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight leading-none">
+                    {hadirPercent}%
+                  </span>
+                  <span className="text-[8px] sm:text-[9px] font-bold text-emerald-600 tracking-wider uppercase mt-1">
+                    HADIR {isAttendanceFullyInputted ? '(LENGKAP)' : `(${inputPercent}% TERISI)`}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="text-xl sm:text-2xl font-black text-slate-400 tracking-tight leading-none">
+                    0%
+                  </span>
+                  <span className="text-[8px] sm:text-[9px] font-bold text-amber-600 tracking-wider uppercase mt-1">
+                    BELUM DI-INPUT
+                  </span>
+                </>
+              )}
             </div>
           </div>
 
-          {/* Legend Pills below */}
-          <div className="flex flex-wrap items-center justify-center gap-2 text-[10px] sm:text-[11px] font-semibold mt-1">
-            <div className="flex items-center gap-1 text-slate-700">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+          {/* Legend Pills below with Inputted vs Belum Input numbers */}
+          <div className="flex flex-wrap items-center justify-center gap-1.5 text-[10px] sm:text-[11px] font-semibold mt-1">
+            <div className="flex items-center gap-1 text-slate-700 bg-emerald-50/70 border border-emerald-200/80 px-2 py-0.5 rounded-md">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
               <span>HADIR ({hadirCount})</span>
             </div>
-            <div className="flex items-center gap-1 text-slate-700">
-              <span className="w-2 h-2 rounded-full bg-sky-400" />
+            <div className="flex items-center gap-1 text-slate-700 bg-sky-50/70 border border-sky-200/80 px-2 py-0.5 rounded-md">
+              <span className="w-2 h-2 rounded-full bg-sky-400 shrink-0" />
               <span>SAKIT ({sakitCount})</span>
             </div>
-            <div className="flex items-center gap-1 text-slate-700">
-              <span className="w-2 h-2 rounded-full bg-amber-400" />
+            <div className="flex items-center gap-1 text-slate-700 bg-amber-50/70 border border-amber-200/80 px-2 py-0.5 rounded-md">
+              <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
               <span>IZIN ({izinCount})</span>
             </div>
-            <div className="flex items-center gap-1 text-slate-700">
-              <span className="w-2 h-2 rounded-full bg-rose-500" />
+            <div className="flex items-center gap-1 text-slate-700 bg-rose-50/70 border border-rose-200/80 px-2 py-0.5 rounded-md">
+              <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
               <span>ALFA ({alfaCount})</span>
+            </div>
+            <div
+              className={`flex items-center gap-1 px-2 py-0.5 rounded-md border ${
+                totalBelumInput > 0
+                  ? 'text-amber-800 bg-amber-50 border-amber-300 font-bold'
+                  : 'text-slate-500 bg-slate-50 border-slate-200'
+              }`}
+            >
+              <span
+                className={`w-2 h-2 rounded-full shrink-0 ${
+                  totalBelumInput > 0 ? 'bg-amber-500' : 'bg-slate-300'
+                }`}
+              />
+              <span>BELUM INPUT ({totalBelumInput})</span>
             </div>
           </div>
         </div>
