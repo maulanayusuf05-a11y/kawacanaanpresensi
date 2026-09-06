@@ -333,6 +333,45 @@ export default async function handler(req: any, res: any) {
     }
 
     // -------------------------------------------------------------
+    // CHANGE OWN PASSWORD & MARK PASSWORD CHANGED
+    // -------------------------------------------------------------
+    if (action === 'change_own_password' || action === 'mark_password_changed') {
+      const userToken = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+      if (!userToken) {
+        return json(res, 401, { error: 'Sesi login diperlukan.' });
+      }
+      const { data: userAuth, error: userAuthError } = await db.auth.getUser(userToken);
+      if (userAuthError || !userAuth.user) {
+        return json(res, 401, { error: 'Sesi login tidak valid atau telah kedaluwarsa.' });
+      }
+      const userId = userAuth.user.id;
+      const newPassword = body.password ? String(body.password) : '';
+
+      // 1. Jika ada password baru yang diberikan, perbarui akun auth
+      if (newPassword) {
+        if (newPassword.length < 8) {
+          return json(res, 400, { error: 'Password minimal 8 karakter.' });
+        }
+        const { error: pwdErr } = await db.auth.admin.updateUserById(userId, { password: newPassword });
+        if (pwdErr) {
+          return json(res, 400, { error: pwdErr.message || 'Gagal memperbarui password akun.' });
+        }
+      }
+
+      // 2. Pastikan must_change_password bernilai false pada tabel profiles
+      const { error: profErr } = await db
+        .from('profiles')
+        .update({ must_change_password: false })
+        .eq('id', userId);
+
+      if (profErr) {
+        return json(res, 400, { error: profErr.message || 'Gagal memperbarui status password pada profil.' });
+      }
+
+      return json(res, 200, { ok: true, success: true, message: 'Password berhasil diperbarui.' });
+    }
+
+    // -------------------------------------------------------------
     // 3. GET USER WORKSPACES
     // -------------------------------------------------------------
     if (action === 'get_user_workspaces') {

@@ -726,6 +726,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const loadRequestRef = React.useRef(0);
   const navigationIntentRef = React.useRef(0);
   const isLoggingOutRef = React.useRef(false);
+  const passwordChangedRecentlyRef = React.useRef(false);
   const setActiveView = (view: ActiveView) => {
     navigationIntentRef.current += 1;
     activeViewRef.current = view;
@@ -868,6 +869,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     setSubjects([]);
     setAcademicEvents([]);
     setIsSwitchingWorkspace(false);
+    passwordChangedRecentlyRef.current = false;
 
     // 3. Bersihkan seluruh penyimpanan lokal sesi dan cache
     try {
@@ -876,6 +878,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       localStorage.removeItem(SESSION_LAST_ACTIVE_KEY);
       localStorage.removeItem(SESSION_LOGIN_TIME_KEY);
       localStorage.removeItem("kawacanaan_last_workspace_id");
+      try {
+        for (let i = sessionStorage.length - 1; i >= 0; i--) {
+          const sKey = sessionStorage.key(i);
+          if (sKey && sKey.startsWith("pwd_changed_")) {
+            sessionStorage.removeItem(sKey);
+          }
+        }
+      } catch (_) {}
       
       // Bersihkan seluruh token pengguna dan cache ringkasan
       for (let i = localStorage.length - 1; i >= 0; i--) {
@@ -1308,6 +1318,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       (requestId !== undefined && requestId !== loadRequestRef.current)
     ) {
       return;
+    }
+
+    const isPwdAlreadyChanged =
+      passwordChangedRecentlyRef.current ||
+      (typeof window !== "undefined" &&
+        sessionStorage.getItem(`pwd_changed_${baseProfile.id}`) === "1") ||
+      (currentUser?.id === baseProfile.id && currentUser.mustChangePassword === false);
+
+    if (isPwdAlreadyChanged) {
+      me.mustChangePassword = false;
     }
 
     setCurrentUser(me);
@@ -1911,7 +1931,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       setRegistrationRequired(false);
       setIsOnboarding(false);
       setIsSelectingWorkspace(false);
-      const superAdminUser = emptyUser(baseProfile);
+      const isPwdAlreadyChanged =
+        passwordChangedRecentlyRef.current ||
+        (typeof window !== "undefined" &&
+          sessionStorage.getItem(`pwd_changed_${userId}`) === "1") ||
+        (currentUser?.id === userId && currentUser.mustChangePassword === false);
+
+      const superAdminUser = emptyUser({
+        ...baseProfile,
+        must_change_password: isPwdAlreadyChanged ? false : baseProfile?.must_change_password,
+      });
       setCurrentUser(superAdminUser);
       try {
         localStorage.setItem(
@@ -2017,8 +2046,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     }
 
     // Set basic currentUser and transition view immediately so dashboard mounts with zero delay
+    const isPwdAlreadyChanged =
+      passwordChangedRecentlyRef.current ||
+      (typeof window !== "undefined" &&
+        sessionStorage.getItem(`pwd_changed_${userId}`) === "1") ||
+      (currentUser?.id === userId && currentUser.mustChangePassword === false);
+
     const initialMe = emptyUser({
       ...baseProfile,
+      must_change_password: isPwdAlreadyChanged ? false : baseProfile?.must_change_password,
       school_id: chosenWorkspace.workspaceId,
       role: chosenWorkspace.role,
     });
@@ -2054,6 +2090,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         setRegistrationRequired(false);
         setActiveView("login");
         setIsAuthChecking(false);
+        return;
+      }
+
+      // Supabase memicu event USER_UPDATED setelah updateUser() berhasil (misal saat ganti password).
+      // Memuat ulang data pada saat event ini akan menyebabkan race condition yang menimpa
+      // status mustChangePassword: false dengan data profil lama yang belum tersinkron.
+      if (event === "USER_UPDATED") {
         return;
       }
 
@@ -5400,16 +5443,94 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     try {
       if (!newPassword || newPassword.length < 8)
         return { success: false, message: "Password minimal 8 karakter." };
-      const { error: authError } = await supabase.auth.updateUser({
-        password: newPassword,
-      });
-      if (authError) throw authError;
-      const { error: rpcError } = await supabase.rpc("mark_password_changed");
-      if (rpcError) throw rpcError;
+
+      passwordChangedRecentlyRef.current = true;
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token || "";
+      const userId = sessionData?.session?.user?.id || currentUser?.id;
+
+      if (userId && typeof window !== "undefined") {
+        try {
+          sessionStorage.setItem(`pwd_changed_${userId}`, "1");
+        } catch (_) {}
+      }
+
+      // 1. Perbarui password pada Supabase Auth (client-side)
+      let clientAuthSuccess = false;
+      try {
+        const { error: authError } = await supabase.auth.updateUser({
+          password: newPassword,
+        });
+        if (authError) {
+          console.warn("Client updateUser warning:", authError.message);
+        } else {
+          clientAuthSuccess = true;
+        }
+      } catch (clientErr) {
+        console.warn("Client updateUser exception:", clientErr);
+      }
+
+      // 2. Perbarui via API server onboarding (service role) agar must_change_password di tabel profiles
+      // dipastikan bernilai false langsung di database Supabase dan tidak terhalang RLS
+      let serverUpdated = false;
+      if (token) {
+        try {
+          const apiRes = await fetch("/api/onboarding", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              action: "change_own_password",
+              password: newPassword,
+            }),
+          });
+          const apiJson = await apiRes.json().catch(() => ({}));
+          if (apiRes.ok && apiJson.success) {
+            serverUpdated = true;
+          } else if (!clientAuthSuccess) {
+            throw new Error(apiJson.error || "Gagal memperbarui password di server.");
+          }
+        } catch (apiErr: any) {
+          if (!clientAuthSuccess) throw apiErr;
+        }
+      } else if (!clientAuthSuccess) {
+        throw new Error("Sesi login tidak valid untuk memperbarui password.");
+      }
+
+      // 3. Fallback pembaruan langsung pada tabel profiles dan rpc jika tersedia
+      if (userId) {
+        try {
+          await supabase.from("profiles").update({ must_change_password: false }).eq("id", userId);
+        } catch (_) {}
+      }
+      try {
+        await supabase.rpc("mark_password_changed");
+      } catch (_) {}
+
+      // 4. Perbarui currentUser di React state dan localStorage seketika
       setCurrentUser((p) => (p ? { ...p, mustChangePassword: false } : p));
-      showToast("Password berhasil diganti.");
+      try {
+        const cached = getCachedUserSession();
+        if (cached) {
+          localStorage.setItem(
+            CACHE_USER_SESSION_KEY,
+            JSON.stringify({ ...cached, mustChangePassword: false }),
+          );
+        }
+      } catch (_) {}
+
+      showToast("Password berhasil disimpan.");
       return { success: true, message: "Berhasil" };
     } catch (e: any) {
+      passwordChangedRecentlyRef.current = false;
+      if (currentUser?.id && typeof window !== "undefined") {
+        try {
+          sessionStorage.removeItem(`pwd_changed_${currentUser.id}`);
+        } catch (_) {}
+      }
       const message = e?.message || "Gagal mengganti password.";
       showToast(message, "error");
       return { success: false, message };
