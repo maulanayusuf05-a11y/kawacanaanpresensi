@@ -234,22 +234,22 @@ export function getTenantLifecycleInfo(
     };
   }
 
-  // TAHAP 4: SUSPENDED OTOMATIS (Masa tenggang telah habis)
+  // TAHAP 4: EXPIRED (Masa berbayar telah berakhir, beralih ke Mode Gratis Terbatas)
   return {
     status: 'SUSPENDED',
-    label: 'Ditangguhkan Otomatis (EXPIRED)',
-    badgeClass: 'bg-rose-50 text-rose-700 border-rose-200',
-    dotClass: 'bg-rose-500',
-    borderClass: 'border-rose-300',
-    description: `Masa berlaku & masa tenggang telah berakhir (${daysPast} hari lalu). Akses otomatis ditangguhkan oleh sistem.`,
+    label: 'Paket Berbayar Berakhir (Mode Gratis Aktif)',
+    badgeClass: 'bg-slate-100 text-slate-700 border-slate-300',
+    dotClass: 'bg-slate-500',
+    borderClass: 'border-slate-300',
+    description: `Masa paket berbayar telah berakhir (${daysPast} hari lalu). Akses operasional presensi tetap berjalan dengan fitur paket gratis terbatas.`,
     daysRemaining: diffDays,
     graceDaysRemaining: 0,
     isExpiringSoon: false,
     isGracePeriod: false,
-    isSuspended: true,
-    isActive: false,
-    canAccessApp: false,
-    alertSeverity: 'critical',
+    isSuspended: false,
+    isActive: true,
+    canAccessApp: true, // Tidak memblokir total, tetap bisa presensi dengan batasan paket gratis
+    alertSeverity: 'warning',
     alertMilestone: 'EXPIRED',
   };
 }

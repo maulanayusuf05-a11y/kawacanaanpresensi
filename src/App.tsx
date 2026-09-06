@@ -261,15 +261,8 @@ const MainAppContent: React.FC = () => {
     return <ChangePasswordView />;
   }
 
-  if (currentUser.role !== 'SUPER_ADMIN') {
-    const lifecycle = getTenantLifecycleInfo({
-      status: currentUser.subscriptionStatus,
-      subscription_expires_at: currentUser.subscriptionExpiresAt,
-    });
-    if (!lifecycle.canAccessApp) {
-      return <SubscriptionGate />;
-    }
-  }
+  // Jika langganan berakhir, jangan pernah memblokir total akses operasional guru/siswa.
+  // Sistem otomatis menerapkan fallback / downgrade ke mode gratis terbatas (presensi tetap berjalan).
 
   // Defense-in-depth: jangan pernah render view yang perannya tidak diizinkan,
   // apa pun cara `activeView` bisa berubah.

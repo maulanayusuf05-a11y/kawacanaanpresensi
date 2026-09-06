@@ -326,25 +326,25 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
   // Plan info display configuration
   const planInfo = {
     free: {
-      name: 'Paket Mulai / Gratis',
-      price: 'Rp0 / Bulan',
+      name: 'Paket Gratis',
+      price: 'Rp0 / Selamanya',
       badge: '1 Guru Gratis (32 Siswa)',
-      badgeColor: 'bg-blue-50 text-blue-700 border-blue-200',
-      description: 'Diberikan untuk 1 guru per sekolah. Langsung aktif ke dashboard guru untuk 1 rombel.',
+      badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+      description: 'Akses gratis selamanya untuk 1 rombel binaan. Langsung aktif ke dashboard guru tanpa biaya.',
     },
     teacher: {
       name: 'Paket Guru Mandiri',
-      price: 'Rp31.000 / Bulan',
-      badge: '1 Guru Mandiri (32 Siswa)',
+      price: 'Rp29.000 / Bulan',
+      badge: 'Guru Pro (Multi-Kelas)',
       badgeColor: 'bg-blue-50 text-blue-700 border-blue-200',
-      description: 'Bisa didaftarkan oleh beberapa guru di sekolah yang sama. Terhubung ke 1 rombel.',
+      description: 'Bisa didaftarkan oleh guru di sekolah mana pun. Terhubung hingga 5 rombel dan jadwal mata pelajaran.',
     },
     school: {
       name: 'Paket Sekolah Lengkap',
-      price: 'Rp270.000 / Bulan',
-      badge: '1 Institusi Sekolah (8 Guru + Kepsek)',
-      badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-      description: 'Mencakup seluruh rombel kelas 1–6, 8 guru mapel/wali kelas, portal siswa, dan rekap dinas.',
+      price: 'Rp249.000 / Bulan',
+      badge: '1 Institusi Sekolah Penuh',
+      badgeColor: 'bg-indigo-50 text-indigo-800 border-indigo-200',
+      description: 'Mencakup seluruh rombel kelas 1–6, semua guru mapel/wali kelas, portal siswa, dan rekap dinas.',
     },
   }[selectedPlan];
 

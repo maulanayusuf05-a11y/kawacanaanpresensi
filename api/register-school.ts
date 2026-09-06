@@ -22,8 +22,8 @@ const getPlanLimits = (plan: string) => {
     // Paket Guru: Rp31.000/bln, 1 guru (wali kelas/mapel), boleh dari sekolah yang sama, 32 siswa, 1 rombel
     return { max_teachers: 1, max_students: 32, max_classes: 1, days: 30, defaultClasses: 1, name: 'Paket Guru' };
   }
-  // Paket Mulai/Gratis: Rp0/bln, 1 guru dari 1 sekolah saja (hanya 1 per NPSN), 32 siswa, 1 rombel
-  return { max_teachers: 1, max_students: 32, max_classes: 1, days: 30, defaultClasses: 1, name: 'Paket Mulai/Gratis' };
+  // Paket Mulai/Gratis: Rp0/bln, 1 guru dari 1 sekolah saja, 32 siswa, 1 rombel, Aktif Seumur Hidup (Tanpa Expired)
+  return { max_teachers: 1, max_students: 32, max_classes: 1, days: null, defaultClasses: 1, name: 'Paket Mulai/Gratis' };
 };
 
 const generateInitialClasses = (schoolId: string, count: number) => {
@@ -186,8 +186,12 @@ export default async function handler(req: any, res: any) {
     // 3. Hitung Masa Aktif & Limit Paket
     const planLimits = getPlanLimits(plan);
     const startDate = new Date();
-    const expiryDate = new Date();
-    expiryDate.setDate(startDate.getDate() + planLimits.days);
+    let expiryDateStr: string | null = null;
+    if (planLimits.days && planLimits.days > 0) {
+      const expiryDate = new Date();
+      expiryDate.setDate(startDate.getDate() + planLimits.days);
+      expiryDateStr = expiryDate.toISOString().slice(0, 10);
+    }
 
     const rawCustomCode = body.code ? String(body.code).trim().toUpperCase().replace(/^SCH-?/i, '').replace(/[^A-Z0-9]/g, '') : '';
     const schoolCode = rawCustomCode || generateSchoolInviteCode();
@@ -204,7 +208,7 @@ export default async function handler(req: any, res: any) {
         workspace_type: workspaceType,
         status: 'active',
         subscription_started_at: startDate.toISOString().slice(0, 10),
-        subscription_expires_at: expiryDate.toISOString().slice(0, 10),
+        subscription_expires_at: expiryDateStr,
         max_teachers: planLimits.max_teachers,
         max_students: planLimits.max_students,
         max_classes: planLimits.max_classes,
@@ -396,7 +400,7 @@ export default async function handler(req: any, res: any) {
         npsn,
         plan,
         status: 'active',
-        subscription_expires_at: expiryDate.toISOString().slice(0, 10),
+        subscription_expires_at: expiryDateStr,
       },
       admin: {
         id: authData.user.id,

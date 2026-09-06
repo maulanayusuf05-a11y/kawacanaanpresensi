@@ -15,10 +15,10 @@
  */
 
 export type RuangKerjaType = 'individu' | 'sekolah';
-export type PaketStatus = 'gratis' | 'uji_coba' | 'pro';
+export type PaketStatus = 'gratis' | 'uji_coba' | 'pro' | 'custom';
 
 export type PaketGuruId = 'guru_gratis' | 'guru_uji_coba' | 'guru_pro';
-export type PaketSekolahId = 'sekolah_gratis' | 'sekolah_uji_coba' | 'sekolah_pro';
+export type PaketSekolahId = 'sekolah_gratis' | 'sekolah_uji_coba' | 'sekolah_pro' | 'sekolah_custom';
 export type PaketId = PaketGuruId | PaketSekolahId;
 
 /**
@@ -35,8 +35,11 @@ export interface PaketConfig {
   nama: string;
   tipeRuangKerja: RuangKerjaType;
   statusPaket: PaketStatus;
-  harga: number; // Dalam Rupiah (IDR) - Dapat diatur Super Admin
+  harga: number; // Dalam Rupiah (IDR) - default harga bulanan
+  hargaBulanan?: number; // Harga per bulan
+  hargaTahunan?: number; // Harga per tahun (dengan diskon tahunan)
   hargaFormatted?: string;
+  diskonTahunanLabel?: string; // Label penghematan (cth: 'Hemat 2 Bulan')
   durasiHari: number; // Hari masa aktif (0 = tanpa batas / lifetime)
   kapasitasSiswa: number; // Maksimal siswa - Dapat diatur Super Admin
   kapasitasGuru: number; // Maksimal guru - Dapat diatur Super Admin
@@ -67,6 +70,7 @@ export interface MasterPaketSettings {
   sekolah_gratis: PaketConfig;
   sekolah_uji_coba: PaketConfig;
   sekolah_pro: PaketConfig;
+  sekolah_custom?: PaketConfig;
 }
 
 /**
@@ -75,25 +79,27 @@ export interface MasterPaketSettings {
  */
 export const DEFAULT_MASTER_PAKET: MasterPaketSettings = {
   // -------------------------------------------------------------
-  // 1. PAKET RUANG KERJA INDIVIDU (UNTUK GURU)
+  // 1. PAKET RUANG KERJA INDIVIDU (UNTUK GURU MANDIRI)
   // -------------------------------------------------------------
   guru_gratis: {
     id: 'guru_gratis',
-    nama: 'Guru Gratis',
+    nama: 'Paket Gratis',
     tipeRuangKerja: 'individu',
     statusPaket: 'gratis',
     harga: 0,
-    durasiHari: 0, // Tanpa batas kedaluwarsa
+    hargaBulanan: 0,
+    hargaTahunan: 0,
+    durasiHari: 0, // Tanpa batas kedaluwarsa (Seumur Hidup)
     kapasitasSiswa: 32,
     kapasitasGuru: 1,
     kapasitasKelas: 1,
     fitur: [
-      'Presensi Harian Siswa 1 Kelas',
-      'Rekap Kehadiran Standar Bulanan',
-      'Unduh Rekap Spreadsheet',
-      'Kop Surat Sederhana'
+      'Presensi Harian Siswa 1 Rombel',
+      'Rekap Kehadiran Bulanan Standar',
+      'Unduh Rekap Spreadsheet (Excel)',
+      'Akses Tanpa Batas Waktu (Selamanya)'
     ],
-    deskripsi: 'Akses gratis selamanya untuk guru mengelola presensi 1 rombel binaan mandiri.'
+    deskripsi: 'Akses gratis selamanya bagi guru untuk mengelola presensi 1 rombel binaan secara mandiri.'
   },
   guru_uji_coba: {
     id: 'guru_uji_coba',
@@ -101,6 +107,8 @@ export const DEFAULT_MASTER_PAKET: MasterPaketSettings = {
     tipeRuangKerja: 'individu',
     statusPaket: 'uji_coba',
     harga: 0,
+    hargaBulanan: 0,
+    hargaTahunan: 0,
     durasiHari: 14, // 14 hari masa uji coba
     kapasitasSiswa: 45,
     kapasitasGuru: 1,
@@ -116,26 +124,30 @@ export const DEFAULT_MASTER_PAKET: MasterPaketSettings = {
   },
   guru_pro: {
     id: 'guru_pro',
-    nama: 'Guru Pro',
+    nama: 'Paket Guru',
     tipeRuangKerja: 'individu',
     statusPaket: 'pro',
-    harga: 49000, // Rp 49.000 / tahun (dapat disesuaikan Super Admin)
-    durasiHari: 365, // 1 tahun
-    kapasitasSiswa: 100,
+    harga: 29000, // Rp 29.000 / bulan
+    hargaBulanan: 29000,
+    hargaTahunan: 290000, // Hemat 2 bulan (Rp 58.000)
+    diskonTahunanLabel: 'Hemat 2 Bulan',
+    durasiHari: 30, // Perpanjangan bulanan / tahunan
+    kapasitasSiswa: 150,
     kapasitasGuru: 2,
     kapasitasKelas: 5,
     fitur: [
-      'Semua Fitur Guru Uji Coba',
-      'Kapasitas Siswa & Kelas Lebih Besar',
+      'Presensi Harian & Jadwal Mata Pelajaran',
+      'Kelola hingga 5 Rombongan Belajar',
+      'Kapasitas hingga 150 Siswa SD',
       'Cetak Laporan Format Resmi Kedinasan',
-      'Analisis & Statistik Kehadiran Real-time',
-      'Dukungan Prioritas WhatsApp'
+      'Ekspor Lengkap PDF & Excel per Semester',
+      'Dukungan Bantuan Teknis WhatsApp'
     ],
-    deskripsi: 'Solusi lengkap bagi guru profesional untuk kelola multi-kelas dan laporan presensi.'
+    deskripsi: 'Solusi lengkap bagi guru profesional untuk kelola multi-kelas, mata pelajaran, dan laporan presensi resmi.'
   },
 
   // -------------------------------------------------------------
-  // 2. PAKET RUANG KERJA SEKOLAH (UNTUK SEKOLAH)
+  // 2. PAKET RUANG KERJA SEKOLAH (UNTUK INSTITUSI / SEKOLAH DASAR)
   // -------------------------------------------------------------
   sekolah_gratis: {
     id: 'sekolah_gratis',
@@ -143,6 +155,8 @@ export const DEFAULT_MASTER_PAKET: MasterPaketSettings = {
     tipeRuangKerja: 'sekolah',
     statusPaket: 'gratis',
     harga: 0,
+    hargaBulanan: 0,
+    hargaTahunan: 0,
     durasiHari: 0,
     kapasitasSiswa: 60,
     kapasitasGuru: 3,
@@ -161,6 +175,8 @@ export const DEFAULT_MASTER_PAKET: MasterPaketSettings = {
     tipeRuangKerja: 'sekolah',
     statusPaket: 'uji_coba',
     harga: 0,
+    hargaBulanan: 0,
+    hargaTahunan: 0,
     durasiHari: 14, // 14 hari uji coba
     kapasitasSiswa: 300,
     kapasitasGuru: 16,
@@ -176,23 +192,52 @@ export const DEFAULT_MASTER_PAKET: MasterPaketSettings = {
   },
   sekolah_pro: {
     id: 'sekolah_pro',
-    nama: 'Sekolah Pro',
+    nama: 'Paket Sekolah',
     tipeRuangKerja: 'sekolah',
     statusPaket: 'pro',
-    harga: 199000, // Rp 199.000 / tahun (dapat disesuaikan Super Admin)
-    durasiHari: 365, // 1 tahun
+    harga: 249000, // Rp 249.000 / bulan
+    hargaBulanan: 249000,
+    hargaTahunan: 2490000, // Hemat 2 bulan (Rp 498.000)
+    diskonTahunanLabel: 'Hemat 2 Bulan',
+    durasiHari: 30, // Perpanjangan bulanan / tahunan
     kapasitasSiswa: 1000,
     kapasitasGuru: 50,
     kapasitasKelas: 36,
     fitur: [
-      'Semua Fitur Sekolah Uji Coba',
-      'Kapasitas Skala Penuh Seluruh Sekolah',
-      'Hak Akses Terpisah Wali Kelas & Guru Mapel',
-      'Validasi Anti Tumpang-Tindih Guru Mapel & Wali Kelas',
-      'Laporan Presensi Semester & Tahunan Lengkap',
-      'Dukungan VIP & Bimbingan Teknis Onboarding'
+      'Seluruh Fitur Presensi Terbuka Penuh',
+      'Multi-Role Terpadu (Kepsek, Admin, Wali Kelas, Guru Mapel)',
+      'Semua Rombel Kelas 1 s/d 6 Paralel (A/B/C)',
+      'Perhitungan Hari Efektif Kalender Pendidikan Otomatis',
+      'Cetak Laporan Format Kedinasan A4 Standar Diknas',
+      'Kop Surat Resmi Sekolah & Stempel Digital',
+      'Portal Siswa & Pengajuan Izin Mandiri',
+      'Bantuan Migrasi & Unggah Data Siswa Awal'
     ],
-    deskripsi: 'Sistem presensi multi-user terpadu dan profesional untuk seluruh unit sekolah.'
+    deskripsi: 'Sistem presensi multi-user terpadu dan profesional untuk seluruh unit sekolah dasar.'
+  },
+  sekolah_custom: {
+    id: 'sekolah_custom',
+    nama: 'Paket Custom',
+    tipeRuangKerja: 'sekolah',
+    statusPaket: 'custom',
+    harga: 0, // Kustom / Konsultasi
+    hargaBulanan: 0,
+    hargaTahunan: 0,
+    diskonTahunanLabel: 'Kontrak Khusus',
+    durasiHari: 365,
+    kapasitasSiswa: 10000,
+    kapasitasGuru: 500,
+    kapasitasKelas: 200,
+    fitur: [
+      'Semua Fitur Paket Sekolah Lengkap',
+      'Multi-Sekolah / Yayasan Terpusat / Dinas Pendidikan',
+      'Integrasi API Kustom & Sinkronisasi Dapodik',
+      'Dedicated Server & Backup Cloud Khusus',
+      'Layanan White-Label (Domain & Nama Aplikasi Khusus)',
+      'Pendampingan Teknis & Pelatihan On-site',
+      'Dedicated Account Manager Prioritas 24/7'
+    ],
+    deskripsi: 'Solusi kustom skala besar untuk Yayasan Pendidikan, Jaringan Sekolah Terpadu, atau Dinas Pendidikan.'
   }
 };
 

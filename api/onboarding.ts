@@ -23,21 +23,16 @@ function generateSchoolInviteCode(): string {
  */
 function calculateGuruProTrialPeriod(now: Date = new Date()) {
   const startedAt = now.toISOString().slice(0, 10);
-  const year = now.getFullYear();
-  const month = now.getMonth(); // 0 = Jan, 7 = Aug, 11 = Dec
-  // Hari terakhir di bulan berikutnya: new Date(year, month + 2, 0)
-  const endOfNextMonth = new Date(year, month + 2, 0);
-  const expiresAt = endOfNextMonth.toISOString().slice(0, 10);
 
   return {
-    plan: 'teacher', // Paket Guru Pro
-    status: 'trial',
+    plan: 'free', // Paket Mulai / Guru Gratis
+    status: 'active',
     startedAt,
-    expiresAt,
-    notes: `[Guru Pro Trial Otomatis: Masa aktif s.d akhir bulan berikutnya (${expiresAt})]`,
-    maxTeachers: 2,
-    maxStudents: 100,
-    maxClasses: 5,
+    expiresAt: null, // Tanpa batas kedaluwarsa (Seumur Hidup)
+    notes: `[Akun Guru Gratis: Aktif tanpa batas waktu kedaluwarsa]`,
+    maxTeachers: 1,
+    maxStudents: 32,
+    maxClasses: 1,
   };
 }
 

@@ -152,18 +152,36 @@ export const SettingsTab: React.FC<{
           </div>
         </div>
 
-        {/* Input Parameters: Harga, Durasi, Kapasitas */}
+        {/* Input Parameters: Harga Bulanan, Harga Tahunan, Durasi, Kapasitas */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
           <div>
             <label className="block text-[11px] font-bold text-slate-700 mb-1">
-              Harga (Rp)
+              Harga Bulanan (Rp)
             </label>
             <input
               type="number"
               min="0"
               step="1000"
-              value={pkg.harga}
-              onChange={(e) => handlePackageFieldChange(key, 'harga', Math.max(0, Number(e.target.value)))}
+              value={pkg.hargaBulanan ?? pkg.harga}
+              onChange={(e) => {
+                const val = Math.max(0, Number(e.target.value));
+                handlePackageFieldChange(key, 'hargaBulanan', val);
+                handlePackageFieldChange(key, 'harga', val);
+              }}
+              className="w-full px-2.5 py-1.5 border border-slate-200 rounded-xl bg-slate-50 font-mono font-bold text-slate-800 text-xs focus:bg-white focus:border-indigo-500 outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-bold text-slate-700 mb-1">
+              Harga Tahunan (Rp)
+            </label>
+            <input
+              type="number"
+              min="0"
+              step="1000"
+              value={pkg.hargaTahunan ?? (pkg.harga * 10)}
+              onChange={(e) => handlePackageFieldChange(key, 'hargaTahunan', Math.max(0, Number(e.target.value)))}
               className="w-full px-2.5 py-1.5 border border-slate-200 rounded-xl bg-slate-50 font-mono font-bold text-slate-800 text-xs focus:bg-white focus:border-indigo-500 outline-none"
             />
           </div>
@@ -195,7 +213,10 @@ export const SettingsTab: React.FC<{
               className="w-full px-2.5 py-1.5 border border-slate-200 rounded-xl bg-slate-50 font-mono font-bold text-slate-800 text-xs focus:bg-white focus:border-indigo-500 outline-none"
             />
           </div>
+        </div>
 
+        {/* Input Maks. Guru, Maks Kelas, & Deskripsi */}
+        <div className="grid sm:grid-cols-4 gap-3 text-xs pt-1">
           <div>
             <label className="block text-[11px] font-bold text-slate-700 mb-1">
               Maks. Kelas
@@ -208,10 +229,7 @@ export const SettingsTab: React.FC<{
               className="w-full px-2.5 py-1.5 border border-slate-200 rounded-xl bg-slate-50 font-mono font-bold text-slate-800 text-xs focus:bg-white focus:border-indigo-500 outline-none"
             />
           </div>
-        </div>
 
-        {/* Input Maks. Guru & Deskripsi */}
-        <div className="grid sm:grid-cols-3 gap-3 text-xs pt-1">
           <div>
             <label className="block text-[11px] font-bold text-slate-700 mb-1">
               Maks. Guru / Pengajar
@@ -227,7 +245,7 @@ export const SettingsTab: React.FC<{
 
           <div className="sm:col-span-2">
             <label className="block text-[11px] font-bold text-slate-700 mb-1">
-              Keterangan & Fitur Ringkas
+              Keterangan Singkat
             </label>
             <input
               type="text"
@@ -395,10 +413,11 @@ export const SettingsTab: React.FC<{
             </div>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-4">
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
             {renderPackageCard('sekolah_gratis', 'bg-slate-100 text-slate-700')}
             {renderPackageCard('sekolah_uji_coba', 'bg-amber-100 text-amber-800')}
             {renderPackageCard('sekolah_pro', 'bg-indigo-100 text-indigo-800')}
+            {renderPackageCard('sekolah_custom', 'bg-purple-100 text-purple-800')}
           </div>
         </div>
 

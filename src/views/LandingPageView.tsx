@@ -25,7 +25,17 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({ onEnterSystem 
   const [legalTab, setLegalTab] = useState<LegalTabType>('terms');
   const [lang, setLang] = useState<'ID' | 'EN'>('ID');
 
-  const handleOpenRegister = (planId: 'free' | 'teacher' | 'school' = 'free') => {
+  const handleOpenRegister = (planId: 'free' | 'teacher' | 'school' | 'custom' = 'free') => {
+    if (planId === 'custom') {
+      const phone = '6281234567890';
+      const text = encodeURIComponent(
+        lang === 'ID'
+          ? 'Halo Tim Kawacanaan SD, saya tertarik untuk konsultasi Paket Custom / Enterprise untuk yayasan/sekolah kami.'
+          : 'Hello Kawacanaan Team, I would like to inquire about the Custom / Enterprise Plan for our schools.'
+      );
+      window.open(`https://wa.me/${phone}?text=${text}`, '_blank');
+      return;
+    }
     setSelectedPlanId(planId);
     setIsRegisterOpen(true);
   };
