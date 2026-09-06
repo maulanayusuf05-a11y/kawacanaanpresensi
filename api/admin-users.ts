@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js';
-import { reconcileTeacherAssignments } from './sync-teacher-assignments';
 
 const json = (res: any, status: number, body: unknown) =>
   res.status(status).setHeader('Content-Type', 'application/json').end(JSON.stringify(body));
@@ -9,6 +8,91 @@ const USERNAME_RE = /^[a-z0-9][a-z0-9._-]{2,63}$/i;
 const PASSWORD_MIN = 8;
 
 type Role = typeof ALLOWED_ROLES[number];
+
+async function reconcileTeacherAssignments(
+  admin: any,
+  schoolId: string,
+  academicYear: string = '2026/2027'
+) {
+  if (!schoolId) return { ok: false, count: 0, error: 'school_id wajib diisi' };
+  try {
+    const { data: classes } = await admin
+      .from('classes')
+      .select('id, school_id, academic_year, wali_kelas_teacher_id')
+      .eq('school_id', schoolId)
+      .not('wali_kelas_teacher_id', 'is', null);
+
+    const [{ data: sta }, { data: sca }] = await Promise.all([
+      admin
+        .from('subject_teacher_assignments')
+        .select('school_id, subject_id, teacher_id, academic_year')
+        .eq('school_id', schoolId),
+      admin
+        .from('subject_class_assignments')
+        .select('school_id, subject_id, class_id, academic_year')
+        .eq('school_id', schoolId),
+    ]);
+
+    const unifiedRows: Array<{
+      school_id: string;
+      teacher_id: string;
+      role: 'WALI_KELAS' | 'GURU_MAPEL';
+      class_id: string | null;
+      subject_id: string | null;
+      academic_year: string;
+      is_active: boolean;
+    }> = [];
+
+    for (const c of classes || []) {
+      if (c.wali_kelas_teacher_id) {
+        unifiedRows.push({
+          school_id: c.school_id,
+          teacher_id: c.wali_kelas_teacher_id,
+          role: 'WALI_KELAS',
+          class_id: c.id,
+          subject_id: null,
+          academic_year: c.academic_year || academicYear,
+          is_active: true,
+        });
+      }
+    }
+
+    for (const st of sta || []) {
+      const matchedClasses = (sca || []).filter((sc: any) => sc.subject_id === st.subject_id);
+      if (matchedClasses.length > 0) {
+        for (const mc of matchedClasses) {
+          unifiedRows.push({
+            school_id: st.school_id,
+            teacher_id: st.teacher_id,
+            role: 'GURU_MAPEL',
+            class_id: mc.class_id,
+            subject_id: st.subject_id,
+            academic_year: st.academic_year || academicYear,
+            is_active: true,
+          });
+        }
+      } else {
+        unifiedRows.push({
+          school_id: st.school_id,
+          teacher_id: st.teacher_id,
+          role: 'GURU_MAPEL',
+          class_id: null,
+          subject_id: st.subject_id,
+          academic_year: st.academic_year || academicYear,
+          is_active: true,
+        });
+      }
+    }
+
+    await admin.from('teacher_assignments').delete().eq('school_id', schoolId);
+    if (unifiedRows.length > 0) {
+      await admin.from('teacher_assignments').insert(unifiedRows);
+    }
+    return { ok: true, count: unifiedRows.length };
+  } catch (err: any) {
+    return { ok: false, count: 0, error: err?.message };
+  }
+}
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return json(res, 405, { error: 'Metode permintaan tidak diizinkan.' });
@@ -24,19 +108,30 @@ export default async function handler(req: any, res: any) {
   const { data: caller, error: callerErr } = await admin.auth.getUser(token);
   if (callerErr || !caller.user) return json(res, 401, { error: 'Sesi login tidak valid.' });
 
-  const { data: profile, error: profileErr } = await admin
+  const { data: profile } = await admin
     .from('profiles')
-    .select('id,role,school_id')
+    .select('id,role,school_id,name,username')
     .eq('id', caller.user.id)
-    .single();
-  if (profileErr || !profile || !['ADMIN', 'SUPER_ADMIN'].includes(profile.role)) {
+    .maybeSingle();
+
+  // Role dapat bersumber dari profiles ataupun auth user_metadata jika sedang dalam sesi workspace sekolah
+  const callerRole = String(
+    profile?.role ||
+    caller.user.user_metadata?.school_workspace_role ||
+    caller.user.user_metadata?.role ||
+    ''
+  ).trim().toUpperCase();
+
+  const isAuthorizedAdmin = ['ADMIN', 'SUPER_ADMIN', 'ADMIN SEKOLAH'].includes(callerRole);
+  if (!isAuthorizedAdmin) {
     return json(res, 403, { error: 'Hanya ADMIN sekolah atau SUPER ADMIN yang dapat mengelola akun.' });
   }
 
   const body = req.body || {};
   const action = body.action;
   const role = body.role as Role | undefined;
-  const schoolId = profile.role === 'SUPER_ADMIN' ? (body.schoolId || body.school_id || null) : profile.school_id;
+  const callerSchoolId = profile?.school_id || caller.user.user_metadata?.school_workspace_id || caller.user.user_metadata?.school_id || null;
+  const schoolId = callerRole === 'SUPER_ADMIN' ? (body.schoolId || body.school_id || callerSchoolId) : callerSchoolId;
 
   const getAcademicYear = async (id: string) => {
     const { data } = await admin.from('school_profile').select('tahun_pelajaran').eq('school_id', id).maybeSingle();
@@ -50,9 +145,11 @@ export default async function handler(req: any, res: any) {
   };
 
   const ensureSameSchool = async (targetId: string, allowSuperAdmin = true) => {
-    if (profile.role === 'SUPER_ADMIN' && allowSuperAdmin) return true;
-    const { data } = await admin.from('profiles').select('school_id').eq('id', targetId).maybeSingle();
-    return !!data && data.school_id === profile.school_id;
+    if (callerRole === 'SUPER_ADMIN' && allowSuperAdmin) return true;
+    const { data: targetProfile } = await admin.from('profiles').select('school_id').eq('id', targetId).maybeSingle();
+    if (!targetProfile) return true;
+    if (!callerSchoolId || !targetProfile.school_id) return true;
+    return targetProfile.school_id === callerSchoolId;
   };
 
   try {
@@ -402,21 +499,65 @@ export default async function handler(req: any, res: any) {
 
     if (action === 'delete') {
       const userId = body.userId || body.user_id;
-      if (!userId || userId === caller.user.id) return json(res, 400, { error: 'Akun yang sedang digunakan tidak dapat dihapus.' });
+      if (!userId) return json(res, 400, { error: 'ID akun pengguna wajib disertakan.' });
+      if (userId === caller.user.id) return json(res, 400, { error: 'Akun yang sedang digunakan tidak dapat dihapus.' });
       if (!(await ensureSameSchool(userId))) return json(res, 403, { error: 'Akun tersebut bukan bagian dari sekolah Anda.' });
-      const { data: target } = await admin.from('profiles').select('role,school_id').eq('id', userId).maybeSingle();
-      if (!target) return json(res, 404, { error: 'Profil pengguna tidak ditemukan.' });
-      if (target.role === 'ADMIN' && profile.role !== 'SUPER_ADMIN') {
-        const { count } = await admin.from('profiles').select('id', { count:'exact', head:true }).eq('school_id', target.school_id).eq('role','ADMIN').eq('is_active',true);
-        if ((count || 0) <= 1) return json(res, 400, { error: 'Admin terakhir di sekolah tidak boleh dihapus.' });
+
+      const { data: target } = await admin.from('profiles').select('*').eq('id', userId).maybeSingle();
+
+      if (target) {
+        if (target.role === 'ADMIN' && callerRole !== 'SUPER_ADMIN') {
+          const { count } = await admin
+            .from('profiles')
+            .select('id', { count: 'exact', head: true })
+            .eq('school_id', target.school_id || callerSchoolId)
+            .eq('role', 'ADMIN')
+            .eq('is_active', true);
+          if ((count || 0) <= 1) {
+            return json(res, 400, { error: 'Admin terakhir di sekolah tidak boleh dihapus.' });
+          }
+        }
+
+        // 1. Lepas asosiasi teacher_id dan student_id pada profiles agar data master Guru dan Siswa tetap utuh
+        await admin.from('profiles').update({ teacher_id: null, student_id: null }).eq('id', userId);
+
+        // 2. Hapus baris dari tabel profiles
+        const { error: delProfileError } = await admin.from('profiles').delete().eq('id', userId);
+        if (delProfileError) {
+          console.error('[admin-users] Gagal menghapus profil pengguna:', delProfileError);
+          return json(res, 400, { error: `Gagal menghapus profil: ${delProfileError.message}` });
+        }
       }
-      // Menghapus AKUN tidak menghapus master GURU. Data guru tetap tersedia.
-      const { error: unlinkError } = await admin.from('profiles').update({ teacher_id: null }).eq('id', userId);
-      if (unlinkError) return json(res, 400, { error: unlinkError.message });
-      const { error } = await admin.auth.admin.deleteUser(userId);
-      if (error) return json(res, 400, { error: error.message });
-      await admin.from('audit_logs').insert({ actor_id:caller.user.id, actor_role:profile.role, action:'DELETE_USER', school_id:target.school_id, details:{userId} });
-      return json(res, 200, { ok:true });
+
+      // 3. Hapus user dari Supabase Auth
+      const { error: delAuthError } = await admin.auth.admin.deleteUser(userId);
+      if (delAuthError) {
+        console.warn('[admin-users] Auth deleteUser warning:', delAuthError.message);
+        if (!delAuthError.message.toLowerCase().includes('not found') && !target) {
+          return json(res, 400, { error: delAuthError.message });
+        }
+      }
+
+      // 4. Catat aktivitas ke audit_logs
+      try {
+        await admin.from('audit_logs').insert({
+          actor_id: caller.user.id,
+          actor_name: caller.user.user_metadata?.name || profile?.name || 'Admin',
+          actor_role: callerRole,
+          action: 'DELETE_USER',
+          school_id: target?.school_id || callerSchoolId || null,
+          details: {
+            userId,
+            deleted_username: target?.username,
+            deleted_name: target?.name,
+            deleted_role: target?.role,
+          },
+        });
+      } catch (auditErr: any) {
+        console.warn('[admin-users] Audit log warning:', auditErr?.message);
+      }
+
+      return json(res, 200, { ok: true, success: true, message: 'Akun pengguna berhasil dihapus.' });
     }
 
     return json(res, 400, { error: 'Operasi akun tidak dikenali.' });
