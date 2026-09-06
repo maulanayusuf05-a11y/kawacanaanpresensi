@@ -537,7 +537,8 @@ export const DashboardView: React.FC = () => {
   }, [currentUser, menuItems]);
 
   // Role-specific widgets definition
-  const isTeacherOrWali = userScope.isWaliKelas || userScope.isGuruMapel;
+  const isWaliKelas = userScope.isWaliKelas || currentUser?.role === 'WALI KELAS';
+  const isTeacherOrWali = isWaliKelas || userScope.isGuruMapel;
 
   const toneClasses: Record<string, string> = {
     blue: 'bg-blue-50 border-blue-100 text-blue-600',
@@ -857,6 +858,39 @@ export const DashboardView: React.FC = () => {
                   </div>
                 )
               ) : null
+            ) : isWaliKelas ? (
+              // Role Wali Kelas: Jika belum di-input, teks "Presensi Belum Di-input" dan "Input Sekarang →" dihilangkan
+              isAttendanceInputtedToday ? (
+                isAttendanceFullyInputted ? (
+                  <div className="flex items-center justify-between gap-1.5 p-2 rounded-xl bg-emerald-50/80 border border-emerald-200 text-emerald-900 text-left">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
+                      <p className="text-[11px] font-bold truncate">
+                        Presensi Lengkap ({totalInputted}/{targetTotal} Siswa - 100%)
+                      </p>
+                    </div>
+                    <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md shrink-0">
+                      Selesai
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-1.5 p-2 rounded-xl bg-blue-50/80 border border-blue-200 text-blue-900 text-left">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <Clock size={13} className="text-blue-600 shrink-0" />
+                      <p className="text-[11px] font-bold truncate">
+                        Sebagian Di-input: {totalInputted} dari {targetTotal} Siswa ({inputPercent}%)
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveView('absensi')}
+                      className="text-[10px] font-extrabold text-blue-700 hover:text-blue-900 underline shrink-0 cursor-pointer"
+                    >
+                      Lengkapi ({totalBelumInput} sisa) →
+                    </button>
+                  </div>
+                )
+              ) : null
             ) : !isAttendanceInputtedToday ? (
               <div className="flex items-center justify-between gap-1.5 p-2 rounded-xl bg-amber-50/80 border border-amber-200 text-amber-900 text-left">
                 <div className="flex items-center gap-1.5 min-w-0">
@@ -985,7 +1019,7 @@ export const DashboardView: React.FC = () => {
                     0%
                   </span>
                   <span className="text-[8px] sm:text-[9px] font-bold text-slate-400 tracking-wider uppercase mt-1">
-                    {isSchoolAdminOrKS ? 'HADIR' : 'BELUM DI-INPUT'}
+                    {isSchoolAdminOrKS || isWaliKelas ? 'HADIR' : 'BELUM DI-INPUT'}
                   </span>
                 </>
               )}
@@ -1010,7 +1044,7 @@ export const DashboardView: React.FC = () => {
               <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
               <span>ALFA ({alfaCount})</span>
             </div>
-            {!isSchoolAdminOrKS && (
+            {!isSchoolAdminOrKS && !isWaliKelas && (
               <div
                 className={`flex items-center gap-1 px-2 py-0.5 rounded-md border ${
                   totalBelumInput > 0

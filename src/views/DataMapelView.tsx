@@ -73,6 +73,41 @@ export const DataMapelView: React.FC = () => {
     return subjects.filter((s) => isMySubject(s)).length;
   }, [subjects, currentUser, currentTeacher, userScope.assignedSubjectIds]);
 
+  // Kumpulan ID dan Nama kelas yang diampu oleh Wali Kelas
+  const waliAccessibleClassIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (assignedWaliClass?.id) ids.add(assignedWaliClass.id);
+    (userScope.accessibleClassIds || []).forEach((id) => ids.add(id));
+    (userScope.accessibleClasses || []).forEach((c) => ids.add(c.id));
+    if (currentUser?.classIds && currentUser.classIds.length > 0) {
+      currentUser.classIds.forEach((id) => ids.add(id));
+    }
+    return ids;
+  }, [assignedWaliClass, userScope.accessibleClassIds, userScope.accessibleClasses, currentUser?.classIds]);
+
+  const waliAccessibleClassNames = useMemo(() => {
+    const names = new Set<string>();
+    if (assignedWaliClass?.name) names.add(assignedWaliClass.name.trim().toLowerCase());
+    (userScope.accessibleClasses || []).forEach((c) => names.add(c.name.trim().toLowerCase()));
+    return names;
+  }, [assignedWaliClass, userScope.accessibleClasses]);
+
+  const isSubjectInWaliAssignment = (sub: Subject) => {
+    if (!isWaliKelas) return true;
+    const targetIds = sub.targetClassIds || [];
+    const targetNames = (sub.targetClassNames || []).map((n) => n.trim().toLowerCase());
+    const schedules = sub.classSchedules || [];
+
+    const matchesClassId = targetIds.some((cid) => waliAccessibleClassIds.has(cid));
+    const matchesClassName = targetNames.some((cn) => waliAccessibleClassNames.has(cn));
+    const matchesSchedule = schedules.some(
+      (cs) => waliAccessibleClassIds.has(cs.classId) || (cs.className && waliAccessibleClassNames.has(cs.className.trim().toLowerCase()))
+    );
+    const matchesTeacher = isMySubject(sub);
+
+    return matchesClassId || matchesClassName || matchesSchedule || matchesTeacher;
+  };
+
   // Search & Class Filter & Scope Filter (Semua vs Mapel Saya)
   const [searchTerm, setSearchTerm] = useState('');
   const [viewScopeTab, setViewScopeTab] = useState<'ALL' | 'MY'>(() => {
@@ -121,6 +156,11 @@ export const DataMapelView: React.FC = () => {
   // Filtered Subjects:
   const filteredSubjects = useMemo(() => {
     return subjects.filter((sub) => {
+      // Untuk Wali Kelas di Ruang Kerja Sekolah: HANYA tampilkan mata pelajaran yang ada dalam penugasannya saja
+      if (isWaliKelas && !isAdmin) {
+        if (!isSubjectInWaliAssignment(sub)) return false;
+      }
+
       // Filter tab Mapel Saya
       if (viewScopeTab === 'MY') {
         if (!isMySubject(sub)) return false;
@@ -149,7 +189,7 @@ export const DataMapelView: React.FC = () => {
       const matchesDays = (sub.scheduleDays || []).some((d) => d.toLowerCase().includes(q));
       return matchesName || matchesCode || matchesTeacher || matchesClasses || matchesDays;
     });
-  }, [subjects, viewScopeTab, searchTerm, selectedClassFilter, activeFilterClass, attendanceRecords, currentUser, currentTeacher, userScope.assignedSubjectIds]);
+  }, [subjects, isWaliKelas, isAdmin, viewScopeTab, searchTerm, selectedClassFilter, activeFilterClass, attendanceRecords, currentUser, currentTeacher, userScope.assignedSubjectIds, waliAccessibleClassIds, waliAccessibleClassNames]);
 
   const openAdd = () => {
     setEditingSubject(null);
@@ -486,17 +526,32 @@ export const DataMapelView: React.FC = () => {
                 onChange={(e) => setSelectedClassFilter(e.target.value)}
                 className="bg-transparent font-extrabold text-blue-900 outline-none cursor-pointer text-xs"
               >
-                <option value="ALL">Semua Rombel ({subjects.length} Mapel)</option>
-                {isWaliKelas && assignedWaliClass && (
-                  <option value={assignedWaliClass.id}>
-                    Kelas Binaan ({assignedWaliClass.name})
-                  </option>
+                {isWaliKelas && !isAdmin ? (
+                  <>
+                    <option value="ALL">
+                      {assignedWaliClass ? `Semua Mapel Kelas ${assignedWaliClass.name}` : 'Semua Mapel Penugasan'}
+                    </option>
+                    {userScope.accessibleClasses.map((cls) => (
+                      <option key={cls.id} value={cls.id}>
+                        {cls.name} ({getFaseByClassName(cls.name, cls.grade)})
+                      </option>
+                    ))}
+                  </>
+                ) : (
+                  <>
+                    <option value="ALL">Semua Rombel ({subjects.length} Mapel)</option>
+                    {isWaliKelas && assignedWaliClass && (
+                      <option value={assignedWaliClass.id}>
+                        Kelas Binaan ({assignedWaliClass.name})
+                      </option>
+                    )}
+                    {classes.map((cls) => (
+                      <option key={cls.id} value={cls.id}>
+                        {cls.name} ({getFaseByClassName(cls.name, cls.grade)})
+                      </option>
+                    ))}
+                  </>
                 )}
-                {classes.map((cls) => (
-                  <option key={cls.id} value={cls.id}>
-                    {cls.name} ({getFaseByClassName(cls.name, cls.grade)})
-                  </option>
-                ))}
               </select>
             </div>
           </div>
@@ -504,7 +559,12 @@ export const DataMapelView: React.FC = () => {
 
         <div className="text-xs font-bold text-slate-500 flex items-center gap-2">
           <span>
-            Menampilkan: <span className="text-blue-700 font-extrabold">{filteredSubjects.length}</span> dari {subjects.length} Mapel
+            Menampilkan: <span className="text-blue-700 font-extrabold">{filteredSubjects.length}</span>{' '}
+            {isWaliKelas && !isAdmin
+              ? assignedWaliClass
+                ? `Mapel di Kelas ${assignedWaliClass.name}`
+                : 'Mapel Penugasan'
+              : `dari ${subjects.length} Mapel`}
           </span>
         </div>
       </div>

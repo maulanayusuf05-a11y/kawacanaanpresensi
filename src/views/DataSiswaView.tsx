@@ -147,11 +147,19 @@ export const DataSiswaView: React.FC = () => {
   const [studentScopeFilter, setStudentScopeFilter] = useState<'all' | 'my'>('all');
 
   // Data siswa yang diizinkan untuk diakses:
-  // Wali Kelas: menampilkan siswa di rombel binaan atau seluruh siswa sekolah jika memilih filter semua
+  // Wali Kelas: HANYA menampilkan siswa di rombel binaan/penugasannya saja
   // Guru Mapel: menampilkan siswa di rombel yang diajar atau seluruh siswa sekolah
   const accessibleStudents = useMemo(() => {
     if (isAdmin || isPersonalWorkspace) return students;
-    if (isWaliKelas || isGuru) {
+    if (isWaliKelas) {
+      // Wali Kelas: strictly hanya menampilkan siswa binaannya
+      return students.filter(
+        (s) =>
+          (s.classId && accessibleClassIds.has(s.classId)) ||
+          (s.className && accessibleClassNames.has(s.className.trim().toLowerCase()))
+      );
+    }
+    if (isGuru) {
       if (studentScopeFilter === 'my' && myAssignedClasses.length > 0) {
         return students.filter(
           (s) =>
@@ -222,11 +230,14 @@ export const DataSiswaView: React.FC = () => {
 
   // Available classes: integrated from onboarding registration / workspace classes
   const availableClasses = useMemo(() => {
+    if (isWaliKelas) {
+      return myAssignedClasses && myAssignedClasses.length > 0 ? myAssignedClasses : classes || [];
+    }
     if (studentScopeFilter === 'my' && myAssignedClasses && myAssignedClasses.length > 0) {
       return myAssignedClasses;
     }
     return classes || [];
-  }, [studentScopeFilter, myAssignedClasses, classes]);
+  }, [isWaliKelas, studentScopeFilter, myAssignedClasses, classes]);
 
   // Filter and sort students (otomatis urut alfabetis A - Z)
   const filteredStudents = useMemo(() => {
@@ -596,7 +607,7 @@ export const DataSiswaView: React.FC = () => {
           {/* Secondary Controls Bar: Filter by Class and Show Entries */}
           <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100">
             <div className="flex flex-wrap items-center gap-2.5">
-              {!isAdmin && !isPersonalWorkspace && (
+              {!isAdmin && !isPersonalWorkspace && !isWaliKelas && (
                 <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
                   <button
                     type="button"

@@ -162,12 +162,16 @@ export const DataKelasView: React.FC = () => {
 
   const accessibleClasses = useMemo(() => {
     if (isAdmin || isPersonalWorkspace) return classes;
+    if (isWaliKelas) {
+      // Wali Kelas di Ruang Kerja Sekolah: HANYA menampilkan kelas binaan yang ditugaskan
+      return myAssignedClasses;
+    }
     if (classScopeFilter === 'my' && myAssignedClasses.length > 0) {
       return myAssignedClasses;
     }
     // Di Ruang Kerja Sekolah, tampilkan seluruh kelas dari Admin Sekolah agar data referensi tidak kosong
     return classes;
-  }, [isAdmin, isPersonalWorkspace, classes, myAssignedClasses, classScopeFilter]);
+  }, [isAdmin, isPersonalWorkspace, isWaliKelas, classes, myAssignedClasses, classScopeFilter]);
 
   const canAddClass = isAdmin || isPersonalWorkspace;
   const canEditClass = isAdmin || isPersonalWorkspace;
@@ -798,7 +802,7 @@ export const DataKelasView: React.FC = () => {
               </div>
 
               <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-600">
-                {!isAdmin && !isPersonalWorkspace && (
+                {!isAdmin && !isPersonalWorkspace && !isWaliKelas && (
                   <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
                     <button
                       type="button"

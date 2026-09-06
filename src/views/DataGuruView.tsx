@@ -267,8 +267,8 @@ export const DataGuruView: React.FC = () => {
       return t;
     });
 
-    // Jika filter profil saya dipilih oleh non-admin
-    if (!isAdmin && (isWaliKelas || isGuruMapel) && teacherScopeFilter === 'my') {
+    // Ruang Kerja Sekolah: Untuk Wali Kelas, HANYA tampilkan akun/data guru yang bersangkutan saja
+    if (isWaliKelas && !isAdmin) {
       const myOnly = allEnrichedTeachers.filter((t) => {
         if (currentUser?.teacherId && t.id === currentUser.teacherId) return true;
         if (userNip && normalizeNip(t.nip) === userNip) return true;
@@ -283,9 +283,33 @@ export const DataGuruView: React.FC = () => {
             nama: currentUser.name || 'Guru',
             nip: userNip || currentUser.nip || '-',
             jenisKelamin: 'L' as const,
-            jabatan: isWaliKelas ? 'Wali Kelas' : 'Guru Mapel',
-            tugasUtama: isWaliKelas ? 'Wali Kelas' : 'Guru Mapel',
-            tugas_utama: isWaliKelas ? 'Wali Kelas' : 'Guru Mapel',
+            jabatan: 'Wali Kelas',
+            tugasUtama: 'Wali Kelas',
+            tugas_utama: 'Wali Kelas',
+          },
+        ];
+      }
+    }
+
+    // Jika filter profil saya dipilih oleh Guru Mapel
+    if (!isAdmin && isGuruMapel && teacherScopeFilter === 'my') {
+      const myOnly = allEnrichedTeachers.filter((t) => {
+        if (currentUser?.teacherId && t.id === currentUser.teacherId) return true;
+        if (userNip && normalizeNip(t.nip) === userNip) return true;
+        if (cleanUserName && normalizeTeacherName(t.nama) === cleanUserName) return true;
+        return false;
+      });
+      if (myOnly.length > 0) return myOnly;
+      if (currentUser) {
+        return [
+          {
+            id: currentUser.teacherId || currentUser.id || 'teacher-self',
+            nama: currentUser.name || 'Guru',
+            nip: userNip || currentUser.nip || '-',
+            jenisKelamin: 'L' as const,
+            jabatan: 'Guru Mapel',
+            tugasUtama: 'Guru Mapel',
+            tugas_utama: 'Guru Mapel',
           },
         ];
       }
@@ -696,7 +720,7 @@ export const DataGuruView: React.FC = () => {
           />
         </div>
 
-        {!isAdmin && !isPersonalWorkspace && (
+        {!isAdmin && !isPersonalWorkspace && !isWaliKelas && (
           <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs self-start sm:self-auto">
             <button
               type="button"
