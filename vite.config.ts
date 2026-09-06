@@ -4,10 +4,30 @@ import path from 'path';
 import { pathToFileURL } from 'url';
 import { defineConfig, Plugin } from 'vite';
 
+function validateMidtransStartupConfig() {
+  const isProd = process.env.MIDTRANS_IS_PRODUCTION;
+  const clientKey = process.env.MIDTRANS_CLIENT_KEY;
+  const serverKey = process.env.MIDTRANS_SERVER_KEY;
+
+  console.log('[Midtrans Startup Audit]');
+  console.log(`- Mode Sandbox: ${isProd === 'true' ? 'WARNING: MIDTRANS_IS_PRODUCTION is set to true, but application forces sandbox mode' : 'Active (MIDTRANS_IS_PRODUCTION=false)'}`);
+  if (clientKey) {
+    console.log('✓ MIDTRANS_CLIENT_KEY configured via environment variable');
+  } else {
+    console.log('ℹ MIDTRANS_CLIENT_KEY not in environment variable; will use database settings if configured');
+  }
+  if (serverKey) {
+    console.log('✓ MIDTRANS_SERVER_KEY configured via environment variable (server-side only, never sent to browser)');
+  } else {
+    console.log('ℹ MIDTRANS_SERVER_KEY not in environment variable; will use database settings if configured');
+  }
+}
+
 function apiDevMiddleware(): Plugin {
   return {
     name: 'api-dev-middleware',
     configureServer(server) {
+      validateMidtransStartupConfig();
       server.middlewares.use(async (req, res, next) => {
         const url = req.url || '';
         if (url.startsWith('/api/')) {
@@ -25,6 +45,8 @@ function apiDevMiddleware(): Plugin {
               'sync-teacher-assignments': './api/sync-teacher-assignments.ts',
               'sync-wali-kelas': './api/sync-wali-kelas.ts',
               'attendance': './api/attendance.ts',
+              'midtrans': './api/midtrans.ts',
+              'midtrans-webhook': './api/midtrans.ts',
             };
             const targetModule = safeRoutes[pathname];
             if (!targetModule) {

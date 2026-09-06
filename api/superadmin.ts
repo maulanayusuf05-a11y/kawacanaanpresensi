@@ -238,6 +238,92 @@ export default async function handler(req:any,res:any){
       return json(res,200,{ok:true,qris:integrations.qris_config});
     }
 
+    if(action==='get_midtrans_config'||action==='update_midtrans_config'){
+      const {data:settings}=await admin.from('platform_settings').select('integrations').eq('id',1).single();
+      const dbMidtrans = (settings?.integrations?.midtrans_config) || {};
+
+      const clientKey = dbMidtrans.client_key?.trim() || process.env.MIDTRANS_CLIENT_KEY?.trim() || '';
+      const serverKey = dbMidtrans.server_key?.trim() || process.env.MIDTRANS_SERVER_KEY?.trim() || '';
+      const merchantId = dbMidtrans.merchant_id?.trim() || process.env.MIDTRANS_MERCHANT_ID?.trim() || '';
+      const isProduction = false; // Sesuai instruksi: MIDTRANS_IS_PRODUCTION harus bernilai false (Sandbox)
+      const enabled = dbMidtrans.enabled !== undefined ? Boolean(dbMidtrans.enabled) : Boolean(clientKey && serverKey);
+
+      if(action==='get_midtrans_config') {
+        // PERINGATAN KEAMANAN: Jangan pernah mengirim server_key ke frontend/browser!
+        return json(res, 200, {
+          ok: true,
+          midtrans: {
+            client_key: clientKey,
+            is_production: false,
+            merchant_id: merchantId,
+            enabled,
+            is_server_key_configured: Boolean(serverKey && serverKey.length > 0)
+          }
+        });
+      }
+
+      const midtransData = req.body.midtrans || {};
+      // Jika pengguna memasukkan server_key baru di form, update. Jika kosong, pertahankan serverKey yang sudah tersimpan.
+      const newServerKeyInput = typeof midtransData.server_key === 'string' ? midtransData.server_key.trim() : '';
+      const finalServerKey = (newServerKeyInput && !newServerKeyInput.includes('•••')) ? newServerKeyInput : serverKey;
+
+      const updatedMidtransConfig = {
+        client_key: midtransData.client_key !== undefined ? midtransData.client_key.trim() : clientKey,
+        server_key: finalServerKey,
+        is_production: false, // Selalu false untuk sandbox
+        merchant_id: midtransData.merchant_id !== undefined ? midtransData.merchant_id.trim() : merchantId,
+        enabled: midtransData.enabled !== undefined ? Boolean(midtransData.enabled) : enabled,
+      };
+
+      const integrations = { ...(settings?.integrations || {}), midtrans_config: updatedMidtransConfig };
+      const {error}=await admin.from('platform_settings').update({integrations}).eq('id',1);
+      if(error) throw error;
+      await admin.from('audit_logs').insert({actor_id:caller.user.id,actor_name:profile.name,actor_role:'SUPER_ADMIN',action:'UPDATE_MIDTRANS_CONFIG',details:{client_key:updatedMidtransConfig.client_key,enabled:updatedMidtransConfig.enabled,is_production:false,server_key:'[PROTECTED]'}});
+
+      // Return aman tanpa mengekspos server_key
+      return json(res, 200, {
+        ok: true,
+        midtrans: {
+          client_key: updatedMidtransConfig.client_key,
+          is_production: false,
+          merchant_id: updatedMidtransConfig.merchant_id,
+          enabled: updatedMidtransConfig.enabled,
+          is_server_key_configured: Boolean(finalServerKey && finalServerKey.length > 0)
+        }
+      });
+    }
+
+    if(action==='test_midtrans'){
+      const {data:settings}=await admin.from('platform_settings').select('integrations').eq('id',1).single();
+      const cfg = (settings?.integrations?.midtrans_config) || {};
+      const serverKey = cfg.server_key?.trim() || process.env.MIDTRANS_SERVER_KEY?.trim() || '';
+
+      if (!serverKey) {
+        return json(res, 400, {
+          error: 'Server Key belum disetel. Harap masukkan Server Key di form atau set variabel lingkungan MIDTRANS_SERVER_KEY.'
+        });
+      }
+
+      // Sesuai konteks: Selalu gunakan Sandbox Endpoint
+      const testUrl = 'https://api.sandbox.midtrans.com/v2/token';
+      const authHeader = `Basic ${Buffer.from(`${serverKey}:`).toString('base64')}`;
+      try {
+        const pingRes = await fetch(testUrl, {
+          headers: { Authorization: authHeader, Accept: 'application/json' }
+        });
+        // 400 with 'no transaction' or 200 means API key authentication succeeded
+        if (pingRes.status === 200 || pingRes.status === 400 || pingRes.status === 404) {
+          return json(res, 200, { ok: true, message: 'Berhasil terhubung ke Midtrans Sandbox. Kredensial Server Key valid!' });
+        } else if (pingRes.status === 401) {
+          return json(res, 400, { error: 'Otentikasi Midtrans gagal (401 Unauthorized). Pastikan Server Key Sandbox sudah benar.' });
+        } else {
+          return json(res, 200, { ok: true, message: `Respon Midtrans status ${pingRes.status}` });
+        }
+      } catch (err: any) {
+        return json(res, 500, { error: `Gagal menghubungi server Midtrans: ${err.message}` });
+      }
+    }
+
     if(action==='list'){
       const [{data:schools,error:sErr},{data:students},{data:profiles},{data:classes},{data:schoolProfiles}]=await Promise.all([
         admin.from('schools').select('id,name,npsn,code,plan,status,subscription_started_at,subscription_expires_at,max_teachers,max_students,max_classes,notes,workspace_type,is_personal,created_at,updated_at').order('created_at',{ascending:false}),

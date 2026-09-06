@@ -17,8 +17,28 @@ import {
   RefreshCw,
   Wallet,
   Building2,
-  Receipt
+  Receipt,
+  CreditCard,
+  Zap,
+  Lock,
+  ExternalLink
 } from 'lucide-react';
+
+declare global {
+  interface Window {
+    snap?: {
+      pay: (
+        token: string,
+        callbacks: {
+          onSuccess?: (result: any) => void;
+          onPending?: (result: any) => void;
+          onError?: (result: any) => void;
+          onClose?: () => void;
+        }
+      ) => void;
+    };
+  }
+}
 
 export interface QrisPaymentPlan {
   id: 'free' | 'teacher' | 'school';
@@ -44,7 +64,7 @@ export interface PaymentTransaction {
   contactPhone: string;
   email?: string;
   status: 'PENDING' | 'SETTLED' | 'EXPIRED' | 'CANCELLED';
-  paymentMethod: 'QRIS';
+  paymentMethod: 'QRIS' | 'MIDTRANS';
   createdAt: string;
   paidAt?: string;
   expiresAt: string;
@@ -76,6 +96,16 @@ export const QrisPaymentModal: React.FC<QrisPaymentModalProps> = ({
   const [uniqueCode] = useState(() => Math.floor(Math.random() * 899) + 100);
   const totalAmount = plan.price + (plan.price > 0 ? uniqueCode : 0);
 
+  const [paymentMode, setPaymentMode] = useState<'MIDTRANS' | 'MANUAL_QRIS'>('MIDTRANS');
+  const [midtransConfig, setMidtransConfig] = useState<{
+    client_key: string;
+    is_production: boolean;
+    snap_url: string;
+    enabled: boolean;
+  } | null>(null);
+  const [isMidtransLoading, setIsMidtransLoading] = useState(false);
+  const [midtransError, setMidtransError] = useState<string | null>(null);
+
   const [transaction, setTransaction] = useState<PaymentTransaction>(() => {
     const now = new Date();
     const expiry = new Date(now.getTime() + 15 * 60 * 1000); // 15 menit
@@ -95,13 +125,41 @@ export const QrisPaymentModal: React.FC<QrisPaymentModalProps> = ({
       contactPhone: schoolData.contactPhone || '',
       email: schoolData.email || '',
       status: plan.price === 0 ? 'SETTLED' : 'PENDING',
-      paymentMethod: 'QRIS',
+      paymentMethod: 'MIDTRANS',
       createdAt: now.toISOString(),
       paidAt: plan.price === 0 ? now.toISOString() : undefined,
       expiresAt: expiry.toISOString(),
       qrisNmid: 'ID1024389281729',
     };
   });
+
+  // Load Midtrans Configuration and inject Snap script
+  useEffect(() => {
+    if (!isOpen) return;
+
+    fetch('/api/midtrans?action=get_client_config')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.ok && data.enabled) {
+          setMidtransConfig(data);
+          const scriptId = 'midtrans-snap-script';
+          let scriptEl = document.getElementById(scriptId) as HTMLScriptElement;
+          if (!scriptEl) {
+            scriptEl = document.createElement('script');
+            scriptEl.id = scriptId;
+            scriptEl.src = data.snap_url;
+            scriptEl.setAttribute('data-client-key', data.client_key);
+            scriptEl.async = true;
+            document.body.appendChild(scriptEl);
+          }
+        } else {
+          setPaymentMode('MANUAL_QRIS');
+        }
+      })
+      .catch(() => {
+        setPaymentMode('MANUAL_QRIS');
+      });
+  }, [isOpen]);
 
   // Countdown Timer (15 Minutes)
   const [timeLeft, setTimeLeft] = useState<number>(15 * 60);
@@ -154,6 +212,65 @@ export const QrisPaymentModal: React.FC<QrisPaymentModalProps> = ({
     setTimeout(() => setCopiedInvoice(false), 2000);
   };
 
+  // Pay via Midtrans Snap popup
+  const handlePayViaMidtrans = async () => {
+    setIsMidtransLoading(true);
+    setMidtransError(null);
+    try {
+      const res = await fetch('/api/midtrans', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create_transaction',
+          plan_id: plan.id,
+          billing_cycle: 'monthly',
+          school_name: schoolData.schoolName,
+          npsn: schoolData.npsn,
+          contact_name: schoolData.contactName,
+          contact_phone: schoolData.contactPhone,
+          email: schoolData.email,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data?.error || 'Gagal membuat sesi pembayaran Midtrans.');
+      }
+
+      if (!window.snap) {
+        throw new Error('Midtrans Snap SDK sedang dimuat. Silakan tunggu 2 detik lalu klik kembali.');
+      }
+
+      window.snap.pay(data.token, {
+        onSuccess: async (result: any) => {
+          const settled: PaymentTransaction = {
+            ...transaction,
+            id: data.order_id || transaction.id,
+            invoiceNo: data.order_id || transaction.invoiceNo,
+            status: 'SETTLED',
+            paidAt: new Date().toISOString(),
+            paymentMethod: 'MIDTRANS',
+          };
+          setTransaction(settled);
+          if (onSuccess) onSuccess(settled);
+        },
+        onPending: (result: any) => {
+          setMidtransError('Pembayaran Anda sedang diproses/menunggu transfer dari pihak bank.');
+        },
+        onError: (result: any) => {
+          setMidtransError('Pembayaran gagal atau dibatalkan oleh pengguna.');
+        },
+        onClose: () => {
+          // Popup ditutup oleh pengguna
+        },
+      });
+    } catch (err: any) {
+      setMidtransError(err.message || 'Terjadi kesalahan saat memproses Midtrans.');
+    } finally {
+      setIsMidtransLoading(false);
+    }
+  };
+
   // Simulate Instant Settlement Scan (for demo / fast testing)
   const handleSimulatePayment = async () => {
     setIsSimulating(true);
@@ -179,9 +296,24 @@ export const QrisPaymentModal: React.FC<QrisPaymentModalProps> = ({
     }, 1200);
   };
 
-  const handleManualCheckStatus = () => {
+  const handleManualCheckStatus = async () => {
     setIsChecking(true);
-    setTimeout(async () => {
+    try {
+      if (transaction.invoiceNo) {
+        const res = await fetch(`/api/midtrans?action=check_status&order_id=${encodeURIComponent(transaction.invoiceNo)}`);
+        const data = await res.json();
+        if (data.status === 'SETTLED') {
+          const settled: PaymentTransaction = {
+            ...transaction,
+            status: 'SETTLED',
+            paidAt: new Date().toISOString(),
+          };
+          setTransaction(settled);
+          if (onSuccess) onSuccess(settled);
+        }
+      }
+    } catch (_) {}
+    setTimeout(() => {
       setIsChecking(false);
     }, 1000);
   };
@@ -368,8 +500,122 @@ export const QrisPaymentModal: React.FC<QrisPaymentModalProps> = ({
                 </div>
               </div>
 
-              {/* Official QRIS Graphic Display */}
-              <div className="bg-white border-2 border-slate-300 rounded-3xl p-5 sm:p-6 shadow-sm flex flex-col items-center justify-center text-center relative overflow-hidden">
+              {/* Payment Method Selector Tabs */}
+              <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-2xl border border-slate-200 text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => setPaymentMode('MIDTRANS')}
+                  className={`py-2 px-3 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                    paymentMode === 'MIDTRANS'
+                      ? 'bg-white text-indigo-700 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <CreditCard className="w-3.5 h-3.5" />
+                  <span>Midtrans Snap (Otomatis)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentMode('MANUAL_QRIS')}
+                  className={`py-2 px-3 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                    paymentMode === 'MANUAL_QRIS'
+                      ? 'bg-white text-indigo-700 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <QrCode className="w-3.5 h-3.5" />
+                  <span>Scan QRIS Manual</span>
+                </button>
+              </div>
+
+              {/* VIEW 1: MIDTRANS SNAP (RECOMMENDED / AUTOMATED) */}
+              {paymentMode === 'MIDTRANS' ? (
+                <div className="space-y-4">
+                  <div className="bg-gradient-to-br from-indigo-50/70 via-sky-50/50 to-white border-2 border-indigo-200 rounded-3xl p-6 shadow-xs text-center space-y-4">
+                    <div className="flex items-center justify-between border-b border-indigo-100 pb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2.5 py-0.5 rounded-full bg-indigo-600 text-white font-extrabold text-[10px] uppercase tracking-wider">
+                          Midtrans Gateway
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-bold">
+                          {midtransConfig?.is_production ? '● Mode Production (Live)' : '▲ Mode Sandbox (Uji Coba)'}
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-mono text-indigo-700 font-bold">
+                        Snap Pop-up
+                      </span>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="w-14 h-14 rounded-2xl bg-indigo-600/10 text-indigo-600 flex items-center justify-center mx-auto">
+                        <CreditCard className="w-7 h-7" />
+                      </div>
+                      <h4 className="text-base font-extrabold text-slate-900">
+                        Pembayaran Instan Terverifikasi
+                      </h4>
+                      <p className="text-xs text-slate-600 max-w-sm mx-auto leading-relaxed">
+                        Klik tombol di bawah untuk membuka jendela pembayaran resmi Midtrans. Mendukung seluruh bank dan e-wallet di Indonesia.
+                      </p>
+                    </div>
+
+                    {/* Channel Badges */}
+                    <div className="pt-2 flex flex-wrap items-center justify-center gap-1.5 text-[9px] font-bold text-slate-700">
+                      <span className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg shadow-2xs">QRIS (GoPay / OVO / DANA / ShopeePay)</span>
+                      <span className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg shadow-2xs">BCA Virtual Account</span>
+                      <span className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg shadow-2xs">Mandiri Bill</span>
+                      <span className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg shadow-2xs">BRI Virtual Account</span>
+                      <span className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg shadow-2xs">BNI Virtual Account</span>
+                      <span className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg shadow-2xs">Kartu Debit / Kredit</span>
+                    </div>
+
+                    {midtransError && (
+                      <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs flex items-center gap-2 text-left">
+                        <AlertCircle className="w-4 h-4 shrink-0" />
+                        <span>{midtransError}</span>
+                      </div>
+                    )}
+
+                    <div className="pt-2 space-y-2">
+                      <button
+                        type="button"
+                        onClick={handlePayViaMidtrans}
+                        disabled={isMidtransLoading}
+                        className="w-full py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-indigo-600/20 transition active:scale-95 disabled:opacity-50"
+                      >
+                        <Zap className="w-4 h-4 text-amber-300 fill-amber-300" />
+                        <span>{isMidtransLoading ? 'Menghubungi Midtrans...' : 'Buka Jendela Pembayaran Midtrans'}</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </button>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleManualCheckStatus}
+                          disabled={isChecking}
+                          className="flex-1 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${isChecking ? 'animate-spin text-indigo-600' : ''}`} />
+                          <span>{isChecking ? 'Mengecek...' : 'Cek Status Transaksi'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleSimulatePayment}
+                          disabled={isSimulating}
+                          className="py-2 px-3 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs flex items-center gap-1 cursor-pointer transition"
+                          title="Simulasi Instant Pembayaran"
+                        >
+                          <Smartphone className="w-3.5 h-3.5" />
+                          <span>Simulasi Cepat</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* VIEW 2: MANUAL QRIS DISPLAY */
+                <>
+                  {/* Official QRIS Graphic Display */}
+                  <div className="bg-white border-2 border-slate-300 rounded-3xl p-5 sm:p-6 shadow-sm flex flex-col items-center justify-center text-center relative overflow-hidden">
                 
                 {/* Official QRIS Brand Header */}
                 <div className="w-full flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
@@ -550,6 +796,8 @@ export const QrisPaymentModal: React.FC<QrisPaymentModalProps> = ({
                     <li>Sistem akan mengaktifkan paket secara otomatis dalam hitungan detik.</li>
                   </ol>
                 </div>
+              )}
+                </>
               )}
 
             </div>

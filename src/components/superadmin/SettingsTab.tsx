@@ -17,7 +17,14 @@ import {
   Clock,
   Plus,
   Trash2,
-  Check
+  Check,
+  CreditCard,
+  Eye,
+  EyeOff,
+  Copy,
+  ExternalLink,
+  Zap,
+  Activity
 } from 'lucide-react';
 import {
   DEFAULT_MASTER_PAKET,
@@ -37,6 +44,19 @@ export const SettingsTab: React.FC<{
     grace_period_days: 7,
     packages_config: DEFAULT_MASTER_PAKET,
   });
+
+  const [midtrans, setMidtrans] = useState({
+    client_key: '',
+    server_key: '',
+    is_server_key_configured: false,
+    is_production: false,
+    merchant_id: '',
+    enabled: false,
+  });
+  const [showServerKey, setShowServerKey] = useState(false);
+  const [testingMidtrans, setTestingMidtrans] = useState(false);
+  const [copiedWebhook, setCopiedWebhook] = useState(false);
+
   const [packages, setPackages] = useState<MasterPaketSettings>(DEFAULT_MASTER_PAKET);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -55,6 +75,11 @@ export const SettingsTab: React.FC<{
           });
         }
       }
+
+      const midRes = await call('get_midtrans_config');
+      if (midRes?.midtrans) {
+        setMidtrans((prev) => ({ ...prev, ...midRes.midtrans }));
+      }
     } catch (e: any) {
       showToast(e.message, 'error');
     } finally {
@@ -65,6 +90,31 @@ export const SettingsTab: React.FC<{
   useEffect(() => {
     load();
   }, []);
+
+  const handleTestMidtrans = async () => {
+    setTestingMidtrans(true);
+    try {
+      const res = await call('test_midtrans');
+      if (res.ok) {
+        showToast(res.message, 'success');
+      } else {
+        showToast(res.error || 'Uji koneksi Midtrans gagal.', 'error');
+      }
+    } catch (e: any) {
+      showToast(e.message || 'Gagal terhubung ke Midtrans API', 'error');
+    } finally {
+      setTestingMidtrans(false);
+    }
+  };
+
+  const handleCopyWebhook = () => {
+    const origin = window.location.origin;
+    const webhookUrl = `${origin}/api/midtrans-webhook`;
+    navigator.clipboard.writeText(webhookUrl);
+    setCopiedWebhook(true);
+    showToast('URL Webhook berhasil disalin!', 'success');
+    setTimeout(() => setCopiedWebhook(false), 2500);
+  };
 
   const handlePackageFieldChange = (
     pkgKey: keyof MasterPaketSettings,
@@ -99,8 +149,11 @@ export const SettingsTab: React.FC<{
         max_school_classes: packages.sekolah_pro.kapasitasKelas,
       };
 
-      await call('update_config', { config: payloadConfig });
-      showToast('Konfigurasi paket & platform berhasil diperbarui.', 'success');
+      await Promise.all([
+        call('update_config', { config: payloadConfig }),
+        call('update_midtrans_config', { midtrans })
+      ]);
+      showToast('Konfigurasi paket & Midtrans Gateway berhasil disimpan.', 'success');
     } catch (e: any) {
       showToast(e.message, 'error');
     } finally {
@@ -363,6 +416,137 @@ export const SettingsTab: React.FC<{
                 className="w-4 h-4 rounded text-rose-600 focus:ring-rose-500"
               />
             </label>
+          </div>
+        </div>
+
+        {/* ------------------------------------------------------------- */}
+        {/* PAYMENT GATEWAY MIDTRANS CONFIGURATION */}
+        {/* ------------------------------------------------------------- */}
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center font-bold">
+                <CreditCard size={16} />
+              </div>
+              <div>
+                <div className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                  Integrasi Payment Gateway Midtrans (Snap & QRIS/VA)
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                    ▲ SANDBOX (MIDTRANS_IS_PRODUCTION = false)
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-500">
+                  Otomatisasi pembayaran langganan Paket Guru & Sekolah via Snap popup (QRIS, VA Mandiri/BCA/BRI/BNI, GoPay, ShopeePay).
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleTestMidtrans}
+                disabled={testingMidtrans}
+                className="px-3 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold text-xs flex items-center gap-1.5 transition border border-sky-200 cursor-pointer disabled:opacity-50"
+              >
+                <Activity size={13} className={testingMidtrans ? 'animate-spin' : ''} />
+                <span>{testingMidtrans ? 'Menguji...' : 'Uji Koneksi Sandbox'}</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-3">
+            <label className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer">
+              <div>
+                <div className="font-bold text-slate-800 text-xs">Aktifkan Gateway Midtrans</div>
+                <div className="text-[11px] text-slate-500">Izinkan checkout otomatis online via Snap Midtrans</div>
+              </div>
+              <input
+                type="checkbox"
+                checked={midtrans.enabled}
+                onChange={(e) => setMidtrans({ ...midtrans, enabled: e.target.checked })}
+                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
+              />
+            </label>
+
+            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
+              <div>
+                <div className="font-bold text-slate-800 text-xs">Lingkungan Sistem (Environment)</div>
+                <div className="text-[11px] text-slate-500">
+                  Mode Simulator Sandbox (Uji Coba)
+                </div>
+              </div>
+              <div className="flex items-center gap-1 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200 text-amber-900 text-xs font-bold font-mono">
+                is_production: false
+              </div>
+            </div>
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-4 text-xs">
+            <div>
+              <label className="font-bold text-slate-700 block mb-1">Client Key Sandbox</label>
+              <input
+                type="text"
+                value={midtrans.client_key}
+                onChange={(e) => setMidtrans({ ...midtrans, client_key: e.target.value })}
+                placeholder="Masukkan Client Key dari Sandbox Dashboard"
+                className="w-full px-3 py-2 border border-slate-200 rounded-xl font-mono text-xs text-slate-800 focus:ring-2 focus:ring-sky-500/10 outline-none"
+              />
+              <span className="text-[10px] text-slate-400 mt-0.5 block">
+                Kunci publik aman untuk memuat Snap.js di browser pengguna.
+              </span>
+            </div>
+
+            <div>
+              <label className="font-bold text-slate-700 block mb-1 flex items-center justify-between">
+                <span>Server Key Sandbox</span>
+                {midtrans.is_server_key_configured && (
+                  <span className="text-[10px] text-emerald-600 font-medium">Terkonfigurasi di Server</span>
+                )}
+              </label>
+              <div className="relative">
+                <input
+                  type={showServerKey ? 'text' : 'password'}
+                  value={midtrans.server_key}
+                  onChange={(e) => setMidtrans({ ...midtrans, server_key: e.target.value })}
+                  placeholder={midtrans.is_server_key_configured ? '•••••••••••••••• (Tersimpan aman di server)' : 'Masukkan Server Key dari Sandbox Dashboard'}
+                  className="w-full pl-3 pr-9 py-2 border border-slate-200 rounded-xl font-mono text-xs text-slate-800 focus:ring-2 focus:ring-sky-500/10 outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowServerKey(!showServerKey)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  {showServerKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </div>
+              <span className="text-[10px] text-slate-400 mt-0.5 block">
+                Kunci rahasia server (hanya disimpan & dijalankan di backend, tidak pernah diekspos ke browser).
+              </span>
+            </div>
+          </div>
+
+          {/* Webhook notification URL Helper */}
+          <div className="bg-sky-50/70 border border-sky-200/80 rounded-xl p-3.5 space-y-1.5 text-xs">
+            <div className="flex items-center justify-between">
+              <div className="font-bold text-sky-900 flex items-center gap-1.5">
+                <Zap size={14} className="text-sky-600" />
+                URL Webhook Notifikasi Pembayaran (Midtrans Dashboard):
+              </div>
+              <button
+                type="button"
+                onClick={handleCopyWebhook}
+                className="px-2.5 py-1 rounded-lg bg-white border border-sky-200 text-sky-800 hover:bg-sky-100 font-bold text-[11px] flex items-center gap-1 transition cursor-pointer"
+              >
+                {copiedWebhook ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
+                <span>{copiedWebhook ? 'Tersalin!' : 'Salin URL'}</span>
+              </button>
+            </div>
+            <div className="font-mono text-[11px] bg-white px-2.5 py-1.5 rounded-lg border border-sky-100 text-slate-700 select-all overflow-x-auto">
+              {typeof window !== 'undefined' ? `${window.location.origin}/api/midtrans-webhook` : '/api/midtrans-webhook'}
+            </div>
+            <p className="text-[10px] text-sky-700 leading-relaxed">
+              Pasang URL di atas pada <strong>Midtrans Dashboard &gt; Settings &gt; Configuration &gt; Payment Notification URL</strong> agar sistem otomatis memperpanjang masa aktif saat sekolah/guru menyelesaikan pembayaran.
+            </p>
           </div>
         </div>
 

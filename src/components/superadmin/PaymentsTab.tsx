@@ -150,6 +150,28 @@ export const PaymentsTab: React.FC<{
     return matchesStatus && matchesQuery;
   });
 
+  const [syncingId, setSyncingId] = useState<string | null>(null);
+
+  const handleSyncMidtrans = async (trx: PaymentTransaction) => {
+    setSyncingId(trx.id);
+    try {
+      const res = await fetch(`/api/midtrans?action=check_status&order_id=${encodeURIComponent(trx.invoiceNo)}`);
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || 'Gagal sinkronisasi status Midtrans.');
+
+      if (body.is_settled || body.status === 'settlement' || body.status === 'capture') {
+        showToast(`Transaksi ${trx.invoiceNo} telah LUNAS terverifikasi di Midtrans!`, 'success');
+        await loadPayments();
+      } else {
+        showToast(`Status transaksi di Midtrans: ${body.status || 'PENDING'}`, 'info');
+      }
+    } catch (e: any) {
+      showToast(e.message, 'error');
+    } finally {
+      setSyncingId(null);
+    }
+  };
+
   const handleManualApprove = (id: string) => {
     setTransactions((prev) =>
       prev.map((t) =>
@@ -190,6 +212,16 @@ export const PaymentsTab: React.FC<{
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={loadPayments}
+            disabled={loading}
+            className="px-3.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs transition"
+            title="Muat Ulang Transaksi"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-indigo-600' : ''}`} />
+            <span>Segarkan</span>
+          </button>
           <div className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold flex items-center gap-1.5 font-mono">
             <ShieldCheck className="w-4 h-4 text-emerald-600" />
             <span>NMID: ID1024389281729</span>
@@ -294,8 +326,17 @@ export const PaymentsTab: React.FC<{
                     
                     {/* Invoice & Date */}
                     <td className="p-4">
-                      <div className="font-mono font-bold text-slate-900 text-xs">
-                        {trx.invoiceNo}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-mono font-bold text-slate-900 text-xs">
+                          {trx.invoiceNo}
+                        </span>
+                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${
+                          trx.paymentMethod === 'MIDTRANS' || trx.invoiceNo.startsWith('KWC-')
+                            ? 'bg-indigo-100 text-indigo-700 border border-indigo-200'
+                            : 'bg-slate-100 text-slate-600 border border-slate-200'
+                        }`}>
+                          {trx.paymentMethod === 'MIDTRANS' || trx.invoiceNo.startsWith('KWC-') ? 'MIDTRANS' : 'QRIS'}
+                        </span>
                       </div>
                       <div className="text-[10px] text-slate-500 mt-0.5">
                         {new Date(trx.createdAt).toLocaleString('id-ID')}
@@ -359,6 +400,18 @@ export const PaymentsTab: React.FC<{
                         >
                           <Eye className="w-3.5 h-3.5" />
                         </button>
+
+                        {(trx.status === 'PENDING' || trx.paymentMethod === 'MIDTRANS' || trx.invoiceNo.startsWith('KWC-')) && (
+                          <button
+                            type="button"
+                            onClick={() => handleSyncMidtrans(trx)}
+                            disabled={syncingId === trx.id}
+                            className="p-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 transition cursor-pointer"
+                            title="Sinkronisasi Status dengan Midtrans Core API"
+                          >
+                            <RefreshCw className={`w-3.5 h-3.5 ${syncingId === trx.id ? 'animate-spin' : ''}`} />
+                          </button>
+                        )}
 
                         {trx.status === 'PENDING' && (
                           <button
