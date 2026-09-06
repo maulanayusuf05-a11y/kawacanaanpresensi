@@ -158,7 +158,7 @@ export const DataPenggunaView: React.FC = () => {
     if (u.role === 'ADMIN' || u.role === 'SUPER_ADMIN') {
       return {
         type: 'ADMIN' as const,
-        roleLabel: 'ADMINISTRATOR',
+        roleLabel: 'Administrator',
         badgeColor: 'bg-purple-50 text-purple-700 border-purple-200',
         assignmentText: 'Akses Penuh Pengelolaan Sistem & Data',
         classes: [],
@@ -171,7 +171,7 @@ export const DataPenggunaView: React.FC = () => {
       const className = s?.className || (u.classIds && u.classIds.length > 0 ? (safeClasses.find(c => c && c.id === u.classIds![0])?.name || '') : '');
       return {
         type: 'SISWA' as const,
-        roleLabel: 'SISWA',
+        roleLabel: 'Siswa',
         badgeColor: 'bg-slate-100 text-slate-700 border-slate-200',
         assignmentText: className ? `Rombel: ${className}` : 'Peserta Didik',
         classes: className ? [className] : [],
@@ -182,7 +182,7 @@ export const DataPenggunaView: React.FC = () => {
     if (u.role === 'KEPALA SEKOLAH') {
       return {
         type: 'KEPALA_SEKOLAH' as const,
-        roleLabel: 'KEPALA SEKOLAH',
+        roleLabel: 'Kepala Sekolah',
         badgeColor: 'bg-sky-50 text-sky-700 border-sky-200',
         assignmentText: 'Pimpinan Satuan Pendidikan (Seluruh Rombel)',
         classes: ['Semua Rombel'],
@@ -236,7 +236,7 @@ export const DataPenggunaView: React.FC = () => {
       const assignedClassStr = classList.length > 0 ? classList.join(', ') : '';
       return {
         type: 'WALI_KELAS' as const,
-        roleLabel: 'WALI KELAS',
+        roleLabel: 'Wali Kelas',
         badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200',
         assignmentText: assignedClassStr ? formatHomeroomDutyLabel(assignedClassStr) : 'Wali Kelas (Belum Dipetakan)',
         classes: classList,
@@ -262,7 +262,7 @@ export const DataPenggunaView: React.FC = () => {
 
       return {
         type: 'GURU_MAPEL' as const,
-        roleLabel: 'GURU MAPEL',
+        roleLabel: 'Guru Mapel',
         badgeColor: 'bg-indigo-50 text-indigo-800 border-indigo-200',
         assignmentText: `${mapelStr}${classStr}`,
         classes: targetClassNames,
@@ -273,7 +273,7 @@ export const DataPenggunaView: React.FC = () => {
 
     return {
       type: 'GURU_MAPEL' as const,
-      roleLabel: u.role || 'GURU',
+      roleLabel: u.role === 'WALI KELAS' ? 'Wali Kelas' : 'Guru Mapel',
       badgeColor: 'bg-blue-50 text-blue-700 border-blue-200',
       assignmentText: u.classNames && u.classNames.length > 0 ? `Rombel: ${u.classNames.join(', ')}` : 'Tenaga Pendidik',
       classes: u.classNames || [],
@@ -656,15 +656,27 @@ export const DataPenggunaView: React.FC = () => {
       return;
     }
 
+    const schoolId = currentUser?.schoolId;
+    let cachedPasswordMap: Record<string, string> = {};
+    if (schoolId) {
+      try {
+        const raw = localStorage.getItem(`kawacanaan_account_passwords_${schoolId}`);
+        if (raw) cachedPasswordMap = JSON.parse(raw);
+      } catch (_) {}
+    }
+
     const headers = ['No', 'Nama Pengguna', 'Username', 'Password', 'Email', 'Hak Akses', 'Penugasan/Kelas', 'Metode Auth'];
     const rows = filteredUsers.map((u, idx) => {
       const details = getUserAssignmentDetails(u);
-      const authType = isGoogleUser(u) ? 'Google SSO' : 'Password Sistem';
+      const authType = isGoogleUser(u) ? 'Google SSO' : 'Supabase';
+      const pwd = isGoogleUser(u)
+        ? 'Login Google'
+        : (u.password || cachedPasswordMap[u.id] || (u.username ? cachedPasswordMap[u.username.toLowerCase()] : '') || '-');
       return [
         idx + 1,
         `"${(u.name || '').replace(/"/g, '""')}"`,
         `"${(u.username || '').replace(/"/g, '""')}"`,
-        `"${(u.password || '-').replace(/"/g, '""')}"`,
+        `"${pwd.replace(/"/g, '""')}"`,
         `"${(u.email || '-').replace(/"/g, '""')}"`,
         `"${details.roleLabel}"`,
         `"${(details.assignmentText || '-').replace(/"/g, '""')}"`,
@@ -986,133 +998,6 @@ export const DataPenggunaView: React.FC = () => {
         </div>
       </div>
 
-      {/* Interactive Statistics Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3.5">
-        <div
-          onClick={() => { setActiveTab('all'); setCurrentPage(1); }}
-          className={`p-4 rounded-2xl border transition-all cursor-pointer ${
-            activeTab === 'all'
-              ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-500/20 scale-[1.02]'
-              : 'bg-white text-slate-800 border-slate-200 hover:border-blue-300 hover:bg-slate-50/80 shadow-xs'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <span className={`text-[10px] font-black uppercase tracking-wider ${activeTab === 'all' ? 'text-blue-100' : 'text-slate-400'}`}>
-              Total Pengguna
-            </span>
-            <Users size={16} className={activeTab === 'all' ? 'text-blue-200' : 'text-blue-600'} />
-          </div>
-          <div className="text-2xl font-black">{stats.total}</div>
-          <div className={`text-[11px] mt-0.5 font-medium ${activeTab === 'all' ? 'text-blue-100' : 'text-slate-500'}`}>
-            Semua Peran & Hak Akses
-          </div>
-        </div>
-
-        <div
-          onClick={() => { setActiveTab('administrator'); setCurrentPage(1); }}
-          className={`p-4 rounded-2xl border transition-all cursor-pointer ${
-            activeTab === 'administrator'
-              ? 'bg-purple-700 text-white border-purple-700 shadow-md shadow-purple-500/20 scale-[1.02]'
-              : 'bg-white text-slate-800 border-slate-200 hover:border-purple-300 hover:bg-purple-50/30 shadow-xs'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <span className={`text-[10px] font-black uppercase tracking-wider ${activeTab === 'administrator' ? 'text-purple-100' : 'text-purple-600'}`}>
-              Administrator
-            </span>
-            <ShieldCheck size={16} className={activeTab === 'administrator' ? 'text-purple-200' : 'text-purple-600'} />
-          </div>
-          <div className="text-2xl font-black">{stats.admin}</div>
-          <div className={`text-[11px] mt-0.5 font-medium ${activeTab === 'administrator' ? 'text-purple-100' : 'text-slate-500'}`}>
-            Akses Pengaturan & Master
-          </div>
-        </div>
-
-        <div
-          onClick={() => { setActiveTab('guru'); setGuruSubFilter('ALL'); setCurrentPage(1); }}
-          className={`p-4 rounded-2xl border transition-all cursor-pointer ${
-            activeTab === 'guru'
-              ? 'bg-blue-700 text-white border-blue-700 shadow-md shadow-blue-500/20 scale-[1.02]'
-              : 'bg-white text-slate-800 border-slate-200 hover:border-blue-300 hover:bg-blue-50/30 shadow-xs'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <span className={`text-[10px] font-black uppercase tracking-wider ${activeTab === 'guru' ? 'text-blue-100' : 'text-blue-600'}`}>
-              Guru & KS
-            </span>
-            <GraduationCap size={16} className={activeTab === 'guru' ? 'text-blue-200' : 'text-blue-600'} />
-          </div>
-          <div className="text-2xl font-black">{stats.guruKsTotal}</div>
-          <div className={`text-[11px] mt-0.5 font-medium ${activeTab === 'guru' ? 'text-blue-100' : 'text-slate-500'}`}>
-            {stats.wali} Wali • {stats.mapel} Mapel • {stats.kepsek} KS
-          </div>
-        </div>
-
-        <div
-          onClick={() => { setActiveTab('siswa'); setCurrentPage(1); }}
-          className={`p-4 rounded-2xl border transition-all cursor-pointer ${
-            activeTab === 'siswa'
-              ? 'bg-emerald-700 text-white border-emerald-700 shadow-md shadow-emerald-500/20 scale-[1.02]'
-              : 'bg-white text-slate-800 border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/30 shadow-xs'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <span className={`text-[10px] font-black uppercase tracking-wider ${activeTab === 'siswa' ? 'text-emerald-100' : 'text-emerald-600'}`}>
-              Peserta Didik
-            </span>
-            <Users size={16} className={activeTab === 'siswa' ? 'text-emerald-200' : 'text-emerald-600'} />
-          </div>
-          <div className="text-2xl font-black">{stats.siswa}</div>
-          <div className={`text-[11px] mt-0.5 font-medium ${activeTab === 'siswa' ? 'text-emerald-100' : 'text-slate-500'}`}>
-            Tersebar di {classes.length} Rombel
-          </div>
-        </div>
-
-        <div className="col-span-2 sm:col-span-4 lg:col-span-1 p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
-              Metode Login
-            </span>
-            <Lock size={15} className="text-slate-400" />
-          </div>
-          <div className="flex items-center justify-between text-xs font-bold pt-1">
-            <span className="text-emerald-700 flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
-              Sistem: {stats.password}
-            </span>
-            <span className="text-blue-700 flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
-              Google: {stats.google}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Unlinked Master Data Notice */}
-      {(stats.unlinkedTeachersCount > 0 || stats.unlinkedStudentsCount > 0) && (
-        <div className="p-4 bg-amber-50/90 border border-amber-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900 shadow-xs">
-          <div className="flex items-start sm:items-center gap-2.5">
-            <Sparkles size={18} className="text-amber-600 shrink-0 mt-0.5 sm:mt-0" />
-            <div>
-              <span className="font-bold text-amber-950">Sinkronisasi Data Referensi:</span>{' '}
-              <span>
-                Terdapat{' '}
-                {stats.unlinkedTeachersCount > 0 && <b>{stats.unlinkedTeachersCount} Guru</b>}
-                {stats.unlinkedTeachersCount > 0 && stats.unlinkedStudentsCount > 0 && ' dan '}
-                {stats.unlinkedStudentsCount > 0 && <b>{stats.unlinkedStudentsCount} Siswa</b>} yang belum memiliki akun login.
-              </span>
-            </div>
-          </div>
-          <button
-            onClick={() => setIsGenerateModalOpen(true)}
-            className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-xs transition-colors shrink-0 cursor-pointer flex items-center justify-center gap-1.5"
-          >
-            <RefreshCw size={13} />
-            <span>Sinkronkan / Generate</span>
-          </button>
-        </div>
-      )}
-
       {/* Main Table Container Card */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-6 space-y-6">
         {/* Navigation Tabs & Subfilters */}
@@ -1277,7 +1162,7 @@ export const DataPenggunaView: React.FC = () => {
                 <th className="py-3.5 px-4 min-w-48">NAMA PENGGUNA</th>
                 <th className="py-3.5 px-4 w-40">USERNAME</th>
                 <th className="py-3.5 px-4 text-center w-36">AUTH / PASSWORD</th>
-                <th className="py-3.5 px-4 min-w-56">HAK AKSES / PENUGASAN</th>
+                <th className="py-3.5 px-4 min-w-44">HAK AKSES</th>
                 <th className="py-3.5 px-4 text-center w-32 rounded-r-xl">AKSI</th>
               </tr>
             </thead>
@@ -1309,8 +1194,8 @@ export const DataPenggunaView: React.FC = () => {
                       <td className="py-3.5 px-4 text-center">
                         {isGoogleUser(u) ? (
                           <span
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100/90 border border-slate-200 text-slate-800 text-xs font-bold shadow-2xs hover:bg-slate-200/80 transition-all select-none"
-                            title="Akun ini terdaftar / masuk menggunakan Akun Google (SSO)"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 text-slate-800 text-xs font-bold shadow-2xs select-none"
+                            title="Autentikasi Akun Google (SSO)"
                           >
                             <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24">
                               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -1318,48 +1203,36 @@ export const DataPenggunaView: React.FC = () => {
                               <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
                               <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
                             </svg>
-                            <span className="font-extrabold text-[11px] text-slate-800 tracking-tight">Google SSO</span>
+                            <span className="font-extrabold text-[11px] text-slate-800 tracking-tight">Google</span>
                           </span>
-                        ) : u.password ? (
-                          <div className="flex items-center justify-center gap-1.5">
-                            <span className="font-mono font-bold bg-amber-50 text-amber-950 border border-amber-200/80 px-2 py-0.5 rounded text-xs select-all shadow-2xs">
-                              {u.password}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => handleCopyPassword(u.password || '', idx)}
-                              className="p-1 text-slate-400 hover:text-blue-600 rounded transition-colors cursor-pointer"
-                              title="Salin Password"
-                            >
-                              {copiedIndex === idx ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
-                            </button>
-                          </div>
                         ) : (
                           <span
                             className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50/90 border border-emerald-200/80 text-emerald-900 text-xs font-bold shadow-2xs select-none"
-                            title="Akun menggunakan password sistem yang terenkripsi"
+                            title="Autentikasi Supabase (Password Terenkripsi)"
                           >
-                            <Lock size={12} className="text-emerald-700" />
-                            <span className="font-extrabold text-[11px] text-emerald-950 tracking-tight">Sistem</span>
+                            <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 109 113" fill="none">
+                              <path d="M63.7076 110.284C60.848 113.885 55.0243 111.972 54.8437 107.382L51.8131 30.3957H99.4136C105.794 30.3957 109.314 37.8447 105.247 42.7364L63.7076 110.284Z" fill="#3ECF8E"/>
+                              <path d="M45.617 2.71633C48.4766 -0.884572 54.3003 1.02847 54.4809 5.61836L57.5115 82.6043H9.91097C3.53073 82.6043 0.0108376 75.1553 4.07765 70.2636L45.617 2.71633Z" fill="#3ECF8E"/>
+                            </svg>
+                            <span className="font-extrabold text-[11px] text-emerald-950 tracking-tight">Terenkripsi</span>
                           </span>
                         )}
                       </td>
                       <td className="py-3.5 px-4">
-                        <div className="flex flex-col gap-1 items-start">
-                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase border ${details.badgeColor}`}>
-                            {details.roleLabel}
-                          </span>
-                          <div className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                            {details.type === 'WALI_KELAS' ? (
-                              <GraduationCap size={13} className="text-emerald-600 shrink-0" />
-                            ) : details.type === 'GURU_MAPEL' ? (
-                              <BookOpen size={13} className="text-indigo-600 shrink-0" />
-                            ) : details.type === 'KEPALA_SEKOLAH' ? (
-                              <ShieldCheck size={13} className="text-sky-600 shrink-0" />
-                            ) : null}
-                            <span>{details.assignmentText}</span>
-                          </div>
-                        </div>
+                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${details.badgeColor}`}>
+                          {details.type === 'WALI_KELAS' ? (
+                            <GraduationCap size={13} className="text-emerald-700 shrink-0" />
+                          ) : details.type === 'GURU_MAPEL' ? (
+                            <BookOpen size={13} className="text-indigo-700 shrink-0" />
+                          ) : details.type === 'KEPALA_SEKOLAH' ? (
+                            <ShieldCheck size={13} className="text-sky-700 shrink-0" />
+                          ) : details.type === 'ADMIN' ? (
+                            <ShieldCheck size={13} className="text-purple-700 shrink-0" />
+                          ) : (
+                            <Users size={13} className="text-slate-600 shrink-0" />
+                          )}
+                          <span>{details.roleLabel}</span>
+                        </span>
                       </td>
                       <td className="py-3.5 px-4 text-center">
                         <div className="flex items-center justify-center gap-1">
