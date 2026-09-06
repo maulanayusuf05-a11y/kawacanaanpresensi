@@ -219,9 +219,9 @@ const MainAppContent: React.FC = () => {
     return <ResetPasswordView />;
   }
 
-  // Jika activeView adalah login, prioritaskan LoginView segera tanpa terhalang skeleton atau landing page
-  if (activeView === 'login') {
-    return <LoginView onBackToLanding={handleBackToLanding} />;
+  // Tampilan landing page sebagai layar awal saat pengguna belum login
+  if (showLanding && !currentUser) {
+    return <LandingPageView onEnterSystem={handleEnterSystem} />;
   }
 
   // Jika sedang memeriksa sesi auth dan profil pengguna belum ter-hydrate, tampilkan skeleton loading
@@ -250,10 +250,6 @@ const MainAppContent: React.FC = () => {
         <ToastContainer />
       </div>
     );
-  }
-
-  if (showLanding && !currentUser) {
-    return <LandingPageView onEnterSystem={handleEnterSystem} />;
   }
 
   if (!currentUser) {
