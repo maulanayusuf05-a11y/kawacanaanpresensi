@@ -397,21 +397,85 @@ export default async function handler(req: any, res: any) {
         .eq('owner_id', userId)
         .order('created_at', { ascending: false });
 
-      // 2. Ambil master guru hanya untuk identitas/school linkage.
-      // teachers.tugas_utama/mata_pelajaran TIDAK digunakan untuk menentukan role.
-      const { data: teacherRecords } = await db
-        .from('teachers')
-        .select('id, school_id')
-        .eq('id', profile?.teacher_id || '00000000-0000-0000-0000-000000000000');
+      // 2. Kumpulkan seluruh record guru yang terkait dengan akun ini
+      // (Berdasarkan teacher_id aktif, NIP profil/username, dan Nama)
+      const allTeacherRecords: any[] = [];
+      const seenTeacherIds = new Set<string>();
 
-      // Kumpulkan kandidat school ID
-      const candidateSchoolIds: string[] = [];
-      if (profile?.school_id) candidateSchoolIds.push(profile.school_id);
-      for (const s of ownedSchools || []) {
-        if (s.id && !candidateSchoolIds.includes(s.id)) candidateSchoolIds.push(s.id);
+      if (profile?.teacher_id) {
+        const { data: currentTeacher } = await db
+          .from('teachers')
+          .select('id, school_id, nama, nip, tugas_utama')
+          .eq('id', profile.teacher_id)
+          .maybeSingle();
+        if (currentTeacher) {
+          allTeacherRecords.push(currentTeacher);
+          seenTeacherIds.add(currentTeacher.id);
+        }
       }
-      for (const t of teacherRecords || []) {
-        if (t.school_id && !candidateSchoolIds.includes(t.school_id)) candidateSchoolIds.push(t.school_id);
+
+      // Cari berdasarkan NIP (jika username berupa NIP atau profile memiliki nip)
+      const rawNip = String((profile as any)?.nip || profile?.username || workspaceAuth.user.user_metadata?.nip || '').trim();
+      const cleanNip = rawNip.replace(/[^0-9]/g, '');
+      if (cleanNip.length >= 8) {
+        const { data: teachersByNip } = await db
+          .from('teachers')
+          .select('id, school_id, nama, nip, tugas_utama')
+          .eq('nip', cleanNip);
+        for (const t of teachersByNip || []) {
+          if (!seenTeacherIds.has(t.id)) {
+            seenTeacherIds.add(t.id);
+            allTeacherRecords.push(t);
+          }
+        }
+      }
+
+      // Cari berdasarkan Nama lengkap
+      const teacherName = String(profile?.name || workspaceAuth.user.user_metadata?.name || '').trim();
+      if (teacherName.length >= 3) {
+        const { data: teachersByName } = await db
+          .from('teachers')
+          .select('id, school_id, nama, nip, tugas_utama')
+          .ilike('nama', teacherName);
+        for (const t of teachersByName || []) {
+          if (!seenTeacherIds.has(t.id)) {
+            seenTeacherIds.add(t.id);
+            allTeacherRecords.push(t);
+          }
+        }
+      }
+
+      // Kumpulkan seluruh kandidat school ID yang pernah terhubung dengan user
+      const candidateSchoolIds: string[] = [];
+      const addCandidate = (id?: string | null) => {
+        const s = String(id || '').trim();
+        if (s && s !== 'null' && s !== 'undefined' && !candidateSchoolIds.includes(s)) {
+          candidateSchoolIds.push(s);
+        }
+      };
+
+      // Dari profile aktif
+      addCandidate(profile?.school_id);
+
+      // Dari auth user metadata (disimpan permanen di Supabase Auth)
+      addCandidate(workspaceAuth.user.user_metadata?.school_workspace_id);
+      addCandidate(workspaceAuth.user.user_metadata?.linked_school_id);
+      addCandidate(workspaceAuth.user.user_metadata?.school_id);
+      addCandidate(workspaceAuth.user.user_metadata?.personal_workspace_id);
+
+      // Dari body parameter jika client mengirimkan ID sekolah yang diketahui
+      addCandidate(body?.known_school_workspace_id);
+      addCandidate(body?.last_school_workspace_id);
+      addCandidate(body?.schoolId || body?.school_id);
+
+      // Dari owned schools (mis. ruang kerja individu mandiri)
+      for (const s of ownedSchools || []) {
+        addCandidate(s.id);
+      }
+
+      // Dari data guru di seluruh sekolah
+      for (const t of allTeacherRecords) {
+        addCandidate(t.school_id);
       }
 
       for (const sId of candidateSchoolIds) {
@@ -419,6 +483,7 @@ export default async function handler(req: any, res: any) {
         visitedSchoolIds.add(sId);
 
         const { data: school } = await db.from('schools').select('*').eq('id', sId).maybeSingle();
+        if (!school) continue;
         const { data: sp } = await db.from('school_profile').select('*').eq('school_id', sId).maybeSingle();
 
         let schoolCode = school?.code ? String(school.code).replace(/^SCH-?/i, '').trim().toUpperCase() : '';
@@ -437,9 +502,10 @@ export default async function handler(req: any, res: any) {
           school?.plan === 'teacher' ||
           school?.plan === 'guru';
 
-        const teacherForSchool = (teacherRecords || []).find((t: any) => t.school_id === sId);
+        const teacherForSchool = allTeacherRecords.find((t: any) => t.school_id === sId);
         const academicYear = String(sp?.tahun_pelajaran || '2026/2027').trim() || '2026/2027';
         let assignmentRole: 'WALI KELAS' | 'GURU MAPEL' | 'OTHER' = 'OTHER';
+
         if (!isPersonal && teacherForSchool) {
           const { data: waliAssignments } = await db
             .from('classes')
@@ -458,17 +524,41 @@ export default async function handler(req: any, res: any) {
             .eq('teacher_id', teacherForSchool.id)
             .limit(1);
           if (subjectAssignments?.length) {
-            if (assignmentRole === 'WALI KELAS') {
-              // Database constraints should prevent this; fail closed if legacy data violates it.
-              continue;
+            if (assignmentRole !== 'WALI KELAS') {
+              assignmentRole = 'GURU MAPEL';
             }
-            assignmentRole = 'GURU MAPEL';
+          }
+
+          // Fallback tugas utama guru jika belum ada assignment rombel tahun aktif
+          if (assignmentRole === 'OTHER' && teacherForSchool.tugas_utama) {
+            const tu = String(teacherForSchool.tugas_utama).toLowerCase();
+            if (tu.includes('wali')) assignmentRole = 'WALI KELAS';
+            else if (tu.includes('mapel')) assignmentRole = 'GURU MAPEL';
           }
         }
 
         const profileRole = sId === profile?.school_id ? String(profile?.role || '').toUpperCase() : '';
         const nonTeacherRole = ['SUPER_ADMIN','ADMIN','KEPALA SEKOLAH','SISWA'].includes(profileRole) ? profileRole : '';
-        const userRole = nonTeacherRole || (assignmentRole !== 'OTHER' ? assignmentRole : (isPersonal ? profileRole : null));
+        
+        let userRole = nonTeacherRole;
+        if (!userRole) {
+          if (assignmentRole !== 'OTHER') {
+            userRole = assignmentRole;
+          } else if (isPersonal) {
+            userRole = profileRole || 'WALI KELAS';
+          } else {
+            // Sekolah institusi: ambil role tersimpan di metadata atau profile atau guru
+            const metaRole = workspaceAuth.user.user_metadata?.school_workspace_role;
+            if (metaRole === 'WALI KELAS' || metaRole === 'GURU MAPEL') {
+              userRole = metaRole;
+            } else if (profile?.role === 'WALI KELAS' || profile?.role === 'GURU MAPEL') {
+              userRole = profile.role;
+            } else {
+              userRole = 'WALI KELAS';
+            }
+          }
+        }
+
         if (!userRole) continue;
 
         workspaces.push({
@@ -484,6 +574,20 @@ export default async function handler(req: any, res: any) {
           subscriptionPlan: school?.plan || (isPersonal ? 'teacher' : 'sekolah'),
           joinedAt: school?.created_at || profile?.created_at || new Date().toISOString(),
         });
+
+        // Selalu simpan ID sekolah institusi ke auth user_metadata agar tidak hilang saat beralih ke individu
+        if (!isPersonal) {
+          try {
+            await db.auth.admin.updateUserById(userId, {
+              user_metadata: {
+                ...(workspaceAuth.user.user_metadata || {}),
+                school_workspace_id: sId,
+                school_workspace_role: userRole,
+                school_workspace_name: school?.name || sp?.nama_sekolah || 'Ruang Kerja Sekolah',
+              }
+            });
+          } catch (_) {}
+        }
       }
 
       return json(res, 200, { ok: true, success: true, workspaces });
@@ -508,13 +612,35 @@ export default async function handler(req: any, res: any) {
 
       const { data: currentProfile, error: currentProfileError } = await db
         .from('profiles')
-        .select('role, teacher_id')
+        .select('*')
         .eq('id', userId)
         .maybeSingle();
       if (currentProfileError) throw currentProfileError;
       const role = normalizeTeacherRole(currentProfile?.role);
       if (!['WALI KELAS', 'GURU MAPEL'].includes(role)) {
         return json(res, 403, { error: 'Ruang kerja individu guru hanya dapat dibuat setelah role guru ditetapkan melalui onboarding/assignment yang valid.' });
+      }
+
+      // Catat sekolah institusi sebelumnya jika ada agar tidak hilang saat beralih ke individu
+      const previousSchoolId = currentProfile?.school_id;
+      if (previousSchoolId) {
+        const { data: prevSchool } = await db
+          .from('schools')
+          .select('id, name, workspace_type, is_personal')
+          .eq('id', previousSchoolId)
+          .maybeSingle();
+        if (prevSchool && prevSchool.workspace_type !== 'personal' && !prevSchool.is_personal) {
+          try {
+            await db.auth.admin.updateUserById(userId, {
+              user_metadata: {
+                ...(personalAuth.user.user_metadata || {}),
+                school_workspace_id: previousSchoolId,
+                school_workspace_role: role,
+                school_workspace_name: prevSchool.name || 'Ruang Kerja Sekolah',
+              },
+            });
+          } catch (_) {}
+        }
       }
 
       // Periksa apakah user sudah memiliki ruang kerja individu
@@ -726,6 +852,28 @@ export default async function handler(req: any, res: any) {
         joinedAt: targetSchool.created_at || new Date().toISOString(),
       };
 
+      // Simpan status ruang kerja di user_metadata Supabase Auth agar awet
+      try {
+        const currentMeta = switchAuth.user.user_metadata || {};
+        if (!isPersonal) {
+          await db.auth.admin.updateUserById(userId, {
+            user_metadata: {
+              ...currentMeta,
+              school_workspace_id: targetWorkspaceId,
+              school_workspace_role: targetRole,
+              school_workspace_name: wsObj.workspaceName,
+            },
+          });
+        } else {
+          await db.auth.admin.updateUserById(userId, {
+            user_metadata: {
+              ...currentMeta,
+              personal_workspace_id: targetWorkspaceId,
+            },
+          });
+        }
+      } catch (_) {}
+
       return json(res, 200, { ok: true, success: true, workspace: wsObj, teacher: linkedTeacher });
     }
 
@@ -867,6 +1015,17 @@ export default async function handler(req: any, res: any) {
         subscriptionPlan: targetSchool.plan || 'sekolah',
         joinedAt: new Date().toISOString(),
       };
+
+      try {
+        await db.auth.admin.updateUserById(effectiveUserId, {
+          user_metadata: {
+            ...(joinAuth.user.user_metadata || {}),
+            school_workspace_id: schoolId,
+            school_workspace_role: role,
+            school_workspace_name: wsObj.workspaceName,
+          },
+        });
+      } catch (_) {}
 
       return json(res, 200, {
         ok: true,
