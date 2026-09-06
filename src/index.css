@@ -222,3 +222,62 @@
   animation: progressShimmer 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
+/* Glowing Circular Loader Animations */
+@keyframes spinGlowCircle {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes spinGlowReverse {
+  0% {
+    transform: rotate(360deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes glowPulseCenter {
+  0%, 100% {
+    transform: scale(0.95);
+    opacity: 0.85;
+    filter: drop-shadow(0 0 16px rgba(37, 99, 235, 0.6)) drop-shadow(0 0 32px rgba(16, 185, 129, 0.4));
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 1;
+    filter: drop-shadow(0 0 24px rgba(37, 99, 235, 0.95)) drop-shadow(0 0 48px rgba(16, 185, 129, 0.65));
+  }
+}
+
+@keyframes radialAuraBreath {
+  0%, 100% {
+    transform: scale(0.9);
+    opacity: 0.35;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.75;
+  }
+}
+
+.animate-spin-glow-circle {
+  animation: spinGlowCircle 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.animate-spin-reverse-circle {
+  animation: spinGlowReverse 3s linear infinite;
+}
+
+.animate-glow-pulse-center {
+  animation: glowPulseCenter 2.2s ease-in-out infinite;
+}
+
+.animate-radial-aura-breath {
+  animation: radialAuraBreath 2.6s ease-in-out infinite;
+}
+

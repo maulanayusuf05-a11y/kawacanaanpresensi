@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { KawacanaanEmblem } from '../components/KawacanaanEmblem';
 import { EducationIllustration } from '../components/EducationIllustration';
+import { GlowingLoadingCircle } from '../components/GlowingLoadingCircle';
 import {
   supabase,
   signInWithEmail,
@@ -31,7 +32,11 @@ export const LoginView: React.FC<LoginViewProps> = ({ onBackToLanding }) => {
     schoolProfile,
     registrationRequired,
     openOnboarding,
-    loadData
+    loadData,
+    loginWithCredentials,
+    isLoginPreparing,
+    loginProgressMessage,
+    loginStep,
   } = useApp();
 
   // Mode: 'login' | 'forgot-password'
@@ -97,25 +102,21 @@ export const LoginView: React.FC<LoginViewProps> = ({ onBackToLanding }) => {
     setIsLoading(true);
 
     try {
-      const { data, error } = await signInWithEmail(identifier, pass);
+      const res = await loginWithCredentials(identifier, pass);
 
-      if (error || !data.user) {
-        const message = error?.message || '';
-        setErrorMessage(
-          message.toLowerCase().includes('invalid login credentials')
-            ? 'Email/username atau kata sandi salah. Periksa kembali data akun Anda.'
-            : message || 'Login gagal. Silakan coba lagi.'
-        );
+      if (!res.success) {
+        setErrorMessage(res.error || 'Login gagal. Silakan coba lagi.');
         showToast('Login gagal.', 'error');
+        setIsLoading(false);
         return;
       }
 
-      showToast('Login berhasil. Memuat data aplikasi...', 'success');
+      showToast('Login berhasil. Selamat datang!', 'success');
+      // Transisi ke dashboard ditangani langsung dengan data yang sudah 100% siap
     } catch (err: any) {
       console.error('Login error:', err);
       setErrorMessage(err?.message || 'Terjadi kendala saat proses autentikasi. Silakan coba lagi.');
       showToast('Login gagal.', 'error');
-    } finally {
       setIsLoading(false);
     }
   };
@@ -202,6 +203,21 @@ export const LoginView: React.FC<LoginViewProps> = ({ onBackToLanding }) => {
 
   return (
     <div className="min-h-screen w-full bg-[#F8FAFC] text-slate-800 flex flex-col justify-between p-4 sm:p-6 lg:p-8 relative overflow-x-hidden font-sans select-none">
+      {/* Animasi Glowing Loading Circle saat proses masuk & membaca data akun */}
+      {(isLoading || isLoginPreparing || isGoogleLoading) && (
+        <GlowingLoadingCircle
+          title="Menyiapkan Akun Anda"
+          statusMessage={
+            isGoogleLoading
+              ? 'Menghubungkan akun Google...'
+              : loginProgressMessage || 'Memverifikasi kredensial akun...'
+          }
+          subMessage="Sistem sedang membaca dan menyiapkan data akun serta sekolah Anda. Setelah selesai, Anda langsung diarahkan ke Dashboard."
+          step={isGoogleLoading ? 2 : loginStep || 1}
+          isOverlay={true}
+        />
+      )}
+
       {/* Background Soft Lighting Grid */}
       <div className="absolute inset-0 bg-[radial-gradient(#E2E8F0_1px,transparent_1px)] [background-size:28px_28px] opacity-60 pointer-events-none" />
       <div className="absolute top-0 right-0 w-96 h-96 bg-blue-50/70 rounded-full blur-3xl pointer-events-none" />
@@ -342,13 +358,13 @@ export const LoginView: React.FC<LoginViewProps> = ({ onBackToLanding }) => {
                   <button
                     id="btn-submit-masuk"
                     type="submit"
-                    disabled={isLoading}
+                    disabled={isLoading || isLoginPreparing}
                     className="w-full mt-2 py-3.5 px-6 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-extrabold text-sm tracking-wide transition-all shadow-md shadow-blue-600/20 hover:shadow-lg focus:outline-none focus:ring-3 focus:ring-blue-500/30 min-h-[46px] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
                   >
-                    {isLoading ? (
+                    {isLoading || isLoginPreparing ? (
                       <>
                         <Loader2 size={18} className="animate-spin" />
-                        <span>Memverifikasi...</span>
+                        <span>Menyiapkan Data Akun...</span>
                       </>
                     ) : (
                       <span>Masuk</span>

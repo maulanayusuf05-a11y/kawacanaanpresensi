@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { supabase, usernameToEmail } from "../lib/supabase";
+import { signInWithEmail } from "../lib/supabaseClient";
 import {
   Student,
   AttendanceRecord,
@@ -41,6 +42,14 @@ interface AppContextType {
   setActiveView: (v: ActiveView) => void;
   isDataLoading: boolean;
   isAuthChecking: boolean;
+  // Login preparation with glowing circle
+  isLoginPreparing: boolean;
+  loginProgressMessage: string;
+  loginStep: number;
+  loginWithCredentials: (
+    identifier: string,
+    pass: string,
+  ) => Promise<{ success: boolean; error?: string }>;
   // Workspace & Onboarding
   userWorkspaces: WorkspaceMembership[];
   activeWorkspace: WorkspaceMembership | null;
@@ -711,6 +720,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const [switchingWorkspaceMessage, setSwitchingWorkspaceMessage] =
     useState<string>("");
 
+  // Login preparation state for GlowingLoadingCircle
+  const [isLoginPreparing, setIsLoginPreparing] = useState<boolean>(false);
+  const [loginProgressMessage, setLoginProgressMessage] = useState<string>(
+    "Memverifikasi kredensial akun...",
+  );
+  const [loginStep, setLoginStep] = useState<number>(1);
+  const inFlightLoadPromiseRef = React.useRef<Promise<void> | null>(null);
+  const inFlightLoadUserIdRef = React.useRef<string>("");
+
   const [activeView, setActiveViewState] = useState<ActiveView>(() => {
     const cached = getCachedUserSession();
     const saved = getSavedActiveView();
@@ -936,6 +954,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       isLoggingOutRef.current = false;
     }
   };
+
+  const loginWithCredentials = async (
+    identifier: string,
+    pass: string,
+  ): Promise<{ success: boolean; error?: string }> => {
+    isLoggingOutRef.current = false;
+    setIsLoginPreparing(true);
+    setLoginStep(1);
+    setLoginProgressMessage("Memverifikasi kredensial akun...");
+
+    try {
+      const { data, error } = await signInWithEmail(identifier, pass);
+      if (error || !data?.user) {
+        setIsLoginPreparing(false);
+        const msg = error?.message || "";
+        const userMsg = msg.toLowerCase().includes("invalid login credentials")
+          ? "Email/username atau kata sandi salah. Periksa kembali data akun Anda."
+          : msg || "Login gagal. Silakan coba lagi.";
+        return { success: false, error: userMsg };
+      }
+
+      setLoginStep(2);
+      setLoginProgressMessage("Membaca profil & ruang kerja sekolah...");
+
+      await loadData(data.user.id);
+
+      setLoginStep(4);
+      setLoginProgressMessage("Semua data siap! Membuka dashboard...");
+
+      // Jeda halus 300ms agar transisi animasi mulus bagi pengguna
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      setIsLoginPreparing(false);
+      return { success: true };
+    } catch (err: any) {
+      setIsLoginPreparing(false);
+      return {
+        success: false,
+        error:
+          err?.message ||
+          "Terjadi kendala saat proses autentikasi. Silakan coba lagi.",
+      };
+    }
+  };
+
   const removeToast = (id: string) =>
     setToasts((p) => p.filter((t) => t.id !== id));
 
@@ -952,6 +1014,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       return;
     }
     setIsDataLoading(true);
+    let me: any = null;
     try {
       let tenantSchool: any = null;
     {
@@ -1235,7 +1298,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       };
     });
     const matchedMe = hydratedUsers.find((u: any) => u.id === baseProfile.id);
-    const me = {
+    me = {
       ...emptyUser(hydratedBase),
       ...(matchedMe || {}),
       schoolCode:
@@ -1330,10 +1393,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       me.mustChangePassword = false;
     }
 
-    setCurrentUser(me);
-    try {
-      localStorage.setItem(CACHE_USER_SESSION_KEY, JSON.stringify(me));
-    } catch (_) {}
     setUsers(hydratedUsers);
     let rawSchoolData = school.data;
     if ((!rawSchoolData || !authoritativeSchoolCode) && schoolId) {
@@ -1544,8 +1603,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         ),
       ),
     );
+
+    // Komit currentUser secara utuh hanya setelah seluruh data (guru, kelas, siswa, presensi, profil, mata pelajaran) berhasil dimuat
+    if (!isLoggingOutRef.current && (requestId === undefined || requestId === loadRequestRef.current)) {
+      setCurrentUser(me);
+      try {
+        localStorage.setItem(CACHE_USER_SESSION_KEY, JSON.stringify(me));
+      } catch (_) {}
+    }
     } catch (err) {
       console.warn("[loadDataForSchool] error:", err);
+      if (me && !isLoggingOutRef.current) {
+        setCurrentUser(me);
+        try {
+          localStorage.setItem(CACHE_USER_SESSION_KEY, JSON.stringify(me));
+        } catch (_) {}
+      }
     } finally {
       setIsDataLoading(false);
     }
@@ -2144,28 +2217,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       return;
     }
 
-    // Set basic currentUser and transition view immediately so dashboard mounts with zero delay
-    const isPwdAlreadyChanged =
-      passwordChangedRecentlyRef.current ||
-      (typeof window !== "undefined" &&
-        sessionStorage.getItem(`pwd_changed_${userId}`) === "1") ||
-      (currentUser?.id === userId && currentUser.mustChangePassword === false);
-
-    const initialMe = emptyUser({
-      ...baseProfile,
-      must_change_password: isPwdAlreadyChanged ? false : baseProfile?.must_change_password,
-      school_id: chosenWorkspace.workspaceId,
-      role: chosenWorkspace.role,
-    });
-    setCurrentUser(initialMe);
-    try {
-      localStorage.setItem(CACHE_USER_SESSION_KEY, JSON.stringify(initialMe));
-    } catch (_) {}
-
-    const saved = getSavedActiveView();
-    const targetView = resolveInitialViewForRole(chosenWorkspace.role, saved);
-    setActiveView(targetView);
-    setIsAuthChecking(false);
+    setLoginStep(3);
+    setLoginProgressMessage(
+      "Membaca & menyiapkan data kelas, siswa, guru & presensi...",
+    );
 
     await loadDataForSchool(
       chosenWorkspace.workspaceId,
@@ -2173,6 +2228,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       chosenWorkspace.role,
       requestId,
     );
+
+    if (isLoggingOutRef.current || requestId !== loadRequestRef.current) {
+      return;
+    }
+
+    setLoginStep(4);
+    setLoginProgressMessage("Semua data siap! Membuka dashboard...");
+
+    const saved = getSavedActiveView();
+    const targetView = resolveInitialViewForRole(chosenWorkspace.role, saved);
+    setActiveView(targetView);
+    setIsAuthChecking(false);
+    setIsLoginPreparing(false);
   };
   useEffect(() => {
     let mounted = true;
@@ -5665,6 +5733,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       value={{
         isAuthChecking,
         isDataLoading,
+        isLoginPreparing,
+        loginProgressMessage,
+        loginStep,
+        loginWithCredentials,
         logout,
         classes,
         addClass,
