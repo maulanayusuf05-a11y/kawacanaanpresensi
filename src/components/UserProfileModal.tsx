@@ -67,7 +67,6 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
       case 'WALI KELAS':
         return { label: 'Wali Kelas', bg: 'bg-blue-100 text-blue-900 border-blue-300' };
       case 'GURU MAPEL':
-      case 'GURU MAPEL':
         return { label: 'Guru Mata Pelajaran', bg: 'bg-indigo-100 text-indigo-900 border-indigo-300' };
       case 'SISWA':
       default:
