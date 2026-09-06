@@ -219,6 +219,11 @@ const MainAppContent: React.FC = () => {
     return <ResetPasswordView />;
   }
 
+  // Jika activeView adalah login, prioritaskan LoginView segera tanpa terhalang skeleton atau landing page
+  if (activeView === 'login') {
+    return <LoginView onBackToLanding={handleBackToLanding} />;
+  }
+
   // Jika sedang memeriksa sesi auth dan profil pengguna belum ter-hydrate, tampilkan skeleton loading
   // Jangan pernah menampilkan LoginView saat reload di dashboard / halaman lain
   if (isAuthChecking && !currentUser) {
@@ -251,7 +256,7 @@ const MainAppContent: React.FC = () => {
     return <LandingPageView onEnterSystem={handleEnterSystem} />;
   }
 
-  if (!currentUser || activeView === 'login') {
+  if (!currentUser) {
     return <LoginView onBackToLanding={handleBackToLanding} />;
   }
 

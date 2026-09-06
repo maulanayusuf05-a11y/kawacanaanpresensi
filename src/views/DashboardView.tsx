@@ -562,6 +562,10 @@ export const DashboardView: React.FC = () => {
   // Show Skeleton Loader if data is completely empty and currently loading
   const isInitialEmptyLoad = isDataLoading && !cachedSummary && students.length === 0 && users.length === 0;
 
+  if (!currentUser) {
+    return null;
+  }
+
   if (isInitialEmptyLoad) {
     return <DashboardSkeleton isTeacherOrWali={isTeacherOrWali} />;
   }

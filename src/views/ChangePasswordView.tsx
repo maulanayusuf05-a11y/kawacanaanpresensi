@@ -7,7 +7,7 @@ import { Lock, Eye, EyeOff, Loader2, ShieldAlert, LogOut } from 'lucide-react';
 // Ditampilkan wajib (tidak bisa dilewati) saat currentUser.mustChangePassword === true,
 // yaitu setelah akun baru dibuat ADMIN atau setelah ADMIN mereset password akun tersebut.
 export const ChangePasswordView: React.FC = () => {
-  const { currentUser, showToast, changeOwnPassword, setCurrentUser, setActiveView } = useApp();
+  const { currentUser, showToast, changeOwnPassword, logout } = useApp();
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -15,9 +15,7 @@ export const ChangePasswordView: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState('');
 
   const handleLogout = () => {
-    void supabase.auth.signOut();
-    setCurrentUser(null);
-    setActiveView('login');
+    void logout();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

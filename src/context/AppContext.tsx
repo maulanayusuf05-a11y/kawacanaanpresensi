@@ -725,6 +725,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const activeViewRef = React.useRef<ActiveView>(activeView);
   const loadRequestRef = React.useRef(0);
   const navigationIntentRef = React.useRef(0);
+  const isLoggingOutRef = React.useRef(false);
   const setActiveView = (view: ActiveView) => {
     navigationIntentRef.current += 1;
     activeViewRef.current = view;
@@ -732,6 +733,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     if (view !== "login") {
       try {
         localStorage.setItem(CACHE_LAST_VIEW_KEY, view);
+      } catch (_) {}
+    } else {
+      try {
+        localStorage.removeItem(CACHE_LAST_VIEW_KEY);
       } catch (_) {}
     }
   };
@@ -836,54 +841,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const logout = async () => {
+    isLoggingOutRef.current = true;
     // Invalidate any in-flight data loading requests
     loadRequestRef.current++;
 
-    try {
-      clearSessionTimers();
-      localStorage.removeItem(CACHE_USER_SESSION_KEY);
-      localStorage.removeItem(CACHE_LAST_VIEW_KEY);
-      localStorage.removeItem(SESSION_LAST_ACTIVE_KEY);
-      localStorage.removeItem(SESSION_LOGIN_TIME_KEY);
-      localStorage.removeItem("kawacanaan_last_workspace_id");
-      
-      // Clean all user-specific and sb- token keys from localStorage
-      for (let i = localStorage.length - 1; i >= 0; i--) {
-        const key = localStorage.key(i);
-        if (key && (key.startsWith("kawacanaan_last_workspace_id_") || key.startsWith("sb-") || key.includes("supabase.auth.token"))) {
-          localStorage.removeItem(key);
-        }
-      }
-    } catch (_) {}
+    // 1. Matikan seluruh timer sesi agar tidak ada auto-trigger
+    clearSessionTimers();
 
-    // Eksekusi Supabase Auth signOut() resmi dan tunggu hingga selesai
-    try {
-      await supabase.auth.signOut();
-    } catch (err) {
-      console.warn("[logout] supabase.auth.signOut error:", err);
-    }
-
-    // Verifikasi resmi bahwa Supabase session benar-benar sudah null / tidak tersedia
-    try {
-      const { data: verifySession } = await supabase.auth.getSession();
-      if (verifySession?.session) {
-        console.warn("[logout] Session still active after signOut, forcing cleanup...");
-        for (let i = localStorage.length - 1; i >= 0; i--) {
-          const key = localStorage.key(i);
-          if (key && (key.startsWith("sb-") || key.includes("supabase.auth.token"))) {
-            localStorage.removeItem(key);
-          }
-        }
-      }
-    } catch (_) {}
-
-    // Reset seluruh state aplikasi ke null dan default
+    // 2. Segera reset seluruh state aplikasi ke null dan default (halaman login)
     setCurrentUser(null);
     setUserWorkspaces([]);
     setActiveWorkspace(null);
     setIsOnboarding(false);
     setIsSelectingWorkspace(false);
     setIsAuthChecking(false);
+    setIsDataLoading(false);
     setRegistrationRequired(false);
     setPasswordRecovery(false);
     activeViewRef.current = "login";
@@ -893,6 +865,66 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     setTeachers([]);
     setUsers([]);
     setAttendanceRecords([]);
+    setSubjects([]);
+    setAcademicEvents([]);
+    setIsSwitchingWorkspace(false);
+
+    // 3. Bersihkan seluruh penyimpanan lokal sesi dan cache
+    try {
+      localStorage.removeItem(CACHE_USER_SESSION_KEY);
+      localStorage.removeItem(CACHE_LAST_VIEW_KEY);
+      localStorage.removeItem(SESSION_LAST_ACTIVE_KEY);
+      localStorage.removeItem(SESSION_LOGIN_TIME_KEY);
+      localStorage.removeItem("kawacanaan_last_workspace_id");
+      
+      // Bersihkan seluruh token pengguna dan cache ringkasan
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (
+          key &&
+          (key.startsWith("kawacanaan_last_workspace_id_") ||
+            key.startsWith("kawacanaan_summary_cache_") ||
+            key.startsWith("sb-") ||
+            key.includes("supabase.auth.token"))
+        ) {
+          localStorage.removeItem(key);
+        }
+      }
+    } catch (_) {}
+
+    // 4. Update query URL ke page=login dan bersihkan hash auth jika ada
+    if (typeof window !== "undefined") {
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.set("page", "login");
+        window.history.replaceState(null, "", url.pathname + url.search);
+      } catch (_) {}
+    }
+
+    // 5. Eksekusi Supabase Auth signOut() secara non-blocking dengan timeout
+    try {
+      await Promise.race([
+        supabase.auth.signOut({ scope: "local" }).catch(() => {}),
+        new Promise((resolve) => setTimeout(resolve, 800)),
+      ]);
+      await Promise.race([
+        supabase.auth.signOut().catch(() => {}),
+        new Promise((resolve) => setTimeout(resolve, 800)),
+      ]);
+    } catch (err) {
+      console.warn("[logout] supabase.auth.signOut error:", err);
+    } finally {
+      // Pastikan sisa-sisa token di localStorage benar-benar terhapus
+      try {
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const key = localStorage.key(i);
+          if (key && (key.startsWith("sb-") || key.includes("supabase.auth.token"))) {
+            localStorage.removeItem(key);
+          }
+        }
+      } catch (_) {}
+      isLoggingOutRef.current = false;
+    }
   };
   const removeToast = (id: string) =>
     setToasts((p) => p.filter((t) => t.id !== id));
@@ -901,9 +933,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     schoolId: string,
     baseProfile: any,
     targetRole: UserRole,
+    requestId?: number,
   ) => {
+    if (
+      isLoggingOutRef.current ||
+      (requestId !== undefined && requestId !== loadRequestRef.current)
+    ) {
+      return;
+    }
     setIsDataLoading(true);
-    let tenantSchool: any = null;
+    try {
+      let tenantSchool: any = null;
     {
       const res = await supabase
         .from("schools")
@@ -1263,6 +1303,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       me.classNames = me.classIds.map((cid: string) => classList.find((c: any) => c.id === cid)?.name || "").filter(Boolean);
     }
 
+    if (
+      isLoggingOutRef.current ||
+      (requestId !== undefined && requestId !== loadRequestRef.current)
+    ) {
+      return;
+    }
+
     setCurrentUser(me);
     try {
       localStorage.setItem(CACHE_USER_SESSION_KEY, JSON.stringify(me));
@@ -1477,7 +1524,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         ),
       ),
     );
-    setIsDataLoading(false);
+    } catch (err) {
+      console.warn("[loadDataForSchool] error:", err);
+    } finally {
+      setIsDataLoading(false);
+    }
   };
 
   const selectWorkspace = async (ws: WorkspaceMembership) => {
@@ -1747,10 +1798,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const loadData = async (userId: string) => {
+    if (isLoggingOutRef.current) return;
     if (!userId) {
       const { data: sessionData } = await supabase.auth.getSession();
       userId = sessionData.session?.user?.id || "";
     }
+    if (isLoggingOutRef.current) return;
     if (!userId) {
       setIsOnboarding(false);
       setCurrentUser(null);
@@ -1789,6 +1842,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       }
       baseProfile = profileRes?.data || null;
     } catch (_) {}
+
+    if (isLoggingOutRef.current || requestId !== loadRequestRef.current) {
+      return;
+    }
 
     // Jika profil belum ada di Supabase client tapi memberships ditemukan (mis. baru selesai onboarding), buat objek baseProfile
     if (!baseProfile && memberships.length > 0) {
@@ -1955,6 +2012,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       chosenWorkspace.workspaceId,
     );
 
+    if (isLoggingOutRef.current || requestId !== loadRequestRef.current) {
+      return;
+    }
+
     // Set basic currentUser and transition view immediately so dashboard mounts with zero delay
     const initialMe = emptyUser({
       ...baseProfile,
@@ -1975,6 +2036,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       chosenWorkspace.workspaceId,
       baseProfile,
       chosenWorkspace.role,
+      requestId,
     );
   };
   useEffect(() => {
@@ -1984,7 +2046,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     // Supabase akan membuat session recovery saat link dari email diklik.
     // Jangan loadData()/redirect ke dashboard pada event ini.
     const handleAuthEvent = (event: string, session: any) => {
-      if (!mounted) return;
+      if (!mounted || isLoggingOutRef.current) return;
 
       if (event === "PASSWORD_RECOVERY") {
         setPasswordRecovery(true);
@@ -2009,7 +2071,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             window.location.pathname + window.location.search,
           );
         }
-        setTimeout(() => loadData(session.user.id), 0);
+        setTimeout(() => {
+          if (!mounted || isLoggingOutRef.current) return;
+          loadData(session.user.id);
+        }, 0);
         return;
       }
 
@@ -2030,7 +2095,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     };
 
     supabase.auth.getSession().then(({ data }) => {
-      if (!mounted) return;
+      if (!mounted || isLoggingOutRef.current) return;
       const timeoutStatus = checkSessionTimeouts();
       if (timeoutStatus.expired) {
         clearSessionTimers();
