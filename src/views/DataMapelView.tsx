@@ -221,7 +221,9 @@ export const DataMapelView: React.FC = () => {
     setEditingSubject(sub);
     setName(sub.name);
     setAcronym(sub.code || '');
-    setSelectedTeacherId(sub.teacherId || '');
+    const validCurrentTeacher = currentTeacher && !isTeacherWaliKelas(currentTeacher) ? currentTeacher.id : '';
+    const fallbackTeacherId = validCurrentTeacher || guruMapelList[0]?.id || '';
+    setSelectedTeacherId(sub.teacherId || fallbackTeacherId);
     const cids = sub.targetClassIds || [];
     setSelectedClassIds(cids);
 

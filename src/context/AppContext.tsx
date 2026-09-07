@@ -4752,6 +4752,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     try {
       const schoolId = currentUser?.schoolId;
       if (!schoolId) throw new Error("Sekolah aktif tidak ditemukan.");
+
+      // Coba simpan melalui server API /api/teacher-subject terlebih dahulu
+      const { data: authSession } = await supabase.auth.getSession();
+      const token = authSession.session?.access_token;
+      if (token) {
+        try {
+          const res = await fetch("/api/teacher-subject", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              action: "save_subject",
+              schoolId,
+              academicYear: schoolProfile.tahunPelajaran || "2026/2027",
+              name: s.name,
+              code: s.code,
+              teacherId: s.teacherId,
+              targetClassIds: s.targetClassIds || [],
+              scheduleDays: s.scheduleDays || [],
+              classSchedules: s.classSchedules || [],
+            }),
+          });
+          const resData = await res.json().catch(() => ({}));
+          if (res.ok && resData.ok) {
+            await reloadSubjects();
+            showToast("Mata pelajaran " + s.name + " berhasil ditambahkan!");
+            return;
+          }
+          if (res.status === 403) {
+            throw new Error(resData.error || "Tidak berwenang mengelola mata pelajaran.");
+          }
+        } catch (apiErr: any) {
+          if (apiErr.message && apiErr.message.includes("Tidak berwenang")) {
+            throw apiErr;
+          }
+          console.warn("[addSubject] Fallback ke direct supabase:", apiErr.message);
+        }
+      }
+
       const { data, error } = await supabase
         .from("subjects")
         .insert({
@@ -4835,6 +4876,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     try {
       const schoolId = currentUser?.schoolId;
       if (!schoolId) throw new Error("Sekolah aktif tidak ditemukan.");
+
+      // Coba simpan melalui server API /api/teacher-subject terlebih dahulu
+      const { data: authSession } = await supabase.auth.getSession();
+      const token = authSession.session?.access_token;
+      if (token) {
+        try {
+          const res = await fetch("/api/teacher-subject", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              action: "save_subject",
+              id,
+              schoolId,
+              academicYear: schoolProfile.tahunPelajaran || "2026/2027",
+              name: s.name,
+              code: s.code,
+              teacherId: s.teacherId,
+              targetClassIds: s.targetClassIds || [],
+              scheduleDays: s.scheduleDays || [],
+              classSchedules: s.classSchedules || [],
+            }),
+          });
+          const resData = await res.json().catch(() => ({}));
+          if (res.ok && resData.ok) {
+            await reloadSubjects();
+            showToast("Mata pelajaran " + s.name + " berhasil diperbarui");
+            return;
+          }
+          if (res.status === 403) {
+            throw new Error(resData.error || "Tidak berwenang memperbarui mata pelajaran.");
+          }
+        } catch (apiErr: any) {
+          if (apiErr.message && apiErr.message.includes("Tidak berwenang")) {
+            throw apiErr;
+          }
+          console.warn("[updateSubject] Fallback ke direct supabase:", apiErr.message);
+        }
+      }
+
       const { error } = await supabase
         .from("subjects")
         .update({
@@ -4948,11 +5031,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const deleteSubject = async (id: string) => {
     try {
+      const schoolId = currentUser?.schoolId;
+      if (!schoolId) throw new Error("Sekolah aktif tidak ditemukan.");
+
+      const { data: authSession } = await supabase.auth.getSession();
+      const token = authSession.session?.access_token;
+      if (token) {
+        try {
+          const res = await fetch("/api/teacher-subject", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              action: "delete_subject",
+              id,
+              schoolId,
+              academicYear: schoolProfile.tahunPelajaran || "2026/2027",
+            }),
+          });
+          const resData = await res.json().catch(() => ({}));
+          if (res.ok && resData.ok) {
+            setSubjects((p) => p.filter((s) => s.id !== id));
+            showToast("Mata pelajaran berhasil dihapus", "info");
+            return;
+          }
+        } catch (apiErr: any) {
+          console.warn("[deleteSubject] Fallback ke direct supabase:", apiErr.message);
+        }
+      }
+
       const { error } = await supabase
         .from("subjects")
         .delete()
         .eq("id", id)
-        .eq("school_id", currentUser?.schoolId || "");
+        .eq("school_id", schoolId);
       if (error) throw error;
       setSubjects((p) => p.filter((s) => s.id !== id));
       showToast("Mata pelajaran berhasil dihapus", "info");
