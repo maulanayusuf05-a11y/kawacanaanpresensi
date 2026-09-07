@@ -4753,12 +4753,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       const schoolId = currentUser?.schoolId;
       if (!schoolId) throw new Error("Sekolah aktif tidak ditemukan.");
 
-      // Coba simpan melalui server API /api/teacher-subject terlebih dahulu
+      // Coba simpan melalui server API /api/sync-teacher-assignments terlebih dahulu
       const { data: authSession } = await supabase.auth.getSession();
       const token = authSession.session?.access_token;
       if (token) {
         try {
-          const res = await fetch("/api/teacher-subject", {
+          const res = await fetch("/api/sync-teacher-assignments", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -4877,12 +4877,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       const schoolId = currentUser?.schoolId;
       if (!schoolId) throw new Error("Sekolah aktif tidak ditemukan.");
 
-      // Coba simpan melalui server API /api/teacher-subject terlebih dahulu
+      // Coba simpan melalui server API /api/sync-teacher-assignments terlebih dahulu
       const { data: authSession } = await supabase.auth.getSession();
       const token = authSession.session?.access_token;
       if (token) {
         try {
-          const res = await fetch("/api/teacher-subject", {
+          const res = await fetch("/api/sync-teacher-assignments", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -5038,7 +5038,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       const token = authSession.session?.access_token;
       if (token) {
         try {
-          const res = await fetch("/api/teacher-subject", {
+          const res = await fetch("/api/sync-teacher-assignments", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",

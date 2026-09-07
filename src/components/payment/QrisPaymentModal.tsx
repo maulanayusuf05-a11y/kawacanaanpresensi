@@ -286,7 +286,7 @@ export const QrisPaymentModal: React.FC<QrisPaymentModalProps> = ({
       try {
         const { supabase } = await import('../../lib/supabase');
         const { data: sessionData } = await supabase.auth.getSession();
-        await fetch('/api/payments', {
+        await fetch('/api/midtrans', {
           method:'POST',
           headers:{'Content-Type':'application/json',Authorization:`Bearer ${sessionData.session?.access_token || ''}`},
           body:JSON.stringify({action:'settle',transaction:settled})
