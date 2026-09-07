@@ -295,6 +295,25 @@ export function normalizeGender(genderRaw: string): 'L' | 'P' {
 }
 
 /**
+ * Helper: Normalisasi string kelas untuk pencocokan akurat (mendukung angka Romawi & variasi tanda baca)
+ */
+export function normalizeClassToken(input: string): string {
+  if (!input) return '';
+  let s = input.toLowerCase()
+    .replace(/^(kelas|tingkat|rombel|kls|grade)\s*/i, '')
+    .trim();
+  // Map Angka Romawi umum (I sampai VI)
+  s = s
+    .replace(/\bvi\b/g, '6')
+    .replace(/\bv\b/g, '5')
+    .replace(/\biv\b/g, '4')
+    .replace(/\biii\b/g, '3')
+    .replace(/\bii\b/g, '2')
+    .replace(/\bi\b/g, '1');
+  return s.replace(/[^a-z0-9]/g, '');
+}
+
+/**
  * Helper: Fuzzy match class name with available classes in workspace
  */
 export function matchClassByName(
@@ -302,10 +321,11 @@ export function matchClassByName(
   availableClasses: Array<{ id: string; name: string; grade?: number }>
 ) {
   if (!input) return undefined;
-  const rawClean = input.toLowerCase().replace(/kelas|kls|grade/g, '').replace(/[^a-z0-9]/g, '');
+  const rawClean = normalizeClassToken(input);
+  if (!rawClean) return undefined;
 
   return availableClasses.find((c) => {
-    const cClean = c.name.toLowerCase().replace(/kelas|kls|grade/g, '').replace(/[^a-z0-9]/g, '');
+    const cClean = normalizeClassToken(c.name);
     return cClean === rawClean || c.name.toLowerCase().trim() === input.toLowerCase().trim();
   });
 }

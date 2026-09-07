@@ -32,6 +32,24 @@ import { validateTeacherRoleAssignment } from '../utils/packageSystem';
 import { getFaseByClassName, getFaseByGrade, getFaseBadgeColor, getGradeFromClassName, formatClassDisplay } from '../utils/faseKurikulum';
 import { BookLoadingModal } from '../components/BookLoader';
 import { normalizeTeacherName, normalizeNip } from '../utils/userScope';
+import { normalizeClassToken } from '../utils/documentParser';
+
+// Helper sinkronisasi jenis kelamin & pencocokan rombel siswa
+const isGenderL = (g: any): boolean => {
+  const s = String(g || '').trim().toUpperCase();
+  return s === 'L' || s.startsWith('LAKI') || s === 'PRIA' || s === 'M' || s === 'MALE';
+};
+
+const isGenderP = (g: any): boolean => {
+  const s = String(g || '').trim().toUpperCase();
+  return s === 'P' || s.startsWith('PEREMPUAN') || s === 'WANITA' || s === 'F' || s === 'FEMALE';
+};
+
+const isStudentInClass = (s: Student, targetClass: { id: string; name: string }): boolean => {
+  if (s.classId && s.classId === targetClass.id) return true;
+  if (s.className && normalizeClassToken(s.className) === normalizeClassToken(targetClass.name)) return true;
+  return false;
+};
 
 interface ParsedClassItem {
   name: string;
@@ -326,8 +344,7 @@ export const DataKelasView: React.FC = () => {
     if (!viewingClass) return [];
     return students.filter(
       (s) =>
-        s.classId === viewingClass.id ||
-        (s.className && s.className.toLowerCase() === viewingClass.name.toLowerCase()) ||
+        isStudentInClass(s, viewingClass) ||
         (isPersonalWorkspace &&
           (!s.classId || s.classId === 'onboarding-class-default' || accessibleClasses.length === 1))
     );
@@ -866,13 +883,12 @@ export const DataKelasView: React.FC = () => {
                     currentClasses.map((c, idx) => {
                       const classStudentList = students.filter(
                         (s) =>
-                          s.classId === c.id ||
-                          (s.className && s.className.toLowerCase() === c.name.toLowerCase()) ||
+                          isStudentInClass(s, c) ||
                           (isPersonalWorkspace &&
                             (!s.classId || s.classId === 'onboarding-class-default' || accessibleClasses.length === 1))
                       );
-                      const countL = classStudentList.filter((s) => s.gender === 'L' || s.gender === 'Laki-laki').length;
-                      const countP = classStudentList.filter((s) => s.gender === 'P' || s.gender === 'Perempuan').length;
+                      const countL = classStudentList.filter((s) => isGenderL(s.gender)).length;
+                      const countP = classStudentList.filter((s) => isGenderP(s.gender)).length;
                       const totalCount = classStudentList.length;
                       const matchedTeacher = teachers.find(
                         (t) => t.id === c.waliKelasTeacherId || (c.waliKelasName && t.nama.trim().toLowerCase() === c.waliKelasName.trim().toLowerCase())

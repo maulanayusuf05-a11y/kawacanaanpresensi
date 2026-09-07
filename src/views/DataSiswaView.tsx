@@ -25,6 +25,7 @@ import {
   mapRowsToStudents,
   downloadStudentTemplateFile,
   ParsedStudentItem,
+  normalizeClassToken,
 } from '../utils/documentParser';
 
 export const DataSiswaView: React.FC = () => {
@@ -213,7 +214,7 @@ export const DataSiswaView: React.FC = () => {
   // Import Modal States
   const [selectedImportClassId, setSelectedImportClassId] = useState(myAssignedClasses[0]?.id || classes[0]?.id || '');
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [importMode, setImportMode] = useState<'replace' | 'append'>('replace');
+  const [importMode, setImportMode] = useState<'replace' | 'append'>('append');
   const [importTab, setImportTab] = useState<'file' | 'paste'>('file');
   const [pasteText, setPasteText] = useState('');
   const [parsedStudents, setParsedStudents] = useState<ParsedStudentItem[]>([]);
@@ -249,9 +250,11 @@ export const DataSiswaView: React.FC = () => {
 
         if (selectedClassFilter !== 'ALL') {
           const selCls = availableClasses.find((c) => c.id === selectedClassFilter);
+          const selNorm = selCls ? normalizeClassToken(selCls.name) : '';
           const matchesClass =
             s.classId === selectedClassFilter ||
-            (selCls && s.className && s.className.toLowerCase() === selCls.name.toLowerCase());
+            (selCls && s.className && s.className.toLowerCase() === selCls.name.toLowerCase()) ||
+            (selNorm && s.className && normalizeClassToken(s.className) === selNorm);
           if (!matchesClass) return false;
         }
 
@@ -330,21 +333,21 @@ export const DataSiswaView: React.FC = () => {
 
   const findMatchingClass = (rawClass: string, classList: Array<{ id: string; name: string }>) => {
     if (!rawClass || !rawClass.trim()) return undefined;
-    const clean = rawClass.trim().toLowerCase();
+    const rawClean = rawClass.trim().toLowerCase();
+
     // 1. Exact match
-    const exact = classList.find((c) => c.name.trim().toLowerCase() === clean);
+    const exact = classList.find((c) => c.name.trim().toLowerCase() === rawClean);
     if (exact) return exact;
 
-    // 2. Normalized match (e.g. "1A" matching "Kelas 1A" or "1 A")
-    const normClean = clean.replace(/^(kelas|tingkat|rombel)\s*/i, '').replace(/\s+/g, '');
-    const match = classList.find((c) => {
-      const cNorm = c.name.toLowerCase().replace(/^(kelas|tingkat|rombel)\s*/i, '').replace(/\s+/g, '');
-      return cNorm === normClean;
-    });
-    if (match) return match;
+    // 2. Normalized token match (handles "4A", "Kelas 4A", "IV-A", "4-A", etc.)
+    const normClean = normalizeClassToken(rawClass);
+    if (normClean) {
+      const match = classList.find((c) => normalizeClassToken(c.name) === normClean);
+      if (match) return match;
+    }
 
     // 3. Substring match
-    return classList.find((c) => c.name.toLowerCase().includes(clean) || clean.includes(c.name.toLowerCase()));
+    return classList.find((c) => c.name.toLowerCase().includes(rawClean) || rawClean.includes(c.name.toLowerCase()));
   };
 
   // Download Template Siswa (Excel atau CSV)
@@ -501,7 +504,11 @@ export const DataSiswaView: React.FC = () => {
       setImportStatusMessage('Menyimpan data siswa ke database presensi sekolah...');
       await new Promise((res) => setTimeout(res, 400));
 
-      await importStudents(payload, importMode === 'replace');
+      const distinctClasses = Array.from(new Set(payload.map((p) => p.classId).filter(Boolean)));
+      const singleTargetClassId =
+        distinctClasses.length === 1 ? (distinctClasses[0] as string) : (selectedImportClassId || undefined);
+
+      await importStudents(payload, importMode === 'replace', singleTargetClassId);
 
       setImportProgress(100);
       setImportStatusMessage('Selesai! Seluruh data siswa berhasil diperbarui.');
@@ -885,11 +892,29 @@ export const DataSiswaView: React.FC = () => {
 
             <div className="mb-3">
               <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
-                KELAS TUJUAN IMPORT
+                KELAS TUJUAN IMPORT (DEFAULT JIKA FILE TIDAK MEMUAT KOLOM KELAS)
               </label>
               <select
                 value={selectedImportClassId || availableClasses[0]?.id || ''}
-                onChange={(e) => setSelectedImportClassId(e.target.value)}
+                onChange={(e) => {
+                  const newClassId = e.target.value;
+                  setSelectedImportClassId(newClassId);
+                  const targetClass = availableClasses.find((c) => c.id === newClassId);
+                  if (parsedStudents.length > 0) {
+                    setParsedStudents((prev) =>
+                      prev.map((item) => {
+                        if (!item.classNameInput) {
+                          return {
+                            ...item,
+                            matchedClassId: newClassId,
+                            matchedClassName: targetClass?.name || item.matchedClassName,
+                          };
+                        }
+                        return item;
+                      })
+                    );
+                  }
+                }}
                 className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:border-blue-600 outline-none"
                 required
               >
@@ -1118,9 +1143,29 @@ export const DataSiswaView: React.FC = () => {
                               {item.nisn || <span className="text-rose-500 italic">-</span>}
                             </td>
                             <td className="p-2.5">
-                              <span className="inline-block px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 font-bold text-[10px]">
-                                {item.matchedClassName || item.classNameInput || availableClasses.find(c => c.id === selectedImportClassId)?.name || 'Default'}
-                              </span>
+                              <select
+                                value={item.matchedClassId || selectedImportClassId || availableClasses[0]?.id || ''}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  const targetCls = availableClasses.find((c) => c.id === val);
+                                  setParsedStudents((prev) => {
+                                    const next = [...prev];
+                                    next[idx] = {
+                                      ...next[idx],
+                                      matchedClassId: val,
+                                      matchedClassName: targetCls?.name || '',
+                                    };
+                                    return next;
+                                  });
+                                }}
+                                className="px-2 py-1 bg-white border border-blue-200 hover:border-blue-400 rounded-lg text-[11px] font-bold text-blue-900 focus:ring-1 focus:ring-blue-500 outline-none cursor-pointer"
+                              >
+                                {availableClasses.map((c) => (
+                                  <option key={c.id} value={c.id}>
+                                    {c.name}
+                                  </option>
+                                ))}
+                              </select>
                             </td>
                             <td className="p-2.5 text-center">
                               {item.isValid ? (
@@ -1149,6 +1194,35 @@ export const DataSiswaView: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <label
                     className={`flex items-start gap-2.5 p-3 rounded-2xl border cursor-pointer transition-all ${
+                      importMode === 'append'
+                        ? 'bg-blue-50/70 border-blue-500 ring-2 ring-blue-500/20 text-slate-900'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="importMode"
+                      checked={importMode === 'append'}
+                      onChange={() => setImportMode('append')}
+                      className="mt-0.5"
+                    />
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <p className="font-extrabold text-xs text-slate-900">
+                          Gabungkan &amp; Perbarui Data
+                        </p>
+                        <span className="px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 font-bold text-[9px]">
+                          Direkomendasikan
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                        Menambahkan siswa baru dan memperbarui data siswa yang sudah ada tanpa menghapus siswa di kelas lain.
+                      </p>
+                    </div>
+                  </label>
+
+                  <label
+                    className={`flex items-start gap-2.5 p-3 rounded-2xl border cursor-pointer transition-all ${
                       importMode === 'replace'
                         ? 'bg-blue-50/70 border-blue-500 ring-2 ring-blue-500/20 text-slate-900'
                         : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
@@ -1163,34 +1237,10 @@ export const DataSiswaView: React.FC = () => {
                     />
                     <div>
                       <p className="font-extrabold text-xs text-slate-900">
-                        Gantikan Seluruh Data Siswa
+                        Gantikan Siswa Rombel Terpilih
                       </p>
                       <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
-                        Menghapus data siswa lama dan mengisi dengan data baru (Ideal untuk Tahun Ajaran Baru).
-                      </p>
-                    </div>
-                  </label>
-
-                  <label
-                    className={`flex items-start gap-2.5 p-3 rounded-2xl border cursor-pointer transition-all ${
-                      importMode === 'append'
-                        ? 'bg-blue-50/70 border-blue-500 ring-2 ring-blue-500/20 text-slate-900'
-                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="importMode"
-                      checked={importMode === 'append'}
-                      onChange={() => setImportMode('append')}
-                      className="mt-0.5"
-                    />
-                    <div>
-                      <p className="font-extrabold text-xs text-slate-900">
-                        Tambahkan ke Data Siswa Saat Ini
-                      </p>
-                      <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
-                        Menyisipkan siswa baru ke daftar yang sudah ada tanpa menghapus siswa sebelumnya.
+                        Hanya me-reset siswa pada rombel yang diimpor. Siswa di kelas lain tetap aman dan tidak terhapus.
                       </p>
                     </div>
                   </label>

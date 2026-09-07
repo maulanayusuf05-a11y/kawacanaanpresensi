@@ -3242,11 +3242,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       }
 
       // 2. Fallback ke Supabase RPC atau direct batch insert
+      const touchedClasses = Array.from(new Set(payload.map((st) => st.class_id).filter(Boolean))) as string[];
+      const effectiveTargetClassId = targetClassId || (touchedClasses.length === 1 ? touchedClasses[0] : null);
+
       const { error: rpcErr } = await supabase.rpc("import_students_atomic", {
         p_school_id: schoolId,
         p_items: payload,
-        p_replace_existing: replaceExisting,
-        p_target_class_id: targetClassId || null,
+        p_replace_existing: effectiveTargetClassId ? replaceExisting : false,
+        p_target_class_id: effectiveTargetClassId || null,
         p_actor_user_id: currentUser?.id || null,
       });
 
@@ -3254,8 +3257,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         console.warn("[importStudents] RPC gagal, mencoba fallback batch insert ke tabel students:", rpcErr.message);
         if (replaceExisting) {
           let delQuery = supabase.from("students").delete().eq("school_id", schoolId);
-          if (targetClassId) delQuery = delQuery.eq("class_id", targetClassId);
-          await delQuery;
+          if (effectiveTargetClassId) {
+            delQuery = delQuery.eq("class_id", effectiveTargetClassId);
+            await delQuery;
+          } else if (touchedClasses.length > 0) {
+            delQuery = delQuery.in("class_id", touchedClasses);
+            await delQuery;
+          }
         }
 
         const rows = payload.map((st) => ({

@@ -577,34 +577,52 @@ export default async function handler(req: any, res: any) {
       }
 
       // Coba panggil import_students_atomic via service role jika tersedia di database
+      // 1. Validasi kelas yang disentuh dalam batch impor (touched classes)
+      const touchedClassIds = new Set<string>();
+      if (targetClassId) touchedClassIds.add(targetClassId);
+      items.forEach((it: any) => {
+        const cid = it.class_id || it.classId;
+        if (cid) touchedClassIds.add(cid);
+      });
+
+      // Tentukan targetClassId tunggal jika semua item menuju kelas yang sama
+      const effectiveTargetClassId = targetClassId || (touchedClassIds.size === 1 ? Array.from(touchedClassIds)[0] : null);
+
       let atomicSucceeded = false;
-      try {
-        const { error: rpcErr } = await admin.rpc('import_students_atomic', {
-          p_school_id: schoolId,
-          p_items: items,
-          p_replace_existing: replaceExisting,
-          p_target_class_id: targetClassId,
-          p_actor_user_id: caller.user.id,
-        });
-        if (!rpcErr) {
-          atomicSucceeded = true;
-        } else {
-          console.warn('[admin-users] rpc import_students_atomic warning, using direct admin batch:', rpcErr.message);
+      // HANYA jalankan RPC atomik jika ada targetClassId yang jelas agar RPC tidak menghapus seluruh sekolah!
+      if (effectiveTargetClassId || !replaceExisting) {
+        try {
+          const { error: rpcErr } = await admin.rpc('import_students_atomic', {
+            p_school_id: schoolId,
+            p_items: items,
+            p_replace_existing: replaceExisting,
+            p_target_class_id: effectiveTargetClassId,
+            p_actor_user_id: caller.user.id,
+          });
+          if (!rpcErr) {
+            atomicSucceeded = true;
+          } else {
+            console.warn('[admin-users] rpc import_students_atomic warning, using direct admin batch:', rpcErr.message);
+          }
+        } catch (rpcEx: any) {
+          console.warn('[admin-users] rpc exception, using direct admin batch:', rpcEx?.message);
         }
-      } catch (rpcEx: any) {
-        console.warn('[admin-users] rpc exception, using direct admin batch:', rpcEx?.message);
       }
 
       if (!atomicSucceeded) {
         // Smart in-place synchronization:
-        // Menghindari penghapusan massal yang memicu error foreign key / trigger 'PROFILE AUTHORIZATION FIELDS ARE IMMUTABLE'
+        // Menghindari penghapusan massal antar-kelas. HANYA sentuh kelas yang diimpor.
         let studentQuery = admin
           .from('students')
           .select('id, nisn, nama, class_id, gender')
           .eq('school_id', schoolId);
-        if (targetClassId) {
-          studentQuery = studentQuery.eq('class_id', targetClassId);
+
+        if (effectiveTargetClassId) {
+          studentQuery = studentQuery.eq('class_id', effectiveTargetClassId);
+        } else if (replaceExisting && touchedClassIds.size > 0) {
+          studentQuery = studentQuery.in('class_id', Array.from(touchedClassIds));
         }
+
         const { data: existingStudentsData } = await studentQuery;
         const existingStudents = existingStudentsData || [];
 
@@ -639,7 +657,7 @@ export default async function handler(req: any, res: any) {
           const itemNama = String(rawItem.nama || '').trim();
           const itemNisn = rawItem.nisn ? String(rawItem.nisn).trim() : null;
           const itemGender: 'L' | 'P' = rawItem.gender === 'P' ? 'P' : 'L';
-          const itemClassId = rawItem.classId || rawItem.class_id || targetClassId || null;
+          const itemClassId = rawItem.classId || rawItem.class_id || effectiveTargetClassId || null;
 
           let matchedExisting: any = null;
           if (itemNisn && existingByNisn.has(itemNisn.toLowerCase())) {
@@ -701,9 +719,12 @@ export default async function handler(req: any, res: any) {
           }
         }
 
-        // 3. Jika mode replace: bersihkan siswa lama yang tidak ada di daftar impor baru
-        if (replaceExisting) {
-          const leftoverStudents = existingStudents.filter((st: any) => !usedExistingIds.has(st.id));
+        // 3. Jika mode replace: HANYA bersihkan siswa lama dalam kelas yang disentuh (touched classes)
+        // JANGAN PERNAH menghapus siswa dari kelas lain di sekolah!
+        if (replaceExisting && touchedClassIds.size > 0) {
+          const leftoverStudents = existingStudents.filter(
+            (st: any) => touchedClassIds.has(st.class_id) && !usedExistingIds.has(st.id)
+          );
           if (leftoverStudents.length > 0) {
             // Siswa yang TIDAK terhubung dengan profiles dapat dihapus langsung
             const safeToDelete = leftoverStudents.filter((st: any) => !linkedStudentIds.has(st.id));
@@ -724,6 +745,36 @@ export default async function handler(req: any, res: any) {
             }
           }
         }
+      }
+
+      // Auto-sinkronisasi relasi profil siswa (profiles.student_id) dengan data tabel students
+      try {
+        const { data: unlinkedProfiles } = await admin
+          .from('profiles')
+          .select('id, username, name')
+          .eq('school_id', schoolId)
+          .eq('role', 'SISWA')
+          .is('student_id', null);
+
+        if (unlinkedProfiles && unlinkedProfiles.length > 0) {
+          const { data: allCurrentStudents } = await admin
+            .from('students')
+            .select('id, nisn, nama')
+            .eq('school_id', schoolId);
+
+          for (const p of unlinkedProfiles) {
+            const matched = (allCurrentStudents || []).find(
+              (st: any) =>
+                (st.nisn && p.username && String(st.nisn).trim() === String(p.username).trim()) ||
+                (st.nama && p.name && st.nama.trim().toLowerCase() === p.name.trim().toLowerCase())
+            );
+            if (matched) {
+              await admin.from('profiles').update({ student_id: matched.id }).eq('id', p.id);
+            }
+          }
+        }
+      } catch (linkErr: any) {
+        console.warn('[admin-users] Non-critical profile relink notice:', linkErr?.message);
       }
 
       // 4. Catat aktivitas ke audit_logs
