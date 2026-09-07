@@ -317,30 +317,39 @@ export const DataPenggunaView: React.FC = () => {
     });
 
     // Count teachers in master data without user account
-    const unlinkedTeachers = teacherList.filter(
-      (t) =>
-        t &&
-        !userList.some(
-          (u) =>
-            u &&
-            ((u.teacherId && u.teacherId === t.id) ||
-            (t.nip && t.nip !== '-' && u.username && String(u.username).trim().toLowerCase() === String(t.nip).trim().toLowerCase()) ||
-            (t.nama && u.name && String(u.name).trim().toLowerCase() === String(t.nama).trim().toLowerCase()))
-        )
-    );
+    const unlinkedTeachers = teacherList.filter((t) => {
+      if (!t) return false;
+      const cleanTNip = (t.nip || "").replace(/\D/g, "");
+      const cleanTName = (t.nama || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      return !userList.some((u) => {
+        if (!u) return false;
+        if (u.teacherId && u.teacherId === t.id) return true;
+        const cleanUNip = (u.nip || "").replace(/\D/g, "");
+        const cleanUUsername = (u.username || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (cleanTNip && cleanTNip.length >= 6 && (cleanUNip === cleanTNip || cleanUUsername.includes(cleanTNip))) return true;
+        const cleanUName = (u.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (cleanTName && cleanUName && (cleanTName === cleanUName || cleanTName.includes(cleanUName) || cleanUName.includes(cleanTName))) return true;
+        if (cleanTName && cleanUUsername && (cleanUUsername === cleanTName || cleanUUsername.includes(cleanTName) || cleanTName.includes(cleanUUsername))) return true;
+        return false;
+      });
+    });
 
     // Count students in master data without user account
-    const unlinkedStudents = studentList.filter(
-      (s) =>
-        s &&
-        !userList.some(
-          (u) =>
-            u &&
-            ((u.studentId && u.studentId === s.id) ||
-            (s.nisn && s.nisn !== '-' && u.username && String(u.username).trim().toLowerCase() === String(s.nisn).trim().toLowerCase()) ||
-            (s.nama && u.name && String(u.name).trim().toLowerCase() === String(s.nama).trim().toLowerCase()))
-        )
-    );
+    const unlinkedStudents = studentList.filter((s) => {
+      if (!s) return false;
+      const cleanSNisn = (s.nisn || "").replace(/\D/g, "");
+      const cleanSName = (s.nama || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      return !userList.some((u) => {
+        if (!u) return false;
+        if (u.studentId && u.studentId === s.id) return true;
+        const cleanUUsername = (u.username || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (cleanSNisn && cleanSNisn.length >= 4 && (cleanUUsername === cleanSNisn || cleanUUsername.includes(cleanSNisn))) return true;
+        const cleanUName = (u.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (cleanSName && cleanUName && (cleanSName === cleanUName || cleanSName.includes(cleanUName) || cleanUName.includes(cleanSName))) return true;
+        if (cleanSName && cleanUUsername && (cleanUUsername === cleanSName || cleanUUsername.includes(cleanSName) || cleanSName.includes(cleanUUsername))) return true;
+        return false;
+      });
+    });
 
     return {
       total: userList.length,
@@ -354,6 +363,8 @@ export const DataPenggunaView: React.FC = () => {
       password: countPassword,
       unlinkedTeachersCount: unlinkedTeachers.length,
       unlinkedStudentsCount: unlinkedStudents.length,
+      unlinkedTeachers,
+      unlinkedStudents,
     };
   }, [users, teachers, classes, subjects, students]);
 
@@ -1007,6 +1018,56 @@ export const DataPenggunaView: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Sync Status Banner */}
+      {stats.unlinkedTeachersCount > 0 || stats.unlinkedStudentsCount > 0 ? (
+        <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+              <AlertTriangle size={20} />
+            </div>
+            <div>
+              <h4 className="text-xs font-black text-amber-900">
+                Data Pengguna Belum Tersinkronkan Sepenuhnya
+              </h4>
+              <p className="text-[11px] text-amber-700 mt-0.5">
+                Terdapat{' '}
+                {stats.unlinkedTeachersCount > 0 && (
+                  <span className="font-bold">{stats.unlinkedTeachersCount} Guru </span>
+                )}
+                {stats.unlinkedTeachersCount > 0 && stats.unlinkedStudentsCount > 0 && 'dan '}
+                {stats.unlinkedStudentsCount > 0 && (
+                  <span className="font-bold">{stats.unlinkedStudentsCount} Siswa </span>
+                )}
+                dari data referensi yang belum memiliki akun pengguna aktif.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setGenerateResetExisting(false);
+              setIsGenerateModalOpen(true);
+            }}
+            className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
+          >
+            <Sparkles size={14} />
+            <span>Generate Pengguna yang Tersisa</span>
+          </button>
+        </div>
+      ) : (teachers.length > 0 || students.length > 0) ? (
+        <div className="bg-emerald-50/70 border border-emerald-200/60 rounded-2xl px-4 py-3 flex items-center justify-between gap-3 shadow-2xs">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+            <span className="text-xs font-bold text-emerald-900">
+              100% Seluruh data guru & siswa referensi telah memiliki akun pengguna aktif.
+            </span>
+          </div>
+          <span className="text-[10px] font-semibold text-emerald-700 hidden md:inline">
+            Total {stats.total} Akun Tersinkronkan
+          </span>
+        </div>
+      ) : null}
 
       {/* Main Table Container Card */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-6 space-y-6">

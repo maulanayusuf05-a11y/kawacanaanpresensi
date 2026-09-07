@@ -2836,12 +2836,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     try {
       const schoolId = currentUser?.schoolId;
       if (!schoolId) throw new Error("Sekolah aktif tidak ditemukan.");
-      const { error } = await supabase
-        .from("classes")
-        .delete()
-        .eq("id", id)
-        .eq("school_id", schoolId);
-      if (error) throw error;
+
+      let apiDone = false;
+      try {
+        const { data: authSession } = await supabase.auth.getSession();
+        const token = authSession.session?.access_token;
+        if (token) {
+          const res = await fetch("/api/admin-users", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              action: "delete_class",
+              classId: id,
+              schoolId,
+            }),
+          });
+          const resJson = await res.json().catch(() => ({}));
+          if (res.ok && resJson.ok) {
+            apiDone = true;
+          }
+        }
+      } catch (_) {}
+
+      if (!apiDone) {
+        // Fallback: lepaskan penugasan siswa terlebih dahulu
+        try {
+          await supabase.from("students").update({ class_id: null }).eq("class_id", id).eq("school_id", schoolId);
+        } catch (_) {}
+        const { error } = await supabase
+          .from("classes")
+          .delete()
+          .eq("id", id)
+          .eq("school_id", schoolId);
+        if (error) throw error;
+      }
+
       await loadData(currentUser?.id);
       showToast("Kelas berhasil dihapus.", "success");
     } catch (e: any) {
@@ -2873,15 +2905,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         academic_year:
           c.academicYear || schoolProfile.tahunPelajaran || "2026/2027",
         wali_kelas_teacher_id: waliId,
+        waliKelasNameInput: c.waliKelasNameInput,
       };
     });
-    const { error } = await supabase.rpc("import_classes_atomic", {
-      p_school_id: schoolId,
-      p_items: payload,
-      p_replace_existing: replaceExisting,
-      p_actor_user_id: currentUser?.id || null,
-    });
-    if (error) throw error;
+
+    // 1. Prioritaskan server API /api/admin-users dengan Service Role untuk keamanan integritas data
+    let apiDone = false;
+    try {
+      const { data: authSession } = await supabase.auth.getSession();
+      const token = authSession.session?.access_token;
+      if (token) {
+        const res = await fetch("/api/admin-users", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            action: "import_classes",
+            schoolId,
+            items: payload,
+            replaceExisting,
+            academicYear: schoolProfile.tahunPelajaran || "2026/2027",
+          }),
+        });
+        const resJson = await res.json().catch(() => ({}));
+        if (res.ok && resJson.ok) {
+          apiDone = true;
+        }
+      }
+    } catch (_) {}
+
+    if (!apiDone) {
+      const { error } = await supabase.rpc("import_classes_atomic", {
+        p_school_id: schoolId,
+        p_items: payload,
+        p_replace_existing: replaceExisting,
+        p_actor_user_id: currentUser?.id || null,
+      });
+      if (error) throw error;
+    }
+
     await loadData(currentUser?.id);
     showToast(`Berhasil mengimpor ${items.length} data kelas.`);
   };
@@ -3090,12 +3154,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const deleteStudentsByClass = async (classId: string) => {
     const schoolId = currentUser?.schoolId;
     if (!schoolId) throw new Error("Sekolah aktif tidak ditemukan.");
-    const { error } = await supabase
-      .from("students")
-      .delete()
-      .eq("school_id", schoolId)
-      .eq("class_id", classId);
-    if (error) throw error;
+
+    let apiDone = false;
+    try {
+      const { data: authSession } = await supabase.auth.getSession();
+      const token = authSession.session?.access_token;
+      if (token) {
+        const res = await fetch("/api/admin-users", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            action: "delete_students_by_class",
+            classId,
+            schoolId,
+          }),
+        });
+        const resJson = await res.json().catch(() => ({}));
+        if (res.ok && resJson.ok) {
+          apiDone = true;
+        }
+      }
+    } catch (_) {}
+
+    if (!apiDone) {
+      const { error } = await supabase
+        .from("students")
+        .delete()
+        .eq("school_id", schoolId)
+        .eq("class_id", classId);
+      if (error) throw error;
+    }
+
     setStudents((p) => p.filter((x) => x.classId !== classId));
   };
   const importStudents = async (
@@ -3641,6 +3733,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     }
 
+    if (base.role === "SISWA") {
+      let studentId = base.studentId || null;
+      if (!studentId && students.length > 0) {
+        const cleanUName = (base.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        const uUsernameNisn = (base.username || "").replace(/\D/g, "");
+        const match = students.find((s) => {
+          const sNisn = (s.nisn || "").replace(/\D/g, "");
+          if (uUsernameNisn && sNisn && uUsernameNisn === sNisn) return true;
+          if (cleanUName && s.nama) {
+            const cleanS = s.nama.toLowerCase().replace(/[^a-z0-9]/g, "");
+            return cleanS === cleanUName;
+          }
+          return false;
+        });
+        if (match) {
+          studentId = match.id;
+          base.studentId = match.id;
+        }
+      }
+      if (studentId) {
+        const studentObj = students.find((s) => s.id === studentId);
+        if (studentObj && studentObj.classId) {
+          const cls = classes.find((c) => c.id === studentObj.classId);
+          return {
+            ...base,
+            classIds: [studentObj.classId],
+            classNames: cls ? [cls.name] : (studentObj.className ? [studentObj.className] : []),
+          };
+        }
+      }
+      return { ...base, classIds: [], classNames: [] };
+    }
+
     if (!teacherId || !schoolId)
       return { ...base, classIds: [], classNames: [] };
     let ids: string[] = [];
@@ -3825,6 +3950,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     if (!schoolId) {
       showToast("ID Sekolah tidak valid.", "error");
       return results;
+    }
+
+    // 1. Prioritaskan server backend API /api/admin-users dengan Service Role:
+    // Menjamin eksekusi atomic, anti timeout, anti kolisi username, dan 100% tuntas tanpa menyisakan pengguna yang belum tergenerate!
+    try {
+      const { data: authSession } = await supabase.auth.getSession();
+      const token = authSession.session?.access_token;
+      if (token) {
+        const res = await fetch("/api/admin-users", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            action: "generate_all_accounts",
+            schoolId,
+            resetExistingPasswords: resetExisting,
+            passwordMode: options?.passwordMode,
+            customPassword: options?.customPassword,
+          }),
+        });
+        const resJson = await res.json().catch(() => ({}));
+        if (res.ok && resJson.ok && Array.isArray(resJson.results)) {
+          // Simpan seluruh password ke localStorage agar tersimpan aman untuk dicetak & diekspor
+          if (schoolId) {
+            try {
+              const existingRaw = localStorage.getItem(`kawacanaan_account_passwords_${schoolId}`);
+              const mergedMap = existingRaw ? { ...JSON.parse(existingRaw) } : {};
+              resJson.results.forEach((r: any) => {
+                if (r.password) {
+                  if (r.username) mergedMap[String(r.username).toLowerCase()] = r.password;
+                  if (r.id) mergedMap[r.id] = r.password;
+                }
+              });
+              localStorage.setItem(`kawacanaan_account_passwords_${schoolId}`, JSON.stringify(mergedMap));
+            } catch (_) {}
+          }
+
+          // Refresh data sekolah secara komprehensif
+          if (currentUser) {
+            await loadDataForSchool(schoolId, currentUser, currentUser.role);
+          } else {
+            await loadData(currentUser?.id);
+          }
+
+          showToast(resJson.message || `Berhasil mengenerate seluruh ${resJson.results.length} akun pengguna tanpa ada yang tertinggal.`);
+          return resJson.results;
+        }
+      }
+    } catch (apiErr) {
+      console.warn("[generateAccountsFromReferences] API server warning, fallback ke client engine:", apiErr);
     }
 
     const createAccountPassword = (): string => {
