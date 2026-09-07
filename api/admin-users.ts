@@ -596,55 +596,132 @@ export default async function handler(req: any, res: any) {
       }
 
       if (!atomicSucceeded) {
-        // Fallback langsung menggunakan Supabase Service Role
-        if (replaceExisting) {
-          // 1. Lepas student_id dari profiles agar tidak tertahan oleh foreign key atau trigger
-          try {
-            if (targetClassId) {
-              const { data: targetStudents } = await admin
-                .from('students')
-                .select('id')
-                .eq('school_id', schoolId)
-                .eq('class_id', targetClassId);
-              const sIds = (targetStudents || []).map((s: any) => s.id);
-              if (sIds.length > 0) {
-                await admin.from('profiles').update({ student_id: null }).eq('school_id', schoolId).in('student_id', sIds);
-              }
-            } else {
-              await admin.from('profiles').update({ student_id: null }).eq('school_id', schoolId);
-            }
-          } catch (unlinkErr: any) {
-            console.warn('[admin-users] Unlink student_id warning:', unlinkErr?.message);
-          }
+        // Smart in-place synchronization:
+        // Menghindari penghapusan massal yang memicu error foreign key / trigger 'PROFILE AUTHORIZATION FIELDS ARE IMMUTABLE'
+        let studentQuery = admin
+          .from('students')
+          .select('id, nisn, nama, class_id, gender')
+          .eq('school_id', schoolId);
+        if (targetClassId) {
+          studentQuery = studentQuery.eq('class_id', targetClassId);
+        }
+        const { data: existingStudentsData } = await studentQuery;
+        const existingStudents = existingStudentsData || [];
 
-          // 2. Bersihkan siswa lama
-          let delQuery = admin.from('students').delete().eq('school_id', schoolId);
-          if (targetClassId) {
-            delQuery = delQuery.eq('class_id', targetClassId);
+        // Ambil ID siswa yang sudah terhubung dengan akun profiles
+        const { data: linkedProfiles } = await admin
+          .from('profiles')
+          .select('student_id')
+          .eq('school_id', schoolId)
+          .not('student_id', 'is', null);
+        const linkedStudentIds = new Set<string>((linkedProfiles || []).map((p: any) => String(p.student_id)));
+
+        // Index data siswa yang sudah ada
+        const existingByNisn = new Map<string, any>();
+        const existingByName = new Map<string, any[]>();
+        for (const st of existingStudents) {
+          if (st.nisn) {
+            existingByNisn.set(String(st.nisn).trim().toLowerCase(), st);
           }
-          const { error: delErr } = await delQuery;
-          if (delErr) {
-            console.error('[admin-users] Error deleting existing students:', delErr.message);
-            return json(res, 500, { error: `Gagal membersihkan data siswa lama: ${delErr.message}` });
+          const cleanName = String(st.nama || '').trim().toLowerCase();
+          if (cleanName) {
+            const arr = existingByName.get(cleanName) || [];
+            arr.push(st);
+            existingByName.set(cleanName, arr);
           }
         }
 
-        // 3. Batch insert data siswa baru (chunked by 100)
-        const rowsToInsert = items.map((st: any) => ({
-          school_id: schoolId,
-          nama: String(st.nama || '').trim(),
-          nisn: st.nisn ? String(st.nisn).trim() : null,
-          gender: st.gender === 'P' ? 'P' : 'L',
-          class_id: st.classId || st.class_id || targetClassId || null,
-        }));
+        const usedExistingIds = new Set<string>();
+        const toUpdate: Array<{ id: string; nama: string; nisn: string | null; gender: 'L' | 'P'; class_id: string | null }> = [];
+        const toInsert: Array<{ school_id: string; nama: string; nisn: string | null; gender: 'L' | 'P'; class_id: string | null }> = [];
 
-        const CHUNK_SIZE = 100;
-        for (let i = 0; i < rowsToInsert.length; i += CHUNK_SIZE) {
-          const chunk = rowsToInsert.slice(i, i + CHUNK_SIZE);
-          const { error: insErr } = await admin.from('students').insert(chunk);
-          if (insErr) {
-            console.error('[admin-users] Error inserting students batch:', insErr.message);
-            return json(res, 500, { error: `Gagal menyimpan data siswa: ${insErr.message}` });
+        for (const rawItem of items) {
+          const itemNama = String(rawItem.nama || '').trim();
+          const itemNisn = rawItem.nisn ? String(rawItem.nisn).trim() : null;
+          const itemGender: 'L' | 'P' = rawItem.gender === 'P' ? 'P' : 'L';
+          const itemClassId = rawItem.classId || rawItem.class_id || targetClassId || null;
+
+          let matchedExisting: any = null;
+          if (itemNisn && existingByNisn.has(itemNisn.toLowerCase())) {
+            const candidate = existingByNisn.get(itemNisn.toLowerCase());
+            if (!usedExistingIds.has(candidate.id)) {
+              matchedExisting = candidate;
+            }
+          }
+
+          if (!matchedExisting && itemNama) {
+            const candidates = existingByName.get(itemNama.toLowerCase()) || [];
+            matchedExisting = candidates.find((c: any) => !usedExistingIds.has(c.id));
+          }
+
+          if (matchedExisting) {
+            usedExistingIds.add(matchedExisting.id);
+            toUpdate.push({
+              id: matchedExisting.id,
+              nama: itemNama,
+              nisn: itemNisn,
+              gender: itemGender,
+              class_id: itemClassId,
+            });
+          } else {
+            toInsert.push({
+              school_id: schoolId,
+              nama: itemNama,
+              nisn: itemNisn,
+              gender: itemGender,
+              class_id: itemClassId,
+            });
+          }
+        }
+
+        // 1. Perbarui data siswa yang cocok di database (ID tidak berubah sehingga profiles aman)
+        for (const upd of toUpdate) {
+          await admin
+            .from('students')
+            .update({
+              nama: upd.nama,
+              nisn: upd.nisn,
+              gender: upd.gender,
+              class_id: upd.class_id,
+            })
+            .eq('id', upd.id)
+            .eq('school_id', schoolId);
+        }
+
+        // 2. Tambahkan siswa baru dalam batch
+        if (toInsert.length > 0) {
+          const CHUNK_SIZE = 100;
+          for (let i = 0; i < toInsert.length; i += CHUNK_SIZE) {
+            const chunk = toInsert.slice(i, i + CHUNK_SIZE);
+            const { error: insErr } = await admin.from('students').insert(chunk);
+            if (insErr) {
+              console.error('[admin-users] Error inserting students batch:', insErr.message);
+              return json(res, 500, { error: `Gagal menyimpan data siswa: ${insErr.message}` });
+            }
+          }
+        }
+
+        // 3. Jika mode replace: bersihkan siswa lama yang tidak ada di daftar impor baru
+        if (replaceExisting) {
+          const leftoverStudents = existingStudents.filter((st: any) => !usedExistingIds.has(st.id));
+          if (leftoverStudents.length > 0) {
+            // Siswa yang TIDAK terhubung dengan profiles dapat dihapus langsung
+            const safeToDelete = leftoverStudents.filter((st: any) => !linkedStudentIds.has(st.id));
+            if (safeToDelete.length > 0) {
+              const safeIds = safeToDelete.map((st: any) => st.id);
+              await admin.from('students').delete().in('id', safeIds).eq('school_id', schoolId);
+            }
+
+            // Siswa yang terhubung dengan profiles: coba delete, jika trigger database memblokir, kosongkan class_id
+            const linkedLeftovers = leftoverStudents.filter((st: any) => linkedStudentIds.has(st.id));
+            if (linkedLeftovers.length > 0) {
+              const linkedIds = linkedLeftovers.map((st: any) => st.id);
+              const { error: delLinkedErr } = await admin.from('students').delete().in('id', linkedIds).eq('school_id', schoolId);
+              if (delLinkedErr) {
+                console.warn('[admin-users] Could not delete linked students, unassigning class instead:', delLinkedErr.message);
+                await admin.from('students').update({ class_id: null }).in('id', linkedIds).eq('school_id', schoolId);
+              }
+            }
           }
         }
       }
@@ -685,7 +762,10 @@ export default async function handler(req: any, res: any) {
       } catch (_) {}
 
       const { error: delErr } = await admin.from('students').delete().eq('id', studentId).eq('school_id', schoolId);
-      if (delErr) return json(res, 500, { error: delErr.message });
+      if (delErr) {
+        // Jika tertahan oleh trigger database profiles, lepaskan kelas siswa
+        await admin.from('students').update({ class_id: null }).eq('id', studentId).eq('school_id', schoolId);
+      }
 
       return json(res, 200, { ok: true, success: true });
     }
