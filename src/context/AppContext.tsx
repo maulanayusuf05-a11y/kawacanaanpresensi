@@ -3042,10 +3042,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const deleteStudent = async (id: string) => {
     try {
       if (!id) throw new Error("ID siswa tidak valid.");
-      const { error } = await supabase.rpc("delete_student_by_id", {
-        p_student_id: id,
-      });
-      if (error) throw error;
+      const schoolId = currentUser?.schoolId;
+
+      // Coba hapus melalui backend API server dengan Service Role
+      let apiDone = false;
+      try {
+        const { data: authSession } = await supabase.auth.getSession();
+        const token = authSession.session?.access_token;
+        if (token) {
+          const res = await fetch("/api/admin-users", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              action: "delete_student",
+              studentId: id,
+              schoolId,
+            }),
+          });
+          const resJson = await res.json().catch(() => ({}));
+          if (res.ok && resJson.ok) {
+            apiDone = true;
+          }
+        }
+      } catch (_) {}
+
+      if (!apiDone) {
+        // Fallback langsung ke Supabase RPC atau tabel students
+        const { error } = await supabase.rpc("delete_student_by_id", {
+          p_student_id: id,
+        });
+        if (error) {
+          const { error: directErr } = await supabase.from("students").delete().eq("id", id);
+          if (directErr) throw error;
+        }
+      }
+
       await loadData(currentUser?.id);
       showToast("Data siswa berhasil dihapus.", "success");
     } catch (e: any) {
@@ -3077,14 +3111,76 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       gender: st.gender || "L",
       class_id: st.classId || null,
     }));
-    const { error } = await supabase.rpc("import_students_atomic", {
-      p_school_id: schoolId,
-      p_items: payload,
-      p_replace_existing: replaceExisting,
-      p_target_class_id: targetClassId || null,
-      p_actor_user_id: currentUser?.id || null,
-    });
-    if (error) throw error;
+
+    // 1. Prioritaskan server API /api/admin-users dengan Service Role untuk mencegah error trigger profil Supabase
+    let apiSuccess = false;
+    let apiErrorMessage = "";
+    try {
+      const { data: authSession } = await supabase.auth.getSession();
+      const token = authSession.session?.access_token;
+      if (token) {
+        const res = await fetch("/api/admin-users", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            action: "import_students",
+            schoolId,
+            items: payload,
+            replaceExisting,
+            targetClassId: targetClassId || null,
+          }),
+        });
+        const resJson = await res.json().catch(() => ({}));
+        if (res.ok && (resJson.ok || resJson.success)) {
+          apiSuccess = true;
+        } else if (resJson?.error) {
+          apiErrorMessage = resJson.error;
+        }
+      }
+    } catch (apiErr: any) {
+      console.warn("[importStudents] Server API fetch warning:", apiErr?.message);
+    }
+
+    if (!apiSuccess) {
+      if (apiErrorMessage && !apiErrorMessage.includes("tidak dikenali")) {
+        throw new Error(apiErrorMessage);
+      }
+
+      // 2. Fallback ke Supabase RPC atau direct batch insert
+      const { error: rpcErr } = await supabase.rpc("import_students_atomic", {
+        p_school_id: schoolId,
+        p_items: payload,
+        p_replace_existing: replaceExisting,
+        p_target_class_id: targetClassId || null,
+        p_actor_user_id: currentUser?.id || null,
+      });
+
+      if (rpcErr) {
+        console.warn("[importStudents] RPC gagal, mencoba fallback batch insert ke tabel students:", rpcErr.message);
+        if (replaceExisting) {
+          let delQuery = supabase.from("students").delete().eq("school_id", schoolId);
+          if (targetClassId) delQuery = delQuery.eq("class_id", targetClassId);
+          await delQuery;
+        }
+
+        const rows = payload.map((st) => ({
+          school_id: schoolId,
+          nama: st.nama,
+          nisn: st.nisn,
+          gender: st.gender,
+          class_id: st.class_id,
+        }));
+
+        const { error: insErr } = await supabase.from("students").insert(rows);
+        if (insErr) {
+          throw new Error(rpcErr.message || insErr.message || "Gagal mengimpor data siswa.");
+        }
+      }
+    }
+
     await loadData(currentUser?.id);
     showToast(`Berhasil mengimpor ${items.length} data siswa.`);
   };

@@ -560,6 +560,136 @@ export default async function handler(req: any, res: any) {
       return json(res, 200, { ok: true, success: true, message: 'Akun pengguna berhasil dihapus.' });
     }
 
+    if (action === 'import_students') {
+      if (!['ADMIN', 'SUPER_ADMIN', 'KEPALA SEKOLAH'].includes(callerRole)) {
+        return json(res, 403, { error: 'Hanya Admin atau Kepala Sekolah yang berwenang mengimpor data siswa.' });
+      }
+      if (!schoolId) {
+        return json(res, 400, { error: 'ID sekolah tidak ditemukan.' });
+      }
+
+      const items = Array.isArray(body.items) ? body.items : [];
+      const replaceExisting = Boolean(body.replaceExisting || body.replace_existing);
+      const targetClassId = body.targetClassId || body.target_class_id || null;
+
+      if (items.length === 0) {
+        return json(res, 400, { error: 'Tidak ada data siswa yang dikirim.' });
+      }
+
+      // Coba panggil import_students_atomic via service role jika tersedia di database
+      let atomicSucceeded = false;
+      try {
+        const { error: rpcErr } = await admin.rpc('import_students_atomic', {
+          p_school_id: schoolId,
+          p_items: items,
+          p_replace_existing: replaceExisting,
+          p_target_class_id: targetClassId,
+          p_actor_user_id: caller.user.id,
+        });
+        if (!rpcErr) {
+          atomicSucceeded = true;
+        } else {
+          console.warn('[admin-users] rpc import_students_atomic warning, using direct admin batch:', rpcErr.message);
+        }
+      } catch (rpcEx: any) {
+        console.warn('[admin-users] rpc exception, using direct admin batch:', rpcEx?.message);
+      }
+
+      if (!atomicSucceeded) {
+        // Fallback langsung menggunakan Supabase Service Role
+        if (replaceExisting) {
+          // 1. Lepas student_id dari profiles agar tidak tertahan oleh foreign key atau trigger
+          try {
+            if (targetClassId) {
+              const { data: targetStudents } = await admin
+                .from('students')
+                .select('id')
+                .eq('school_id', schoolId)
+                .eq('class_id', targetClassId);
+              const sIds = (targetStudents || []).map((s: any) => s.id);
+              if (sIds.length > 0) {
+                await admin.from('profiles').update({ student_id: null }).eq('school_id', schoolId).in('student_id', sIds);
+              }
+            } else {
+              await admin.from('profiles').update({ student_id: null }).eq('school_id', schoolId);
+            }
+          } catch (unlinkErr: any) {
+            console.warn('[admin-users] Unlink student_id warning:', unlinkErr?.message);
+          }
+
+          // 2. Bersihkan siswa lama
+          let delQuery = admin.from('students').delete().eq('school_id', schoolId);
+          if (targetClassId) {
+            delQuery = delQuery.eq('class_id', targetClassId);
+          }
+          const { error: delErr } = await delQuery;
+          if (delErr) {
+            console.error('[admin-users] Error deleting existing students:', delErr.message);
+            return json(res, 500, { error: `Gagal membersihkan data siswa lama: ${delErr.message}` });
+          }
+        }
+
+        // 3. Batch insert data siswa baru (chunked by 100)
+        const rowsToInsert = items.map((st: any) => ({
+          school_id: schoolId,
+          nama: String(st.nama || '').trim(),
+          nisn: st.nisn ? String(st.nisn).trim() : null,
+          gender: st.gender === 'P' ? 'P' : 'L',
+          class_id: st.classId || st.class_id || targetClassId || null,
+        }));
+
+        const CHUNK_SIZE = 100;
+        for (let i = 0; i < rowsToInsert.length; i += CHUNK_SIZE) {
+          const chunk = rowsToInsert.slice(i, i + CHUNK_SIZE);
+          const { error: insErr } = await admin.from('students').insert(chunk);
+          if (insErr) {
+            console.error('[admin-users] Error inserting students batch:', insErr.message);
+            return json(res, 500, { error: `Gagal menyimpan data siswa: ${insErr.message}` });
+          }
+        }
+      }
+
+      // 4. Catat aktivitas ke audit_logs
+      try {
+        await admin.from('audit_logs').insert({
+          actor_id: caller.user.id,
+          actor_name: caller.user.user_metadata?.name || profile?.name || 'Admin',
+          actor_role: callerRole,
+          action: 'IMPORT_STUDENTS',
+          school_id: schoolId,
+          details: {
+            count: items.length,
+            replaceExisting,
+            targetClassId,
+          },
+        });
+      } catch (_) {}
+
+      return json(res, 200, {
+        ok: true,
+        success: true,
+        count: items.length,
+        message: `Berhasil mengimpor ${items.length} data siswa.`,
+      });
+    }
+
+    if (action === 'delete_student') {
+      if (!['ADMIN', 'SUPER_ADMIN', 'KEPALA SEKOLAH'].includes(callerRole)) {
+        return json(res, 403, { error: 'Tidak berwenang menghapus siswa.' });
+      }
+      const studentId = body.studentId || body.student_id;
+      if (!studentId) return json(res, 400, { error: 'ID siswa wajib disertakan.' });
+
+      try {
+        await admin.from('profiles').update({ student_id: null }).eq('student_id', studentId);
+      } catch (_) {}
+
+      const { error: delErr } = await admin.from('students').delete().eq('id', studentId).eq('school_id', schoolId);
+      if (delErr) return json(res, 500, { error: delErr.message });
+
+      return json(res, 200, { ok: true, success: true });
+    }
+
     return json(res, 400, { error: 'Operasi akun tidak dikenali.' });
   } catch (error: any) {
     return json(res, 500, { error: error?.message || 'Terjadi kesalahan server.' });
