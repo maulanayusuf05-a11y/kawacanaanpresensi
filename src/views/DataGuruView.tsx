@@ -149,6 +149,11 @@ export const DataGuruView: React.FC = () => {
     }> = [];
 
     // Prioritas 1: Rombel aktif Wali Kelas atau status eksplisit Wali Kelas (Eksklusif: 1 Guru = 1 Rombel)
+    const isWali =
+      homeroomClasses.length > 0 ||
+      (t.tugasUtama || t.tugas_utama || '').trim().toLowerCase().includes('wali') ||
+      (isPersonalWorkspace && isWaliKelas && (t.id === currentUser?.teacherId || normalizeTeacherName(t.nama) === normalizeTeacherName(currentUser?.name)));
+
     if (homeroomClasses.length > 0) {
       const activeYear = schoolProfile?.tahunPelajaran || '2026/2027';
       const yearMatchingClasses = homeroomClasses.filter((hc) => !hc.academicYear || hc.academicYear === activeYear);
@@ -159,7 +164,7 @@ export const DataGuruView: React.FC = () => {
         title: `Wali Kelas untuk ${effectiveClass.name}`,
         badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200',
       });
-    } else if ((t.tugasUtama || t.tugas_utama || '').trim() === 'Wali Kelas') {
+    } else if (isWali) {
       badges.push({
         type: 'Wali Kelas',
         label: 'Wali Kelas',
@@ -169,6 +174,12 @@ export const DataGuruView: React.FC = () => {
     }
 
     // Prioritas 2: Penugasan Mapel aktif atau status eksplisit Guru Mapel
+    const isMapel =
+      assignedSubjects.length > 0 ||
+      (t.tugasUtama || t.tugas_utama || '').trim().toLowerCase().includes('mapel') ||
+      (t.tugasUtama || t.tugas_utama || '').trim().toLowerCase().includes('pelajaran') ||
+      (isPersonalWorkspace && isGuruMapel && (t.id === currentUser?.teacherId || normalizeTeacherName(t.nama) === normalizeTeacherName(currentUser?.name)));
+
     if (assignedSubjects.length > 0) {
       const seenDutyLabels = new Set<string>();
       assignedSubjects.forEach((sub) => {
@@ -190,7 +201,7 @@ export const DataGuruView: React.FC = () => {
           });
         }
       });
-    } else if ((t.tugasUtama || t.tugas_utama || '').trim() === 'Guru Mapel' && badges.length === 0) {
+    } else if (isMapel && badges.length === 0) {
       badges.push({
         type: 'Guru Mapel',
         label: 'Guru Mapel',
@@ -218,50 +229,67 @@ export const DataGuruView: React.FC = () => {
   };
 
   const baseTeacherList = useMemo(() => {
+    const savedRegName = localStorage.getItem('kawacanaan_last_registered_name');
+    const effectiveName =
+      (currentUser?.name && currentUser.name !== 'Pengguna' && currentUser.name !== 'Guru')
+        ? currentUser.name
+        : (savedRegName || (teachers && teachers[0]?.nama && teachers[0].nama !== 'Pengguna' ? teachers[0].nama : 'Pendidik'));
+
     // Ruang Kerja Individu: selalu 1 guru mandiri
     if (isPersonalWorkspace) {
-      const cleanUserName = normalizeTeacherName(currentUser?.name);
+      const cleanUserName = normalizeTeacherName(effectiveName);
       const userNip = normalizeNip(currentUser?.nip) || (/^\d{8,}$/.test(currentUser?.username || '') ? normalizeNip(currentUser?.username) : '');
+      const expectedDuty = isWaliKelas ? 'Wali Kelas' : 'Guru Mapel';
+
       const found = (teachers || []).find((t) => {
         if (currentUser?.teacherId && t.id === currentUser.teacherId) return true;
         if (userNip && normalizeNip(t.nip) === userNip) return true;
         if (cleanUserName && normalizeTeacherName(t.nama) === cleanUserName) return true;
         return false;
-      });
+      }) || (teachers && teachers[0]);
+
       if (found) {
         return [{
           ...found,
+          nama: (found.nama && found.nama !== 'Pengguna' && found.nama !== 'Guru') ? found.nama : effectiveName,
           nip: (found.nip && found.nip !== '-') ? found.nip : (userNip || currentUser?.nip || '-'),
+          jabatan: found.jabatan || expectedDuty,
+          tugasUtama: found.tugasUtama || found.tugas_utama || expectedDuty,
+          tugas_utama: found.tugas_utama || found.tugasUtama || expectedDuty,
         }];
       }
       return [
         {
           id: currentUser?.teacherId || currentUser?.id || 'teacher-self',
-          nama: currentUser?.name || 'Guru',
+          nama: effectiveName,
           nip: userNip || currentUser?.nip || '-',
           jenisKelamin: 'L' as const,
-          jabatan: isWaliKelas ? 'Wali Kelas' : 'Guru Mapel',
-          tugasUtama: isWaliKelas ? 'Wali Kelas' : 'Guru Mapel',
-          tugas_utama: isWaliKelas ? 'Wali Kelas' : 'Guru Mapel',
+          jabatan: expectedDuty,
+          tugasUtama: expectedDuty,
+          tugas_utama: expectedDuty,
         },
       ];
     }
 
     // Ruang Kerja Sekolah: Data dewan guru sekolah terintegrasi dari Admin Sekolah
-    const cleanUserName = normalizeTeacherName(currentUser?.name);
+    const cleanUserName = normalizeTeacherName(effectiveName);
     const userNip = normalizeNip(currentUser?.nip) || (/^\d{8,}$/.test(currentUser?.username || '') ? normalizeNip(currentUser?.username) : '');
+    const userExpectedDuty = isWaliKelas ? 'Wali Kelas' : (isGuruMapel ? 'Guru Mapel' : undefined);
 
-    // Pastikan data guru yang terhubung dengan akun saat ini memiliki NIP valid
+    // Pastikan data guru yang terhubung dengan akun saat ini memiliki NIP valid & nama benar
     const allEnrichedTeachers = (teachers || []).map((t) => {
       const isMatch =
         (currentUser?.teacherId && t.id === currentUser.teacherId) ||
         (userNip && normalizeNip(t.nip) === userNip) ||
         (cleanUserName && normalizeTeacherName(t.nama) === cleanUserName);
 
-      if (isMatch && (!t.nip || t.nip === '-')) {
+      if (isMatch) {
         return {
           ...t,
-          nip: userNip || currentUser?.nip || t.nip || '-',
+          nama: (t.nama && t.nama !== 'Pengguna' && t.nama !== 'Guru') ? t.nama : effectiveName,
+          nip: (t.nip && t.nip !== '-') ? t.nip : (userNip || currentUser?.nip || t.nip || '-'),
+          tugasUtama: t.tugasUtama || userExpectedDuty || t.tugas_utama,
+          tugas_utama: t.tugas_utama || userExpectedDuty || t.tugasUtama,
         };
       }
       return t;
@@ -280,7 +308,7 @@ export const DataGuruView: React.FC = () => {
         return [
           {
             id: currentUser.teacherId || currentUser.id || 'teacher-self',
-            nama: currentUser.name || 'Guru',
+            nama: effectiveName,
             nip: userNip || currentUser.nip || '-',
             jenisKelamin: 'L' as const,
             jabatan: 'Wali Kelas',
@@ -304,7 +332,7 @@ export const DataGuruView: React.FC = () => {
         return [
           {
             id: currentUser.teacherId || currentUser.id || 'teacher-self',
-            nama: currentUser.name || 'Guru',
+            nama: effectiveName,
             nip: userNip || currentUser.nip || '-',
             jenisKelamin: 'L' as const,
             jabatan: 'Guru Mapel',

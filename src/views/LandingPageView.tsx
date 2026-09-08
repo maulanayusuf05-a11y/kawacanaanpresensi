@@ -17,9 +17,10 @@ import { TermsAndLegalModal, LegalTabType } from '../landing/components/TermsAnd
 
 interface LandingPageViewProps {
   onEnterSystem: () => void;
+  onEnterDashboard?: () => void;
 }
 
-export const LandingPageView: React.FC<LandingPageViewProps> = ({ onEnterSystem }) => {
+export const LandingPageView: React.FC<LandingPageViewProps> = ({ onEnterSystem, onEnterDashboard }) => {
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
   const [isFreeStartOpen, setIsFreeStartOpen] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState<'free' | 'teacher' | 'school'>('school');
@@ -93,6 +94,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({ onEnterSystem 
         onClose={() => setIsFreeStartOpen(false)}
         onOpenLogin={handleOpenLogin}
         onEnterSystem={onEnterSystem}
+        onEnterDashboard={onEnterDashboard}
         lang={lang}
       />
 

@@ -23,6 +23,7 @@ interface FreeStartModalProps {
   onClose: () => void;
   onOpenLogin: () => void;
   onEnterSystem: () => void;
+  onEnterDashboard?: () => void;
   lang: 'ID' | 'EN';
 }
 
@@ -33,9 +34,10 @@ export const FreeStartModal: React.FC<FreeStartModalProps> = ({
   onClose,
   onOpenLogin,
   onEnterSystem,
+  onEnterDashboard,
   lang,
 }) => {
-  const { loginWithCredentials } = useApp();
+  const { loginWithCredentials, setActiveView } = useApp();
 
   // Wizard Steps: 1 = Pilih Peran, 2 = Formulir Identitas & Akun
   const [step, setStep] = useState<1 | 2>(1);
@@ -161,6 +163,8 @@ export const FreeStartModal: React.FC<FreeStartModalProps> = ({
       try {
         localStorage.removeItem('kawacanaan_cached_school_ws');
         localStorage.removeItem('kawacanaan_last_workspace_id');
+        localStorage.setItem('kawacanaan_last_registered_name', cleanName);
+        localStorage.setItem('kawacanaan_last_registered_role', payloadRole);
         if (data.userId && data.schoolId) {
           localStorage.setItem(`kawacanaan_last_workspace_id_${data.userId}`, data.schoolId);
           const personalWs = {
@@ -190,9 +194,18 @@ export const FreeStartModal: React.FC<FreeStartModalProps> = ({
         }
       }
 
-      // Berhasil login dan masuk ke ruang kerja secara langsung
+      // Berhasil login dan masuk ke ruang kerja / dashboard secara langsung
+      setActiveView('dashboard');
+      if (onEnterDashboard) {
+        onEnterDashboard();
+      } else {
+        try {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('page');
+          window.history.pushState(null, '', url.pathname + (url.search ? url.search : ''));
+        } catch (_) {}
+      }
       onClose();
-      onEnterSystem();
     } catch (err: any) {
       setFormError(err.message || (lang === 'ID' ? 'Terjadi kesalahan pada sistem.' : 'A system error occurred.'));
       setIsSubmitting(false);

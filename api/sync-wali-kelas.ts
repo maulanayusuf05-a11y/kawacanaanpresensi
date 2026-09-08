@@ -111,7 +111,6 @@ export default async function handler(req: any, res: any) {
     await admin.from('classes')
       .update({
         wali_kelas_teacher_id: teacher.id,
-        wali_kelas_name: teacher.nama || profile.name,
       })
       .eq('id', targetClassId)
       .eq('school_id', profile.school_id);
@@ -119,22 +118,17 @@ export default async function handler(req: any, res: any) {
     // Lepaskan rombel lain jika sebelumnya terhubung ke guru ini
     const { data: otherClasses } = await admin
       .from('classes')
-      .select('id,name,wali_kelas_name,wali_kelas_teacher_id')
+      .select('id,name,wali_kelas_teacher_id')
       .eq('school_id', profile.school_id)
       .neq('id', targetClassId);
 
     if (otherClasses && otherClasses.length > 0) {
       for (const cls of otherClasses) {
-        const nameMatch = cls.wali_kelas_name && (
-          cleanName(cls.wali_kelas_name) === cleanName(profile.name) ||
-          cleanName(cls.wali_kelas_name) === cleanName(teacher.nama)
-        );
         const idMatch = cls.wali_kelas_teacher_id === teacher.id;
-        if (nameMatch || idMatch) {
+        if (idMatch) {
           await admin.from('classes')
             .update({
               wali_kelas_teacher_id: null,
-              wali_kelas_name: null,
             })
             .eq('id', cls.id)
             .eq('school_id', profile.school_id);

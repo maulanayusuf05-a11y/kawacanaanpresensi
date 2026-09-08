@@ -183,11 +183,10 @@ export const DataSiswaView: React.FC = () => {
     ).length;
   }, [students, myAssignedClasses, accessibleClassIds, accessibleClassNames]);
 
-  // Akses aksi data siswa (tambah/edit/hapus/import) & kolom AKSI hanya muncul untuk Role Admin Sekolah / Admin Individu
-  // Tidak muncul untuk role Kepala Sekolah, Wali Kelas, dan Guru Mapel
-  const isRestrictedRole = isWaliKelas || isGuru || isKepalaSekolah;
-  const showAksiColumn = isAdmin || (isPersonalWorkspace && !isRestrictedRole);
-  const canInputStudents = showAksiColumn;
+  // Akses aksi data siswa (tambah/edit/hapus/import) & kolom AKSI
+  // Tampil untuk Admin Sekolah, Ruang Kerja Individu (seluruh peran), Wali Kelas, dan Guru Mapel
+  const canInputStudents = isAdmin || isPersonalWorkspace || isWaliKelas || isGuru;
+  const showAksiColumn = isAdmin || isPersonalWorkspace || isWaliKelas;
 
   // Kuota siswa pada paket mulai / gratis
   const maxStudentsLimit = currentUser?.maxStudents || (isPersonalWorkspace ? 32 : undefined);

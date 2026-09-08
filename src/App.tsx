@@ -201,6 +201,17 @@ const MainAppContent: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleEnterDashboard = () => {
+    setShowLanding(false);
+    setActiveView('dashboard');
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('page');
+      window.history.pushState(null, '', url.pathname + (url.search ? url.search : ''));
+    } catch (_) {}
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleBackToLanding = () => {
     setShowLanding(true);
     try {
@@ -221,7 +232,7 @@ const MainAppContent: React.FC = () => {
 
   // Tampilan landing page sebagai layar awal saat pengguna belum login
   if (showLanding && !currentUser) {
-    return <LandingPageView onEnterSystem={handleEnterSystem} />;
+    return <LandingPageView onEnterSystem={handleEnterSystem} onEnterDashboard={handleEnterDashboard} />;
   }
 
   // Jika sedang memeriksa sesi auth dan profil pengguna belum ter-hydrate, tampilkan skeleton loading

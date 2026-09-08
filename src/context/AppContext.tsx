@@ -1232,7 +1232,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             Promise.resolve(
               supabase
                 .from("classes")
-                .update({ wali_kelas_teacher_id: null, wali_kelas_name: null })
+                .update({ wali_kelas_teacher_id: null })
                 .eq("id", c.id),
             ).catch(() => {});
           }
@@ -1390,6 +1390,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       if (myMatchedTeacher.nip && (!me.nip || me.nip === "-")) {
         me.nip = myMatchedTeacher.nip;
       }
+      if ((!me.name || me.name === "Pengguna" || me.name === "Guru") && myMatchedTeacher.nama && myMatchedTeacher.nama !== "Pengguna") {
+        me.name = myMatchedTeacher.nama;
+      } else if (me.name && me.name !== "Pengguna" && (!myMatchedTeacher.nama || myMatchedTeacher.nama === "Pengguna" || myMatchedTeacher.nama === "Guru")) {
+        myMatchedTeacher.nama = me.name;
+      }
+    }
+    if (!me.name || me.name === "Pengguna") {
+      const regName = localStorage.getItem("kawacanaan_last_registered_name");
+      if (regName) me.name = regName;
     }
 
     if (me.role === "WALI KELAS") {
@@ -2046,8 +2055,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     // Ambil daftar ruang kerja / membership user dan profil secara paralel dengan Promise.all
     let memberships: WorkspaceMembership[] = [];
     let baseProfile: any = null;
+    let onboardingRes: any = null;
     try {
-      const [onboardingRes, profileRes] = await Promise.all([
+      let profileRes: any = null;
+      [onboardingRes, profileRes] = await Promise.all([
         (async () => {
           const { data: sessionData } = await supabase.auth.getSession();
           const token = sessionData.session?.access_token || "";
@@ -2080,6 +2091,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         memberships = onboardingRes.workspaces;
       }
       baseProfile = profileRes?.data || null;
+      if (!baseProfile && onboardingRes?.profile) {
+        baseProfile = onboardingRes.profile;
+      }
 
       // ISOLASI KETAT: Hanya gabungkan cache sekolah jika user BUKAN pengguna ruang kerja individu murni
       const isPersonalAccount =
@@ -2112,11 +2126,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     // Jika profil belum ada di Supabase client tapi memberships ditemukan (mis. baru selesai onboarding), buat objek baseProfile
     if (!baseProfile && memberships.length > 0) {
       const chosen = memberships[0];
+      let resolvedName = "";
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const meta = sessionData?.session?.user?.user_metadata || {};
+        resolvedName =
+          meta.name ||
+          meta.full_name ||
+          (onboardingRes as any)?.userMetadata?.name ||
+          (onboardingRes as any)?.userMetadata?.full_name ||
+          (onboardingRes as any)?.profile?.name ||
+          (chosen as any)?.userName ||
+          "";
+      } catch (_) {}
+      if (!resolvedName || resolvedName === "Pengguna") {
+        resolvedName = localStorage.getItem("kawacanaan_last_registered_name") || "";
+      }
+      const resolvedRole =
+        chosen.role ||
+        localStorage.getItem("kawacanaan_last_registered_role") ||
+        "WALI KELAS";
       baseProfile = {
         id: userId,
         school_id: chosen.workspaceId,
-        role: chosen.role || "WALI KELAS",
-        name: "Pengguna",
+        role: resolvedRole,
+        name: resolvedName || "Pendidik",
         username: "user_" + userId.slice(0, 8),
         is_active: true,
       };
@@ -2865,38 +2899,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         grade: c.grade,
         academic_year: academicYear,
       };
+
+      let resolvedTeacherId: string | null = null;
       if (Object.prototype.hasOwnProperty.call(c, "waliKelasTeacherId")) {
-        if (c.waliKelasTeacherId) {
-          await ensureTeacherCanBeWaliKelas(c.waliKelasTeacherId, academicYear);
-
-          // Lepaskan penugasan lama di rombel lain pada database Supabase (Eksklusif 1 Guru = 1 Rombel)
-          await supabase
-            .from("classes")
-            .update({ wali_kelas_teacher_id: null, wali_kelas_name: null })
-            .eq("school_id", schoolId)
-            .neq("id", id)
-            .eq("wali_kelas_teacher_id", c.waliKelasTeacherId);
-
-          // Sinkronkan class_ids pada akun profil pengguna terkait
-          await supabase
-            .from("profiles")
-            .update({ class_ids: [id] })
-            .eq("school_id", schoolId)
-            .eq("teacher_id", c.waliKelasTeacherId);
-        }
-        classUpdate.wali_kelas_teacher_id = c.waliKelasTeacherId || null;
-      }
-      if (Object.prototype.hasOwnProperty.call(c, "waliKelasName")) {
-        classUpdate.wali_kelas_name = c.waliKelasName || null;
-        if (c.waliKelasName) {
-          await supabase
-            .from("classes")
-            .update({ wali_kelas_teacher_id: null, wali_kelas_name: null })
-            .eq("school_id", schoolId)
-            .neq("id", id)
-            .ilike("wali_kelas_name", c.waliKelasName.trim());
+        resolvedTeacherId = c.waliKelasTeacherId || null;
+      } else if (c.waliKelasName) {
+        const matched = (teachers || []).find(
+          (t) => t.nama.trim().toLowerCase() === c.waliKelasName!.trim().toLowerCase(),
+        );
+        if (matched) {
+          resolvedTeacherId = matched.id;
         }
       }
+
+      if (resolvedTeacherId) {
+        await ensureTeacherCanBeWaliKelas(resolvedTeacherId, academicYear);
+
+        // Lepaskan penugasan lama di rombel lain pada database Supabase (Eksklusif 1 Guru = 1 Rombel)
+        await supabase
+          .from("classes")
+          .update({ wali_kelas_teacher_id: null })
+          .eq("school_id", schoolId)
+          .neq("id", id)
+          .eq("wali_kelas_teacher_id", resolvedTeacherId);
+
+        // Sinkronkan class_ids pada akun profil pengguna terkait
+        await supabase
+          .from("profiles")
+          .update({ class_ids: [id] })
+          .eq("school_id", schoolId)
+          .eq("teacher_id", resolvedTeacherId);
+      }
+
+      classUpdate.wali_kelas_teacher_id = resolvedTeacherId;
+
       const { data: updatedData, error } = await supabase
         .from("classes")
         .update(classUpdate)
@@ -2914,23 +2950,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               grade: updatedData.grade,
               academicYear: updatedData.academic_year,
               waliKelasTeacherId: updatedData.wali_kelas_teacher_id || null,
-              waliKelasName: updatedData.wali?.nama || updatedData.wali_kelas_name || null,
+              waliKelasName: updatedData.wali?.nama || null,
             };
           }
           if (
             updatedData.wali_kelas_teacher_id &&
             x.waliKelasTeacherId === updatedData.wali_kelas_teacher_id
-          ) {
-            return {
-              ...x,
-              waliKelasTeacherId: null,
-              waliKelasName: null,
-            };
-          }
-          if (
-            updatedData.wali_kelas_name &&
-            x.waliKelasName &&
-            x.waliKelasName.trim().toLowerCase() === updatedData.wali_kelas_name.trim().toLowerCase()
           ) {
             return {
               ...x,

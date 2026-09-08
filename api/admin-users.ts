@@ -305,24 +305,12 @@ export default async function handler(req: any, res: any) {
         if (targetClassId) {
           await admin.from('classes').update({
             wali_kelas_teacher_id: teacherId,
-            wali_kelas_name: name,
           }).eq('id', targetClassId).eq('school_id', schoolId);
 
           // Lepaskan penugasan rombel lain jika guru ini sebelumnya terdaftar di rombel lain
           await admin.from('classes').update({
             wali_kelas_teacher_id: null,
-            wali_kelas_name: null,
           }).eq('school_id', schoolId).neq('id', targetClassId).eq('wali_kelas_teacher_id', teacherId);
-
-          const { data: otherCls } = await admin.from('classes').select('id, wali_kelas_name').eq('school_id', schoolId).neq('id', targetClassId);
-          for (const oc of otherCls || []) {
-            if (oc.wali_kelas_name && (
-              oc.wali_kelas_name.trim().toLowerCase() === name.trim().toLowerCase() ||
-              (teacher?.nama && oc.wali_kelas_name.trim().toLowerCase() === teacher.nama.trim().toLowerCase())
-            )) {
-              await admin.from('classes').update({ wali_kelas_teacher_id: null, wali_kelas_name: null }).eq('id', oc.id);
-            }
-          }
         }
         await admin.from('profiles').update({ class_ids: targetClassId ? [targetClassId] : [] }).eq('id', authUserId);
       }
@@ -468,32 +456,18 @@ export default async function handler(req: any, res: any) {
           // Tetapkan secara eksplisit pada tabel classes
           await admin.from('classes').update({
             wali_kelas_teacher_id: teacherId,
-            wali_kelas_name: name,
           }).eq('id', targetClassId).eq('school_id', target.school_id);
 
           // Lepaskan penugasan rombel lain jika sebelumnya guru ini terdaftar di kelas lain
           await admin.from('classes').update({
             wali_kelas_teacher_id: null,
-            wali_kelas_name: null,
           }).eq('school_id', target.school_id).neq('id', targetClassId).eq('wali_kelas_teacher_id', teacherId);
-
-          // Bersihkan juga nama teks jika tersisa di rombel lain
-          const { data: otherCls } = await admin.from('classes').select('id, wali_kelas_name').eq('school_id', target.school_id).neq('id', targetClassId);
-          for (const oc of otherCls || []) {
-            if (oc.wali_kelas_name && (
-              oc.wali_kelas_name.trim().toLowerCase() === name.trim().toLowerCase() ||
-              (teacher?.nama && oc.wali_kelas_name.trim().toLowerCase() === teacher.nama.trim().toLowerCase())
-            )) {
-              await admin.from('classes').update({ wali_kelas_teacher_id: null, wali_kelas_name: null }).eq('id', oc.id);
-            }
-          }
         }
       }
       if (teacherId && role !== 'WALI KELAS' && target.role === 'WALI KELAS') {
         // Jika peran berubah dari Wali Kelas menjadi non-Wali Kelas, lepaskan kelas binaan
         await admin.from('classes').update({
           wali_kelas_teacher_id: null,
-          wali_kelas_name: null,
         }).eq('school_id', target.school_id).eq('wali_kelas_teacher_id', teacherId);
       }
       if (teacherId && role === 'GURU MAPEL' && classIds.length) {

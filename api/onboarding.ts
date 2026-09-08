@@ -159,6 +159,13 @@ export default async function handler(req: any, res: any) {
         .from('teachers').select('*').eq('school_id', opts.schoolId).eq('nip', normalizedNip).maybeSingle();
       if (nipLookupError) throw nipLookupError;
       if (existingByNip) {
+        const updateFields: any = {};
+        if (opts.tugas_utama || opts.tugasUtama) updateFields.tugas_utama = opts.tugas_utama || opts.tugasUtama;
+        if (opts.nama && opts.nama !== 'Pengguna' && opts.nama !== 'Guru') updateFields.nama = opts.nama;
+        if (Object.keys(updateFields).length > 0) {
+          await db.from('teachers').update(updateFields).eq('id', existingByNip.id);
+          Object.assign(existingByNip, updateFields);
+        }
         return existingByNip;
       }
     }
@@ -168,6 +175,12 @@ export default async function handler(req: any, res: any) {
       const { data: existingByName } = await db
         .from('teachers').select('*').eq('school_id', opts.schoolId).ilike('nama', opts.nama.trim()).maybeSingle();
       if (existingByName) {
+        const updateFields: any = {};
+        if (opts.tugas_utama || opts.tugasUtama) updateFields.tugas_utama = opts.tugas_utama || opts.tugasUtama;
+        if (Object.keys(updateFields).length > 0) {
+          await db.from('teachers').update(updateFields).eq('id', existingByName.id);
+          Object.assign(existingByName, updateFields);
+        }
         return existingByName;
       }
     }
@@ -621,7 +634,13 @@ export default async function handler(req: any, res: any) {
         }
       }
 
-      return json(res, 200, { ok: true, success: true, workspaces });
+      return json(res, 200, {
+        ok: true,
+        success: true,
+        workspaces,
+        profile: profile || null,
+        userMetadata: workspaceAuth.user.user_metadata || null,
+      });
     }
 
     // -------------------------------------------------------------
@@ -1294,16 +1313,20 @@ export default async function handler(req: any, res: any) {
           }
         }
 
-        // Auto-create teacher record jika belum ada di database untuk role WALI KELAS
-        if (!matchedTeacher && callerProfile.role === 'WALI KELAS') {
+        // Auto-create teacher record jika belum ada di database untuk role WALI KELAS atau GURU MAPEL
+        if (!matchedTeacher && (callerProfile.role === 'WALI KELAS' || callerProfile.role === 'GURU MAPEL')) {
           try {
             const userNip = normNip(callerProfile.username);
             const resolvedNip = userNip && userNip.length >= 8 ? callerProfile.username.trim() : (callerProfile.nip || null);
+            const isWali = callerProfile.role === 'WALI KELAS';
+            const teacherName = (callerProfile.name && callerProfile.name !== 'Pengguna' && callerProfile.name !== 'Guru')
+              ? callerProfile.name
+              : (callerProfile.username || (isWali ? 'Wali Kelas' : 'Guru Mapel'));
             const { data: insertedT, error: insTErr } = await db.from('teachers').insert({
               school_id: schoolId,
-              nama: callerProfile.name || callerProfile.username || 'Wali Kelas',
+              nama: teacherName,
               nip: resolvedNip,
-              tugas_utama: 'Wali Kelas',
+              tugas_utama: isWali ? 'Wali Kelas' : 'Guru Mapel',
               jenis_kelamin: 'L',
             }).select().single();
 
@@ -1375,14 +1398,12 @@ export default async function handler(req: any, res: any) {
 
           if (chosenClass && matchedTeacher) {
             // Update rombel yang sah menjadi milik guru ini
-            if (chosenClass.wali_kelas_teacher_id !== matchedTeacher.id || !chosenClass.wali_kelas_name) {
+            if (chosenClass.wali_kelas_teacher_id !== matchedTeacher.id) {
               try {
                 await db.from('classes').update({
                   wali_kelas_teacher_id: matchedTeacher.id,
-                  wali_kelas_name: matchedTeacher.nama || callerProfile.name,
                 }).eq('id', chosenClass.id);
                 chosenClass.wali_kelas_teacher_id = matchedTeacher.id;
-                chosenClass.wali_kelas_name = matchedTeacher.nama || callerProfile.name;
               } catch (_) {}
             }
 
@@ -1390,20 +1411,14 @@ export default async function handler(req: any, res: any) {
             for (const otherCls of allClasses) {
               if (otherCls.id !== chosenClass.id) {
                 const wasAssignedToThisTeacher =
-                  otherCls.wali_kelas_teacher_id === matchedTeacher.id ||
-                  (otherCls.wali_kelas_name && (
-                    normalize(otherCls.wali_kelas_name) === normalize(callerProfile.name) ||
-                    normalize(otherCls.wali_kelas_name) === normalize(matchedTeacher.nama)
-                  ));
+                  otherCls.wali_kelas_teacher_id === matchedTeacher.id;
 
                 if (wasAssignedToThisTeacher) {
                   try {
                     await db.from('classes').update({
                       wali_kelas_teacher_id: null,
-                      wali_kelas_name: null,
                     }).eq('id', otherCls.id);
                     otherCls.wali_kelas_teacher_id = null;
-                    otherCls.wali_kelas_name = null;
                   } catch (_) {}
                 }
               }
@@ -1614,7 +1629,8 @@ export default async function handler(req: any, res: any) {
           nama: fullName,
           nip,
           jenisKelamin: gender,
-          tugasUtama: role === 'WALI KELAS' ? 'Wali Kelas' : String(body.subjectName || 'Guru Mapel'),
+          tugasUtama: role === 'WALI KELAS' ? 'Wali Kelas' : (body.tugasUtama || 'Guru Mapel'),
+          tugas_utama: role === 'WALI KELAS' ? 'Wali Kelas' : (body.tugasUtama || 'Guru Mapel'),
         });
 
         if (role === 'WALI KELAS') {
