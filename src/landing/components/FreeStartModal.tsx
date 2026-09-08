@@ -13,7 +13,6 @@ import {
   Loader2,
   Sparkles,
   X,
-  Phone,
   ShieldCheck,
   CheckCircle2,
 } from 'lucide-react';
@@ -42,7 +41,7 @@ export const FreeStartModal: React.FC<FreeStartModalProps> = ({
   const [step, setStep] = useState<1 | 2>(1);
   const [selectedRole, setSelectedRole] = useState<RoleType>('homeroom');
 
-  // Form Fields
+  // Form Fields (Hanya Identitas Akun & Masuk)
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
   const [usernameManuallyEdited, setUsernameManuallyEdited] = useState(false);
@@ -50,19 +49,6 @@ export const FreeStartModal: React.FC<FreeStartModalProps> = ({
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-
-  // Detail Pendidik
-  const [nip, setNip] = useState('');
-  const [gender, setGender] = useState<'L' | 'P'>('L');
-  const [phone, setPhone] = useState('');
-  const [employmentStatus, setEmploymentStatus] = useState('PNS');
-
-  // Role Specific: Wali Kelas
-  const [grade, setGrade] = useState<number>(1);
-  const [className, setClassName] = useState<string>('Kelas 1');
-
-  // Role Specific: Guru Mapel
-  const [subjectName, setSubjectName] = useState<string>('Pendidikan Jasmani, Olahraga, dan Kesehatan (PJOK)');
 
   // Submission & Error State
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -133,14 +119,6 @@ export const FreeStartModal: React.FC<FreeStartModalProps> = ({
       setFormError(lang === 'ID' ? 'Konfirmasi kata sandi tidak cocok.' : 'Password confirmation does not match.');
       return;
     }
-    if (selectedRole === 'subject' && !subjectName.trim()) {
-      setFormError(
-        lang === 'ID'
-          ? 'Mata pelajaran yang diampu wajib diisi.'
-          : 'Subject taught is required.'
-      );
-      return;
-    }
 
     setIsSubmitting(true);
 
@@ -156,14 +134,14 @@ export const FreeStartModal: React.FC<FreeStartModalProps> = ({
         password: password,
         role: payloadRole,
         mode: 'personal',
-        nip: nip.trim() || '-',
-        gender,
-        phone: phone.trim() || '-',
-        employmentStatus,
-        grade: selectedRole === 'homeroom' ? grade : 1,
-        className: selectedRole === 'homeroom' ? (className.trim() || `Kelas ${grade}`) : 'Kelas 1',
-        subjectName: selectedRole === 'subject' ? subjectName.trim() : undefined,
-        workspaceName: `Ruang Kerja ${cleanName}`,
+        nip: '-',
+        gender: 'L',
+        phone: '-',
+        employmentStatus: 'PNS',
+        grade: 1,
+        className: 'Kelas 1',
+        subjectName: selectedRole === 'subject' ? 'Guru Mata Pelajaran' : undefined,
+        workspaceName: selectedRole === 'homeroom' ? `Ruang Kerja Wali Kelas - ${cleanName}` : `Ruang Kerja Guru Mapel - ${cleanName}`,
         schoolId: null,
       };
 
@@ -189,7 +167,7 @@ export const FreeStartModal: React.FC<FreeStartModalProps> = ({
         }
       }
 
-      // Berhasil login dan masuk ke ruang kerja
+      // Berhasil login dan masuk ke ruang kerja secara langsung
       onClose();
       onEnterSystem();
     } catch (err: any) {
@@ -200,7 +178,7 @@ export const FreeStartModal: React.FC<FreeStartModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/70 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-200">
-      <div className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden my-auto animate-in zoom-in-95 duration-200">
+      <div className="relative w-full max-w-xl bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden my-auto animate-in zoom-in-95 duration-200">
         
         {/* Header Modal */}
         <div className="relative bg-gradient-to-r from-blue-700 via-blue-800 to-indigo-900 px-6 sm:px-8 py-6 text-white">
@@ -226,11 +204,11 @@ export const FreeStartModal: React.FC<FreeStartModalProps> = ({
           <p className="text-xs sm:text-sm text-blue-100/90 mt-1 max-w-lg leading-relaxed">
             {step === 1
               ? (lang === 'ID'
-                  ? 'Tentukan peran Anda untuk mulai mengelola kehadiran, siswa, dan ruang kerja digital.'
-                  : 'Choose your role to start managing attendance, students, and your digital workspace.')
+                  ? 'Tentukan peran Anda untuk mulai mengelola kehadiran dan ruang kerja digital.'
+                  : 'Choose your role to start managing attendance and your digital workspace.')
               : (lang === 'ID'
-                  ? 'Lengkapi formulir di bawah ini untuk langsung membuat dan mengaktifkan ruang kerja Anda.'
-                  : 'Complete the form below to immediately set up and enter your workspace.')}
+                  ? 'Lengkapi data akun untuk langsung membuat dan masuk ke ruang kerja Anda.'
+                  : 'Complete your account details to immediately create and enter your workspace.')}
           </p>
         </div>
 
@@ -321,7 +299,7 @@ export const FreeStartModal: React.FC<FreeStartModalProps> = ({
           )}
 
           {/* ========================================================================= */}
-          {/* LANGKAH 2: FORMULIR IDENTITAS & AKUN (TANPA PILIHAN MODEL RUANG KERJA)    */}
+          {/* LANGKAH 2: FORMULIR IDENTITAS & AKUN SAJA (TANPA DATA PENUGASAN/SEKOLAH)  */}
           {/* ========================================================================= */}
           {step === 2 && (
             <form onSubmit={handleSubmit} className="space-y-5">
@@ -360,13 +338,13 @@ export const FreeStartModal: React.FC<FreeStartModalProps> = ({
                 </div>
               )}
 
-              {/* Seksi 1: Akun & Masuk */}
+              {/* Formulir Akun & Masuk */}
               <div className="p-4 sm:p-5 rounded-2xl bg-blue-50/40 border border-blue-100/80 space-y-3.5">
                 <div className="flex items-center gap-2 text-blue-900 pb-2 border-b border-blue-100">
                   <ShieldCheck size={18} className="text-blue-600 shrink-0" />
                   <div>
                     <h4 className="font-black text-xs uppercase tracking-wider text-slate-900">
-                      1. Identitas Akun & Masuk
+                      {lang === 'ID' ? 'Identitas Akun & Masuk' : 'Account Identity & Login'}
                     </h4>
                     <p className="text-[11px] text-slate-500">
                       Gunakan informasi ini saat masuk ke dalam aplikasi presensi.
@@ -480,183 +458,6 @@ export const FreeStartModal: React.FC<FreeStartModalProps> = ({
                         id="input-free-confirm-password"
                       />
                     </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Seksi 2: Form Penugasan & Data Guru */}
-              <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-3.5">
-                <div className="pb-2 border-b border-slate-200">
-                  <h4 className="font-black text-xs uppercase tracking-wider text-slate-900">
-                    2. Data Guru & Penugasan
-                  </h4>
-                  <p className="text-[11px] text-slate-500">
-                    Konfigurasi ruang kelas yang akan langsung disiapkan untuk Anda.
-                  </p>
-                </div>
-
-                {/* FORM SPESIFIK WALI KELAS */}
-                {selectedRole === 'homeroom' && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                        Tingkat Kelas: <span className="text-rose-500">*</span>
-                      </label>
-                      <select
-                        value={grade}
-                        onChange={(e) => {
-                          const g = Number(e.target.value);
-                          setGrade(g);
-                          setClassName(`Kelas ${g}`);
-                        }}
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold bg-white text-slate-900 focus:border-blue-600 outline-none cursor-pointer"
-                        id="select-free-grade"
-                      >
-                        {[1, 2, 3, 4, 5, 6].map((g) => (
-                          <option key={g} value={g}>
-                            Kelas {g} SD
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                        Nama Rombel / Kelas: <span className="text-rose-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={className}
-                        onChange={(e) => setClassName(e.target.value)}
-                        placeholder="Contoh: Kelas 1, Kelas 4A..."
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold bg-white text-slate-900 focus:border-blue-600 outline-none"
-                        id="input-free-classname"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* FORM SPESIFIK GURU MAPEL */}
-                {selectedRole === 'subject' && (
-                  <div className="space-y-2">
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
-                      Mata Pelajaran yang Diampu: <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={subjectName}
-                      onChange={(e) => setSubjectName(e.target.value)}
-                      placeholder="Contoh: PJOK, Pendidikan Agama Islam..."
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold bg-white text-slate-900 focus:border-emerald-600 outline-none"
-                      id="input-free-subjectname"
-                    />
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      {[
-                        'PJOK',
-                        'Pendidikan Agama Islam (PAI)',
-                        'Pendidikan Agama Kristen',
-                        'Bahasa Inggris',
-                        'Seni Budaya',
-                        'Informatika',
-                      ].map((item) => (
-                        <button
-                          key={item}
-                          type="button"
-                          onClick={() => setSubjectName(item)}
-                          className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:border-emerald-500 hover:text-emerald-700 text-slate-700 text-[11px] font-semibold transition cursor-pointer"
-                        >
-                          {item}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Profil Guru Tambahan: NIP, Jenis Kelamin, Telepon, Status */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                  {/* NIP */}
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                      NIP / NUPTK (Opsional):
-                    </label>
-                    <input
-                      type="text"
-                      value={nip}
-                      onChange={(e) => setNip(e.target.value)}
-                      placeholder="Jika belum ada, kosongkan"
-                      className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold bg-white text-slate-900 focus:border-blue-600 outline-none"
-                      id="input-free-nip"
-                    />
-                  </div>
-
-                  {/* Jenis Kelamin */}
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                      Jenis Kelamin:
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setGender('L')}
-                        className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
-                          gender === 'L'
-                            ? 'bg-blue-600 border-blue-600 text-white'
-                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                        }`}
-                      >
-                        Laki-laki
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setGender('P')}
-                        className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
-                          gender === 'P'
-                            ? 'bg-blue-600 border-blue-600 text-white'
-                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                        }`}
-                      >
-                        Perempuan
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* No. Telepon / WA */}
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                      No. WhatsApp (Opsional):
-                    </label>
-                    <div className="relative">
-                      <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="tel"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        placeholder="0812xxxxxxxx"
-                        className="w-full pl-10 pr-3.5 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold bg-white text-slate-900 focus:border-blue-600 outline-none"
-                        id="input-free-phone"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Status Kepegawaian */}
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                      Status Kepegawaian:
-                    </label>
-                    <select
-                      value={employmentStatus}
-                      onChange={(e) => setEmploymentStatus(e.target.value)}
-                      className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold bg-white text-slate-900 focus:border-blue-600 outline-none cursor-pointer"
-                      id="select-free-employment-status"
-                    >
-                      <option value="PNS">PNS</option>
-                      <option value="PPPK">PPPK</option>
-                      <option value="Guru Honor">Guru Honor</option>
-                      <option value="Guru Tetap Yayasan">Guru Tetap Yayasan</option>
-                      <option value="Non-ASN">Non-ASN Lainnya</option>
-                    </select>
                   </div>
                 </div>
               </div>
