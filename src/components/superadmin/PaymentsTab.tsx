@@ -110,17 +110,37 @@ export const PaymentsTab: React.FC<{
 }> = ({ showToast }) => {
   const [transactions, setTransactions] = useState<PaymentTransaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const callSuperadmin = async (action: string, payload: any = {}) => {
+    const supabaseModule = await import('../../lib/supabase');
+    const token = (await supabaseModule.supabase.auth.getSession()).data.session?.access_token || '';
+    const res = await fetch('/api/superadmin', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ action, ...payload }),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || 'Terjadi kesalahan pada server Super Admin.');
+    return body;
+  };
+
   const loadPayments = async () => {
     setLoading(true);
-    try { const res = await fetch('/api/superadmin',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${(await (await import('../../lib/supabase')).supabase.auth.getSession()).data.session?.access_token||''}`},body:JSON.stringify({action:'payments'})}); const body=await res.json(); if(!res.ok) throw new Error(body.error||'Gagal memuat pembayaran.'); setTransactions(body.payments||[]); }
-    catch(e:any){ showToast(e.message,'error'); }
-    finally{ setLoading(false); }
+    try {
+      const body = await callSuperadmin('payments');
+      setTransactions(body.payments || []);
+    } catch (e: any) {
+      showToast(e.message, 'error');
+    } finally {
+      setLoading(false);
+    }
   };
-  useEffect(()=>{void loadPayments();},[]);
+  useEffect(() => { void loadPayments(); }, []);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'SETTLED' | 'PENDING' | 'EXPIRED'>('ALL');
   const [selectedTrx, setSelectedTrx] = useState<PaymentTransaction | null>(null);
-
 
   const formatRupiah = (val: number) => {
     return new Intl.NumberFormat('id-ID', {
@@ -172,24 +192,25 @@ export const PaymentsTab: React.FC<{
     }
   };
 
-  const handleManualApprove = (id: string) => {
-    setTransactions((prev) =>
-      prev.map((t) =>
-        t.id === id
-          ? {
-              ...t,
-              status: 'SETTLED',
-              paidAt: new Date().toISOString(),
-            }
-          : t
-      )
-    );
-    showToast('Transaksi berhasil dikonfirmasi LUNAS secara manual.', 'success');
+  const handleManualApprove = async (id: string, invoiceNo?: string) => {
+    try {
+      await callSuperadmin('approve_payment', { payment_id: id, invoice_no: invoiceNo });
+      showToast('Transaksi berhasil diverifikasi LUNAS & masa aktif sekolah diperbarui.', 'success');
+      await loadPayments();
+    } catch (e: any) {
+      showToast(e.message || 'Gagal memverifikasi pembayaran.', 'error');
+    }
   };
 
-  const handleDeleteTrx = (id: string) => {
-    setTransactions((prev) => prev.filter((t) => t.id !== id));
-    showToast('Data transaksi telah dihapus.', 'info');
+  const handleDeleteTrx = async (id: string, invoiceNo?: string) => {
+    if (!window.confirm(`Hapus catatan transaksi ${invoiceNo || id}?`)) return;
+    try {
+      await callSuperadmin('delete_payment', { payment_id: id, invoice_no: invoiceNo });
+      showToast('Data transaksi telah dihapus.', 'info');
+      await loadPayments();
+    } catch (e: any) {
+      showToast(e.message || 'Gagal menghapus transaksi.', 'error');
+    }
   };
 
   return (
@@ -416,7 +437,7 @@ export const PaymentsTab: React.FC<{
                         {trx.status === 'PENDING' && (
                           <button
                             type="button"
-                            onClick={() => handleManualApprove(trx.id)}
+                            onClick={() => handleManualApprove(trx.id, trx.invoiceNo)}
                             className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] flex items-center gap-1 cursor-pointer transition shadow-xs"
                             title="Konfirmasi Lunas Manual"
                           >
@@ -427,7 +448,7 @@ export const PaymentsTab: React.FC<{
 
                         <button
                           type="button"
-                          onClick={() => handleDeleteTrx(trx.id)}
+                          onClick={() => handleDeleteTrx(trx.id, trx.invoiceNo)}
                           className="p-2 rounded-xl bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-400 transition cursor-pointer"
                           title="Hapus Transaksi"
                         >

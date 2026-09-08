@@ -225,25 +225,6 @@ export default async function handler(req: any, res: any) {
   // 3. CREATE SNAP TRANSACTION
   // --------------------------------------------------------------------------
   if (action === 'create_transaction') {
-    // Validasi konfigurasi server-side
-    if (!midtrans.server_key) {
-      return json(res, 400, {
-        error: 'Midtrans Server Key belum dikonfigurasi. Harap atur MIDTRANS_SERVER_KEY di environment variables atau di Super Admin.',
-        code: 'MIDTRANS_SERVER_KEY_MISSING'
-      });
-    }
-
-    if (!midtrans.client_key) {
-      return json(res, 400, {
-        error: 'Midtrans Client Key belum dikonfigurasi. Harap atur MIDTRANS_CLIENT_KEY di environment variables atau di Super Admin.',
-        code: 'MIDTRANS_CLIENT_KEY_MISSING'
-      });
-    }
-
-    if (!midtrans.enabled) {
-      return json(res, 400, { error: 'Gateway pembayaran Midtrans sedang dinonaktifkan oleh administrator.' });
-    }
-
     const {
       plan_id = 'teacher',
       billing_cycle = 'monthly',
@@ -287,6 +268,46 @@ export default async function handler(req: any, res: any) {
     const timeStamp = Math.floor(Date.now() / 1000);
     const randomSuffix = Math.floor(Math.random() * 899 + 100);
     const orderId = `KWC-${cleanPrefix}-${timeStamp}-${randomSuffix}`;
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
+
+    // Jika Midtrans belum dikonfigurasi kuncinya oleh Superadmin
+    if (!midtrans.server_key || !midtrans.client_key || !midtrans.enabled) {
+      await db.from('payments').upsert(
+        {
+          invoice_no: orderId,
+          school_id: school_id || null,
+          plan_name: planTitle,
+          amount: amount,
+          unique_code: 0,
+          total_amount: amount,
+          status: 'PENDING',
+          payment_method: 'MIDTRANS',
+          school_name: school_name || 'Sekolah Dasar',
+          npsn: npsn || null,
+          contact_name: contact_name || 'Wali Kelas / Guru',
+          contact_phone: contact_phone || null,
+          email: email || null,
+          created_at: now.toISOString(),
+          expires_at: expiresAt,
+        },
+        { onConflict: 'invoice_no' }
+      );
+
+      return json(res, 200, {
+        ok: true,
+        order_id: orderId,
+        snap_token: null,
+        token: null,
+        redirect_url: null,
+        amount,
+        plan_title: planTitle,
+        client_key: midtrans.client_key || '',
+        is_production: false,
+        is_simulation: true,
+        notice: 'Kredensial Midtrans belum diset di Super Admin. Tagihan berhasil dibuat dan dapat diverifikasi langsung oleh Super Admin.',
+      });
+    }
 
     // Sesuai konteks: Selalu gunakan Sandbox Endpoint
     const snapEndpoint = 'https://app.sandbox.midtrans.com/snap/v1/transactions';
@@ -367,6 +388,7 @@ export default async function handler(req: any, res: any) {
         ok: true,
         order_id: orderId,
         snap_token: snapData.token,
+        token: snapData.token,
         redirect_url: snapData.redirect_url,
         amount,
         plan_title: planTitle,
@@ -390,10 +412,30 @@ export default async function handler(req: any, res: any) {
       return json(res, 400, { error: 'order_id wajib diisi' });
     }
 
+    // Periksa status lokal di database terlebih dahulu
+    const { data: localPayment } = await db
+      .from('payments')
+      .select('*')
+      .eq('invoice_no', orderId)
+      .maybeSingle();
+
+    if (localPayment && localPayment.status === 'SETTLED') {
+      return json(res, 200, {
+        ok: true,
+        status: 'settlement',
+        is_settled: true,
+        payment: localPayment,
+        message: 'Transaksi sudah LUNAS terverifikasi di sistem.',
+      });
+    }
+
     if (!midtrans.server_key) {
-      return json(res, 400, {
-        error: 'Midtrans Server Key belum dikonfigurasi di server. Harap isi variabel MIDTRANS_SERVER_KEY.',
-        code: 'MIDTRANS_SERVER_KEY_MISSING'
+      return json(res, 200, {
+        ok: true,
+        status: localPayment?.status || 'PENDING',
+        is_settled: localPayment?.status === 'SETTLED',
+        payment: localPayment,
+        notice: 'Midtrans Server Key belum diatur di server.',
       });
     }
 
@@ -530,6 +572,65 @@ export default async function handler(req: any, res: any) {
     }, { onConflict: 'invoice_no' }).select().single();
     if (error) return json(res, 400, { error: error.message });
     return json(res, 200, { ok: true, payment: data });
+  }
+
+  // --------------------------------------------------------------------------
+  // 6. SIMULATE SETTLEMENT (Untuk Sandbox & Onboarding Test)
+  // --------------------------------------------------------------------------
+  if (action === 'simulate_settlement') {
+    const orderId = b.order_id || q.order_id;
+    if (!orderId) return json(res, 400, { error: 'order_id wajib diisi' });
+
+    const { data: existingPayment } = await db
+      .from('payments')
+      .select('*')
+      .eq('invoice_no', orderId)
+      .maybeSingle();
+
+    if (!existingPayment) return json(res, 404, { error: 'Transaksi pembayaran tidak ditemukan.' });
+
+    const paidAt = new Date().toISOString();
+    await db
+      .from('payments')
+      .update({
+        status: 'SETTLED',
+        paid_at: paidAt,
+        payment_method: 'MIDTRANS_SANDBOX',
+      })
+      .eq('invoice_no', orderId);
+
+    if (existingPayment.school_id) {
+      const isYearly =
+        existingPayment.plan_name?.toLowerCase().includes('tahun') ||
+        existingPayment.amount >= 200000;
+      const durationDays = isYearly ? 365 : 30;
+      const now = new Date();
+      const currentExpiry = existingPayment.subscription_expires_at
+        ? new Date(existingPayment.subscription_expires_at)
+        : now;
+      const baseDate = currentExpiry > now ? currentExpiry : now;
+      const newExpiry = new Date(baseDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
+
+      const targetPlan = existingPayment.plan_name?.toLowerCase().includes('guru')
+        ? 'guru_pro'
+        : 'sekolah_pro';
+
+      await db
+        .from('schools')
+        .update({
+          status: 'active',
+          plan: targetPlan,
+          subscription_expires_at: newExpiry.toISOString(),
+        })
+        .eq('id', existingPayment.school_id);
+    }
+
+    return json(res, 200, {
+      ok: true,
+      status: 'settlement',
+      is_settled: true,
+      message: 'Simulasi pembayaran Midtrans berhasil diselesaikan (SETTLED).',
+    });
   }
 
   return json(res, 400, { error: 'Aksi Midtrans tidak dikenali.' });

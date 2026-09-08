@@ -137,12 +137,13 @@ export const BillingSection: React.FC<{
 
     payments.forEach((p) => {
       const isThisMonth = (p.createdAt || p.created_at || '').startsWith(currentMonthStr);
-      if (p.status === 'paid') {
+      const isSettled = p.status === 'SETTLED' || p.status === 'paid';
+      if (isSettled) {
         paidCount++;
         if (isThisMonth) {
           monthTotal += Number(p.totalAmount || p.total_amount || p.amount || 0);
         }
-      } else if (p.status === 'pending' || p.status === 'menunggu_pembayaran') {
+      } else if (p.status === 'PENDING' || p.status === 'pending' || p.status === 'menunggu_pembayaran') {
         pendingCount++;
       }
     });
@@ -465,10 +466,10 @@ export const BillingSection: React.FC<{
                       <td className="py-3 px-4">
                         <span
                           className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            p.status === 'paid' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                            p.status === 'SETTLED' || p.status === 'paid' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
                           }`}
                         >
-                          {p.status === 'paid' ? 'Lunas' : 'Menunggu'}
+                          {p.status === 'SETTLED' || p.status === 'paid' ? 'Lunas' : 'Menunggu'}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-right">

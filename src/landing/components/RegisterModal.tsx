@@ -20,11 +20,34 @@ import {
   Mail,
   Building2,
   MapPin,
-  HelpCircle,
   Check,
   BookOpen,
-  GraduationCap
+  GraduationCap,
+  CreditCard,
+  QrCode,
+  RefreshCw,
+  Clock,
+  Wallet,
+  Zap,
+  ChevronRight,
 } from 'lucide-react';
+import { KawacanaanEmblem } from '../../components/KawacanaanEmblem';
+
+declare global {
+  interface Window {
+    snap?: {
+      pay: (
+        token: string,
+        callbacks: {
+          onSuccess?: (result: any) => void;
+          onPending?: (result: any) => void;
+          onError?: (result: any) => void;
+          onClose?: () => void;
+        }
+      ) => void;
+    };
+  }
+}
 
 interface RegisterModalProps {
   isOpen: boolean;
@@ -49,6 +72,27 @@ interface SchoolLookupResult {
   email?: string;
 }
 
+interface PaymentSessionData {
+  orderId: string;
+  snapToken: string | null;
+  redirectUrl: string | null;
+  amount: number;
+  planTitle: string;
+  billingCycle: 'monthly' | 'yearly';
+  schoolId?: string;
+  schoolName: string;
+  npsn: string;
+  contactName: string;
+  contactPhone: string;
+  email: string;
+  status: 'PENDING' | 'SETTLED' | 'EXPIRED';
+  isSimulation?: boolean;
+  notice?: string;
+  createdAdminUsername: string;
+  createdAdminRole: string;
+  assignedInfo: string;
+}
+
 export const RegisterModal: React.FC<RegisterModalProps> = ({
   isOpen,
   onClose,
@@ -68,10 +112,11 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
   const [provinsi, setProvinsi] = useState('');
   const [kodePos, setKodePos] = useState('');
 
-  // Plan Selection (Pre-selected from initial choice)
+  // Plan & Billing State
   const [selectedPlan, setSelectedPlan] = useState<'free' | 'teacher' | 'school'>(
     initialPlanId || 'free'
   );
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
 
   // User / Teacher Details
   const isTeacherRegistration = selectedPlan === 'free' || selectedPlan === 'teacher';
@@ -93,6 +138,17 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
 
+  // Midtrans Client Config & Payment Session State
+  const [midtransConfig, setMidtransConfig] = useState<{
+    client_key: string;
+    is_production: boolean;
+    snap_url: string;
+    enabled: boolean;
+  } | null>(null);
+  const [paymentSession, setPaymentSession] = useState<PaymentSessionData | null>(null);
+  const [isCheckingPayment, setIsCheckingPayment] = useState(false);
+  const [paymentCheckMessage, setPaymentCheckMessage] = useState<string | null>(null);
+
   // Success State
   const [registrationSuccessData, setRegistrationSuccessData] = useState<{
     schoolName: string;
@@ -102,14 +158,40 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
     plan: string;
     classesCount: number;
     assignedClassOrSubject?: string;
+    invoiceNo?: string;
   } | null>(null);
 
   const [copied, setCopied] = useState(false);
+  const [copiedOrder, setCopiedOrder] = useState(false);
+
+  // Load Midtrans Snap Script dynamically when modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+
+    fetch('/api/midtrans?action=get_client_config')
+      .then((res) => res.json())
+      .then((cfg) => {
+        if (cfg.ok && cfg.enabled && cfg.client_key) {
+          setMidtransConfig(cfg);
+          if (!document.getElementById('midtrans-snap-script')) {
+            const script = document.createElement('script');
+            script.id = 'midtrans-snap-script';
+            script.src = cfg.snap_url;
+            script.setAttribute('data-client-key', cfg.client_key);
+            script.async = true;
+            document.body.appendChild(script);
+          }
+        }
+      })
+      .catch(() => {});
+  }, [isOpen]);
 
   useEffect(() => {
     if (isOpen) {
       setSubmitError('');
       setRegistrationSuccessData(null);
+      setPaymentSession(null);
+      setPaymentCheckMessage(null);
       if (initialPlanId) {
         setSelectedPlan(initialPlanId);
       }
@@ -127,6 +209,53 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
     : cleanNpsnDigits
     ? `admin.${cleanNpsnDigits}`
     : 'admin.<NPSN>';
+
+  // Plan info display configuration & pricing
+  const planConfig = {
+    free: {
+      name: 'Paket Gratis',
+      monthlyPrice: 0,
+      yearlyPrice: 0,
+      badge: '1 Guru Gratis (32 Siswa)',
+      badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+      description: 'Akses tanpa batas untuk 1 rombel binaan. Langsung aktif ke dashboard guru tanpa biaya apa pun.',
+      features: ['Presensi 1 Rombel SD', '32 Peserta Didik', 'Ekspor Excel Standar', 'Masa Aktif Seumur Hidup'],
+    },
+    teacher: {
+      name: 'Paket Guru Mandiri',
+      monthlyPrice: 29000,
+      yearlyPrice: 290000, // Diskon 2 bulan (hemat Rp 58.000)
+      badge: 'Guru Pro (Multi-Kelas)',
+      badgeColor: 'bg-blue-50 text-blue-700 border-blue-200',
+      description: 'Bisa didaftarkan oleh guru di sekolah mana pun. Terhubung hingga 5 rombel dan jadwal mata pelajaran.',
+      features: ['Hingga 5 Rombel SD', '150 Peserta Didik', 'Multi-Jadwal Mapel & Ekstrakurikuler', 'Laporan Presensi Otomatis & Grafik'],
+    },
+    school: {
+      name: 'Paket Sekolah Lengkap',
+      monthlyPrice: 249000,
+      yearlyPrice: 2490000, // Diskon 2 bulan (hemat Rp 498.000)
+      badge: '1 Institusi Sekolah Penuh',
+      badgeColor: 'bg-indigo-50 text-indigo-800 border-indigo-200',
+      description: 'Mencakup seluruh rombel kelas 1–6, semua guru mapel/wali kelas, portal siswa, dan rekap dinas.',
+      features: ['Seluruh Rombel Kelas 1–6 SD', 'Seluruh Guru & Staf (Tak Terbatas)', 'Portal Orang Tua / Siswa', 'Sinkronisasi Super Admin & Rekap Terpadu'],
+    },
+  };
+
+  const currentPlan = planConfig[selectedPlan];
+  const activeAmount =
+    selectedPlan === 'free'
+      ? 0
+      : billingCycle === 'yearly'
+      ? currentPlan.yearlyPrice
+      : currentPlan.monthlyPrice;
+
+  const formatRupiah = (num: number) => {
+    return new Intl.NumberFormat('id-ID', {
+      style: 'currency',
+      currency: 'IDR',
+      maximumFractionDigits: 0,
+    }).format(num);
+  };
 
   // Auto-Lookup Data Sekolah dari Kemendikdasmen via API
   const handleLookupNpsn = async (targetNpsn?: string) => {
@@ -200,13 +329,114 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
     const val = e.target.value.replace(/\D/g, '').slice(0, 8);
     setNpsn(val);
     setLookupError('');
+    setLookupSuccess(false);
     if (val.length === 8) {
       handleLookupNpsn(val);
-    } else {
-      setLookupSuccess(false);
     }
   };
 
+  // Helper trigger Snap pay popup
+  const triggerSnapPay = (token: string, session: PaymentSessionData) => {
+    if (!window.snap) {
+      setPaymentCheckMessage(
+        'Komponen Midtrans Snap sedang memuat. Jika popup tidak terbuka, silakan gunakan tombol Bayar di bawah.'
+      );
+      return;
+    }
+    window.snap.pay(token, {
+      onSuccess: async () => {
+        setIsCheckingPayment(true);
+        try {
+          await fetch(`/api/midtrans?action=check_status&order_id=${encodeURIComponent(session.orderId)}`);
+          completeOnboardingSuccess(session);
+        } catch (_) {
+          completeOnboardingSuccess(session);
+        } finally {
+          setIsCheckingPayment(false);
+        }
+      },
+      onPending: () => {
+        setPaymentCheckMessage('Transaksi tercatat di Midtrans. Menunggu penyelesaian pembayaran.');
+      },
+      onError: () => {
+        setPaymentCheckMessage('Pembayaran belum berhasil diselesaikan. Silakan coba kembali.');
+      },
+      onClose: () => {
+        setPaymentCheckMessage(
+          'Jendela pembayaran ditutup. Anda dapat membuka kembali pembayaran atau mengecek status.'
+        );
+      },
+    });
+  };
+
+  // Check Status Inquiry
+  const handleCheckStatus = async (orderId: string) => {
+    setIsCheckingPayment(true);
+    setPaymentCheckMessage(null);
+    try {
+      const res = await fetch(`/api/midtrans?action=check_status&order_id=${encodeURIComponent(orderId)}`);
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || 'Gagal memeriksa status.');
+
+      if (body.is_settled || body.status === 'settlement' || body.status === 'capture') {
+        completeOnboardingSuccess(paymentSession);
+      } else {
+        setPaymentCheckMessage(
+          `Status: ${body.status || 'PENDING'}. Jika Anda baru saja melakukan transfer, silakan tunggu beberapa saat lalu cek kembali.`
+        );
+      }
+    } catch (e: any) {
+      setPaymentCheckMessage(e.message || 'Gagal menghubungi gateway Midtrans.');
+    } finally {
+      setIsCheckingPayment(false);
+    }
+  };
+
+  // Simulate Instant Settlement (For Sandbox / Dev Testing)
+  const handleSimulatePayment = async (orderId: string) => {
+    setIsCheckingPayment(true);
+    try {
+      const res = await fetch('/api/midtrans', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'simulate_settlement', order_id: orderId }),
+      });
+      const body = await res.json();
+      if (!res.ok || !body.ok) throw new Error(body.error || 'Gagal simulasi pembayaran.');
+      completeOnboardingSuccess(paymentSession);
+    } catch (e: any) {
+      setPaymentCheckMessage(e.message || 'Gagal simulasi pembayaran.');
+    } finally {
+      setIsCheckingPayment(false);
+    }
+  };
+
+  // Complete onboarding transition
+  const completeOnboardingSuccess = (session: PaymentSessionData | null) => {
+    const assigned = session?.assignedInfo || (
+      isTeacherRegistration
+        ? teacherType === 'WALI_KELAS'
+          ? `Wali Kelas SD (Kelas ${teacherGrade})`
+          : `Guru Mata Pelajaran (${teacherSubject})`
+        : 'Administrator & Kepala Sekolah'
+    );
+
+    const durationLabel = billingCycle === 'yearly' ? '1 Tahun Aktif' : '1 Bulan Aktif';
+
+    setRegistrationSuccessData({
+      schoolName: schoolName.trim(),
+      npsn: cleanNpsnDigits,
+      username: session?.createdAdminUsername || generatedUsername,
+      role: session?.createdAdminRole || (isTeacherRegistration ? 'WALI KELAS' : 'ADMIN'),
+      plan: `${currentPlan.name} (${durationLabel}) - LUNAS Terverifikasi`,
+      classesCount: selectedPlan === 'school' ? 6 : 1,
+      assignedClassOrSubject: assigned,
+      invoiceNo: session?.orderId,
+    });
+    setPaymentSession(null);
+  };
+
+  // Submit Handler
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitError('');
@@ -224,18 +454,14 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
     if (!fullName.trim()) {
       setSubmitError(
         isTeacherRegistration
-          ? (lang === 'ID' ? 'Nama lengkap Guru wajib diisi.' : 'Teacher name is required.')
-          : (lang === 'ID' ? 'Nama penanggung jawab/Admin wajib diisi.' : 'Admin name is required.')
+          ? 'Nama lengkap guru/pendidik wajib diisi.'
+          : 'Nama penanggung jawab/operator wajib diisi.'
       );
       return;
     }
 
-    if (!password || password.length < 8) {
-      setSubmitError(
-        lang === 'ID'
-          ? 'Kata sandi minimal 8 karakter demi keamanan akun.'
-          : 'Password must be at least 8 characters.'
-      );
+    if (!password || password.length < 6) {
+      setSubmitError(lang === 'ID' ? 'Kata sandi minimal 6 karakter.' : 'Password must be at least 6 characters.');
       return;
     }
 
@@ -246,7 +472,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
         npsn: cleanNpsnDigits,
         schoolName: schoolName.trim(),
         status: statusSekolah,
-        plan: selectedPlan,
+        plan: selectedPlan === 'free' ? 'guru_gratis' : selectedPlan === 'teacher' ? 'guru_pro' : 'sekolah_pro',
         jenjang: 'SD',
         alamat,
         jalan,
@@ -258,7 +484,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
         // Akun fields
         adminName: fullName.trim(),
         adminPhone: phone.trim(),
-        adminEmail: email.trim(),
+        adminEmail: email.trim() || `${generatedUsername}@kawacanaan.sch.id`,
         adminPassword: password,
         // Guru specific fields
         teacherType,
@@ -285,22 +511,71 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
           : `Guru Mata Pelajaran (${teacherSubject})`
         : 'Administrator & Kepala Sekolah';
 
-      setRegistrationSuccessData({
+      // 1. JIKA PAKET GRATIS: Langsung aktifkan dan tampilkan layar sukses!
+      if (selectedPlan === 'free') {
+        setRegistrationSuccessData({
+          schoolName: schoolName.trim(),
+          npsn: cleanNpsnDigits,
+          username: data.admin?.username || generatedUsername,
+          role: data.admin?.role || (isTeacherRegistration ? 'WALI KELAS' : 'ADMIN'),
+          plan: 'Paket Mulai / Gratis (Rp0 - 1 Guru, 32 Siswa)',
+          classesCount: data.classesCreated || 1,
+          assignedClassOrSubject: assignedInfo,
+        });
+        return;
+      }
+
+      // 2. JIKA PAKET BERBAYAR: Inisiasi Transaksi Midtrans
+      const midtransRes = await fetch('/api/midtrans', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create_transaction',
+          plan_id: selectedPlan,
+          billing_cycle: billingCycle,
+          school_id: data.school?.id,
+          school_name: schoolName.trim(),
+          npsn: cleanNpsnDigits,
+          contact_name: fullName.trim(),
+          contact_phone: phone.trim(),
+          email: email.trim() || `${generatedUsername}@kawacanaan.sch.id`,
+        }),
+      });
+
+      const midtransData = await midtransRes.json();
+      if (!midtransRes.ok || !midtransData.ok) {
+        throw new Error(midtransData?.error || 'Gagal menyiapkan sesi pembayaran Midtrans.');
+      }
+
+      const session: PaymentSessionData = {
+        orderId: midtransData.order_id,
+        snapToken: midtransData.snap_token || midtransData.token || null,
+        redirectUrl: midtransData.redirect_url || null,
+        amount: midtransData.amount || activeAmount,
+        planTitle: midtransData.plan_title || currentPlan.name,
+        billingCycle,
+        schoolId: data.school?.id,
         schoolName: schoolName.trim(),
         npsn: cleanNpsnDigits,
-        username: data.admin?.username || generatedUsername,
-        role: data.admin?.role || (isTeacherRegistration ? 'WALI KELAS' : 'ADMIN'),
-        plan:
-          selectedPlan === 'free'
-            ? 'Paket Mulai / Gratis (Rp0 - 1 Guru, 32 Siswa)'
-            : selectedPlan === 'teacher'
-            ? 'Paket Guru Mandiri (Rp31.000/bln, 1 Guru, 32 Siswa)'
-            : 'Paket Sekolah Lengkap (Rp270.000/bln, 8 Guru + 1 Kepsek)',
-        classesCount: data.classesCreated || (selectedPlan === 'school' ? 6 : 1),
-        assignedClassOrSubject: assignedInfo,
-      });
+        contactName: fullName.trim(),
+        contactPhone: phone.trim(),
+        email: email.trim(),
+        status: 'PENDING',
+        isSimulation: !!midtransData.is_simulation,
+        notice: midtransData.notice,
+        createdAdminUsername: data.admin?.username || generatedUsername,
+        createdAdminRole: data.admin?.role || (isTeacherRegistration ? 'WALI KELAS' : 'ADMIN'),
+        assignedInfo,
+      };
+
+      setPaymentSession(session);
+
+      // Otomatis buka popup Midtrans Snap jika tersedia
+      if (session.snapToken && window.snap) {
+        triggerSnapPay(session.snapToken, session);
+      }
     } catch (err: any) {
-      setSubmitError(err.message || 'Terjadi kesalahan sistem.');
+      setSubmitError(err.message || 'Terjadi kesalahan sistem saat pendaftaran.');
     } finally {
       setIsSubmitting(false);
     }
@@ -308,10 +583,16 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
 
   const handleCopyCredentials = () => {
     if (!registrationSuccessData) return;
-    const text = `KREDENSIAL AKUN PRESENSI SD\nSekolah: ${registrationSuccessData.schoolName}\nNPSN: ${registrationSuccessData.npsn}\nNama Pendidik/Admin: ${fullName}\nUsername: ${registrationSuccessData.username}\nPassword: ${password}\nPeran: ${registrationSuccessData.assignedClassOrSubject || registrationSuccessData.role}\nPaket: ${registrationSuccessData.plan}\nLink Login: ${window.location.origin}/?page=login`;
+    const text = `KREDENSIAL AKUN SISTEM KAWACANAAN\nSekolah: ${registrationSuccessData.schoolName}\nNPSN: ${registrationSuccessData.npsn}\nNama: ${fullName}\nUsername: ${registrationSuccessData.username}\nPassword: ${password}\nPeran: ${registrationSuccessData.assignedClassOrSubject || registrationSuccessData.role}\nPaket: ${registrationSuccessData.plan}\nLink Login: ${window.location.origin}/?page=login`;
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
+  };
+
+  const handleCopyOrderId = (id: string) => {
+    navigator.clipboard.writeText(id);
+    setCopiedOrder(true);
+    setTimeout(() => setCopiedOrder(false), 2000);
   };
 
   const handleOpenLoginInNewTab = () => {
@@ -323,384 +604,598 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
     }
   };
 
-  // Plan info display configuration
-  const planInfo = {
-    free: {
-      name: 'Paket Gratis',
-      price: 'Rp0 / Selamanya',
-      badge: '1 Guru Gratis (32 Siswa)',
-      badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-      description: 'Akses gratis selamanya untuk 1 rombel binaan. Langsung aktif ke dashboard guru tanpa biaya.',
-    },
-    teacher: {
-      name: 'Paket Guru Mandiri',
-      price: 'Rp29.000 / Bulan',
-      badge: 'Guru Pro (Multi-Kelas)',
-      badgeColor: 'bg-blue-50 text-blue-700 border-blue-200',
-      description: 'Bisa didaftarkan oleh guru di sekolah mana pun. Terhubung hingga 5 rombel dan jadwal mata pelajaran.',
-    },
-    school: {
-      name: 'Paket Sekolah Lengkap',
-      price: 'Rp249.000 / Bulan',
-      badge: '1 Institusi Sekolah Penuh',
-      badgeColor: 'bg-indigo-50 text-indigo-800 border-indigo-200',
-      description: 'Mencakup seluruh rombel kelas 1–6, semua guru mapel/wali kelas, portal siswa, dan rekap dinas.',
-    },
-  }[selectedPlan];
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-sm overflow-y-auto antialiased">
-      <div className="relative w-full max-w-2xl my-auto bg-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-200 text-slate-800 animate-in fade-in zoom-in-95 duration-200">
-        
-        {/* Close button */}
-        <button
-          onClick={onClose}
-          className="absolute top-5 right-5 p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-          aria-label="Tutup"
+    <div
+      id="register-school-modal"
+      className="fixed inset-0 z-[999] flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-md overflow-y-auto"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        id="register-school-card"
+        className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden my-auto"
+      >
+        {/* Header Section */}
+        <div
+          id="modal-header"
+          className="relative bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-900 text-white p-5 sm:p-6 border-b border-indigo-800/40"
         >
-          <X size={20} />
-        </button>
+          <button
+            id="btn-close-register-modal"
+            onClick={onClose}
+            className="absolute top-4 right-4 p-2 rounded-full text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+            aria-label="Tutup modal"
+          >
+            <X className="w-5 h-5" />
+          </button>
 
-        {/* ===================== SUCCESS SCREEN ===================== */}
-        {registrationSuccessData ? (
-          <div className="space-y-6 text-center py-2">
-            <div className="w-16 h-16 rounded-3xl bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center mx-auto shadow-inner">
-              <CheckCircle2 size={32} />
-            </div>
-
-            <div className="space-y-1.5">
-              <span className="px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-black uppercase tracking-wider rounded-full">
-                {isTeacherRegistration ? 'Akun Guru Berhasil Diaktifkan' : 'Akun Administrator Berhasil Diaktifkan'}
-              </span>
-              <h2 className="text-2xl font-black text-slate-900 tracking-tight">
-                {isTeacherRegistration ? 'Selamat Datang, Bapak/Ibu Guru!' : 'Selamat Datang di Kawacanaan Presensi!'}
+          <div className="flex items-center gap-3 mb-2">
+            <KawacanaanEmblem size={42} className="border-2 border-amber-400/80 shadow-md" />
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wider text-amber-300">
+                  Sistem Kawacanaan
+                </span>
+                <span className="inline-flex items-center gap-1 text-[10px] bg-white/15 px-2 py-0.5 rounded-full font-medium text-slate-200">
+                  <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                  Kemendikdasmen Terverifikasi
+                </span>
+              </div>
+              <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
+                {registrationSuccessData
+                  ? 'Akun Kawacanaan Berhasil Dibuat'
+                  : paymentSession
+                  ? 'Menyelesaikan Pembayaran Midtrans'
+                  : 'Onboarding Pengguna & Sekolah Baru'}
               </h2>
-              <p className="text-xs sm:text-sm text-slate-600 max-w-lg mx-auto leading-relaxed">
-                Akun untuk <strong>{fullName}</strong> di <strong>{registrationSuccessData.schoolName}</strong> telah siap digunakan.
-                {isTeacherRegistration
-                  ? ` Anda dapat langsung masuk ke Dashboard Guru untuk mengelola presensi siswa ${registrationSuccessData.assignedClassOrSubject}.`
-                  : ` Sistem telah menginisialisasi ${registrationSuccessData.classesCount} Rombel Kelas SD secara otomatis.`}
+            </div>
+          </div>
+          <p className="text-xs sm:text-sm text-slate-300">
+            {registrationSuccessData
+              ? 'Kredensial login Anda telah terbit dan terdaftar di database pusat sistem Kawacanaan.'
+              : paymentSession
+              ? 'Selesaikan pembayaran tagihan melalui Midtrans Snap untuk mengaktifkan paket langganan Anda.'
+              : 'Daftarkan sekolah dan akun pendidik dengan pencarian otomatis data NPSN resmi.'}
+          </p>
+        </div>
+
+        {/* ------------------------------------------------------------- */}
+        {/* VIEW 1: LAYAR SUKSES PENDAFTARAN & KREDENSIAL */}
+        {/* ------------------------------------------------------------- */}
+        {registrationSuccessData ? (
+          <div id="registration-success-view" className="p-6 sm:p-8 space-y-6">
+            <div className="text-center space-y-3">
+              <div className="inline-flex items-center justify-center p-3 bg-emerald-100 text-emerald-700 rounded-full">
+                <CheckCircle2 className="w-10 h-10" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900">
+                Selamat Datang di Ekosistem Kawacanaan!
+              </h3>
+              <p className="text-sm text-slate-600 max-w-lg mx-auto">
+                Akun resmi untuk <span className="font-semibold text-slate-900">{registrationSuccessData.schoolName}</span> telah
+                aktif dan siap digunakan langsung untuk rekap presensi dan administrasi sekolah.
               </p>
             </div>
 
-            {/* Credential Box */}
-            <div className="p-5 bg-slate-50 border border-slate-200 rounded-2xl text-left space-y-3.5 shadow-2xs">
-              <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
-                <div className="text-xs font-black uppercase text-slate-500 tracking-wider flex items-center gap-1.5">
-                  <ShieldCheck size={16} className="text-blue-600" />
-                  <span>Kredensial Akses Pengguna</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleCopyCredentials}
-                  className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-bold rounded-lg flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
-                >
-                  {copied ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
-                  <span>{copied ? 'Tersalin!' : 'Salin Data Akun'}</span>
-                </button>
+            {/* Credential Card */}
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                  Detail Kredensial Login
+                </span>
+                <span className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md">
+                  {registrationSuccessData.plan}
+                </span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                <div className="p-2.5 bg-white border border-slate-200 rounded-xl">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Username Masuk</span>
-                  <span className="font-mono font-black text-blue-700 text-sm">{registrationSuccessData.username}</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                <div>
+                  <div className="text-xs text-slate-500 mb-0.5">Nama Pendidik / Admin</div>
+                  <div className="font-semibold text-slate-800">{fullName}</div>
                 </div>
-
-                <div className="p-2.5 bg-white border border-slate-200 rounded-xl">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Kata Sandi (Password)</span>
-                  <span className="font-mono font-black text-slate-800 text-sm">•••••••• ({password.slice(0, 3)}***)</span>
+                <div>
+                  <div className="text-xs text-slate-500 mb-0.5">Penugasan / Jabatan</div>
+                  <div className="font-semibold text-slate-800">
+                    {registrationSuccessData.assignedClassOrSubject}
+                  </div>
                 </div>
-
-                <div className="p-2.5 bg-white border border-slate-200 rounded-xl">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Peran & Penugasan</span>
-                  <span className="font-bold text-slate-800">{registrationSuccessData.assignedClassOrSubject}</span>
+                <div>
+                  <div className="text-xs text-slate-500 mb-0.5">Username Akses</div>
+                  <div className="font-mono font-bold text-indigo-600 bg-indigo-50/70 px-2 py-1 rounded inline-block border border-indigo-100">
+                    {registrationSuccessData.username}
+                  </div>
                 </div>
-
-                <div className="p-2.5 bg-white border border-slate-200 rounded-xl">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Status Paket</span>
-                  <span className="font-bold text-emerald-700">{registrationSuccessData.plan}</span>
+                <div>
+                  <div className="text-xs text-slate-500 mb-0.5">Kata Sandi (Password)</div>
+                  <div className="font-mono font-bold text-slate-900 bg-white px-2 py-1 rounded inline-block border border-slate-200">
+                    {password}
+                  </div>
                 </div>
               </div>
 
-              <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl text-[11px] text-blue-900 font-medium leading-relaxed">
-                💡 <strong>Langkah Selanjutnya:</strong> Gunakan username <code>{registrationSuccessData.username}</code> untuk login. Anda akan langsung diarahkan ke Dashboard Guru dan dapat langsung mencatat presensi harian siswa.
-              </div>
+              {registrationSuccessData.invoiceNo && (
+                <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
+                  <span>Nomor Invoice Midtrans:</span>
+                  <span className="font-mono font-medium text-slate-700">
+                    {registrationSuccessData.invoiceNo}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
+            <div className="flex flex-col sm:flex-row gap-3 pt-2">
               <button
+                id="btn-copy-credentials"
                 type="button"
-                onClick={handleOpenLoginInNewTab}
-                className="w-full sm:flex-1 py-4 px-6 bg-blue-700 hover:bg-blue-800 active:scale-98 text-white font-extrabold text-xs sm:text-sm rounded-2xl shadow-lg hover:shadow-blue-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                onClick={handleCopyCredentials}
+                className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-slate-300 text-slate-700 font-semibold text-sm hover:bg-slate-50 transition-colors"
               >
-                <span>Buka Tab Baru & Masuk ke Dashboard</span>
-                <ExternalLink size={17} />
+                {copied ? (
+                  <>
+                    <Check className="w-4 h-4 text-emerald-600" />
+                    <span>Kredensial Disalin!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4 text-slate-500" />
+                    <span>Salin Kredensial Akun</span>
+                  </>
+                )}
               </button>
 
               <button
+                id="btn-go-to-login"
                 type="button"
-                onClick={onClose}
-                className="w-full sm:w-auto py-4 px-6 border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs sm:text-sm rounded-2xl transition-colors cursor-pointer"
+                onClick={handleOpenLoginInNewTab}
+                className="flex-1 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-semibold text-sm shadow-md transition-all"
               >
-                Tutup Jendela
+                <span>Buka Dashboard & Masuk</span>
+                <ExternalLink className="w-4 h-4" />
               </button>
             </div>
           </div>
-        ) : (
-          /* ===================== REGISTRATION FORM ===================== */
-          <form onSubmit={handleSubmit} className="space-y-5">
-            
-            {/* Header */}
-            <div className="text-left space-y-1">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 border border-blue-100 text-blue-700 text-[10px] font-black uppercase tracking-wider rounded-md">
-                <School size={13} className="text-blue-600" />
-                <span>{isTeacherRegistration ? 'Pendaftaran Akun Guru Mandiri' : 'Pendaftaran Administrator Sekolah'}</span>
+        ) : paymentSession ? (
+          /* ------------------------------------------------------------- */
+          /* VIEW 2: TAHAP PEMBAYARAN MIDTRANS GATEWAY */
+          /* ------------------------------------------------------------- */
+          <div id="payment-gateway-view" className="p-6 sm:p-8 space-y-6">
+            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 p-4 bg-amber-50/80 border border-amber-200 rounded-xl">
+              <div className="p-3 bg-amber-500 text-white rounded-xl shadow-sm shrink-0">
+                <Clock className="w-7 h-7" />
               </div>
-              <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-                {isTeacherRegistration ? 'Formulir Pendaftaran Guru Presensi SD' : 'Formulir Pendaftaran Administrator Sekolah'}
-              </h2>
-              <p className="text-xs text-slate-500">
-                {isTeacherRegistration
-                  ? 'Guru langsung membuat akun dan langsung terhubung ke kelas yang diampu tanpa perlu membuat akun Admin.'
-                  : 'Pendaftaran 1 sekolah utuh untuk kepala sekolah dan 8 guru mata pelajaran/wali kelas.'}
-              </p>
-            </div>
-
-            {/* SELECTED PLAN DISPLAY BADGE (Replaces redundant 3-card selector) */}
-            <div className="p-3.5 bg-gradient-to-r from-[#0B2F64] to-blue-900 text-white rounded-2xl flex items-center justify-between shadow-xs">
-              <div className="space-y-0.5">
-                <div className="text-[10px] uppercase font-bold text-blue-200 tracking-wider flex items-center gap-1">
-                  <Sparkles size={12} className="text-amber-400" />
-                  <span>Paket yang Anda Pilih:</span>
+              <div className="flex-1 text-center sm:text-left">
+                <div className="flex items-center justify-center sm:justify-start gap-2">
+                  <span className="text-xs font-bold text-amber-900 uppercase tracking-wide">
+                    Menunggu Pembayaran
+                  </span>
+                  <span className="inline-block w-2 h-2 rounded-full bg-amber-500 animate-ping" />
                 </div>
-                <div className="text-sm font-black text-white flex items-center gap-2">
-                  <span>{planInfo.name}</span>
-                  <span className="text-xs font-bold text-amber-300">({planInfo.price})</span>
-                </div>
-                <div className="text-[11px] text-slate-300">
-                  {planInfo.description}
-                </div>
-              </div>
-              <div className="text-right shrink-0">
-                <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-white/10 text-white border border-white/20">
-                  {planInfo.badge}
-                </span>
+                <h3 className="text-lg font-bold text-slate-900 mt-0.5">
+                  {paymentSession.planTitle}
+                </h3>
+                <p className="text-xs text-slate-600 mt-1">
+                  Tagihan resmi terbit untuk sekolah <span className="font-semibold">{paymentSession.schoolName}</span> (NPSN: {paymentSession.npsn}).
+                </p>
               </div>
             </div>
 
-            {submitError && (
-              <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs flex items-start gap-2.5 font-medium animate-in fade-in">
-                <AlertCircle size={16} className="text-rose-600 shrink-0 mt-0.5" />
-                <span className="leading-snug">{submitError}</span>
-              </div>
-            )}
-
-            {/* SECTION 1: NPSN & AUTO-LOOKUP DARI KEMENDIKDASMEN */}
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                  <Building2 size={14} className="text-blue-600" />
-                  <span>1. NPSN Sekolah (8 Digit Angka)</span>
-                  <span className="text-rose-500">*</span>
-                </label>
-                <a
-                  href="https://referensi.data.kemendikdasmen.go.id/"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[10px] font-bold text-blue-600 hover:underline flex items-center gap-0.5"
-                >
-                  <span>Data Kemendikdasmen RI</span>
-                  <ExternalLink size={10} />
-                </a>
-              </div>
-
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <input
-                    type="text"
-                    value={npsn}
-                    onChange={handleNpsnChange}
-                    placeholder="Masukkan 8 digit NPSN (Contoh: 20108801)"
-                    maxLength={8}
-                    className="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm font-mono font-bold text-slate-900 placeholder-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-500/20"
-                    required
-                  />
-                  {isSearchingNpsn && (
-                    <div className="absolute right-3 top-3 text-blue-600 animate-spin">
-                      <Loader2 size={16} />
-                    </div>
-                  )}
+            {/* Payment Summary Box */}
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                <div>
+                  <div className="text-xs text-slate-500">Nomor Invoice Kawacanaan</div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="font-mono text-sm font-bold text-slate-800">
+                      {paymentSession.orderId}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyOrderId(paymentSession.orderId)}
+                      className="p-1 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                      title="Salin Nomor Invoice"
+                    >
+                      {copiedOrder ? (
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  </div>
                 </div>
 
+                <div className="text-right">
+                  <div className="text-xs text-slate-500">Total Tagihan</div>
+                  <div className="text-xl font-black text-indigo-700">
+                    {formatRupiah(paymentSession.amount)}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-xs text-slate-600">
+                <div>
+                  <span className="text-slate-400 block">Siklus Tagihan:</span>
+                  <span className="font-semibold text-slate-800">
+                    {paymentSession.billingCycle === 'yearly' ? 'Tahunan (12 Bulan)' : 'Bulanan'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block">Metode Pembayaran:</span>
+                  <span className="font-semibold text-slate-800">
+                    QRIS, Virtual Account, E-Wallet
+                  </span>
+                </div>
+              </div>
+
+              {paymentCheckMessage && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800 flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                  <span>{paymentCheckMessage}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Credentials Preview Safeguard */}
+            <div className="p-3.5 bg-slate-100/70 border border-slate-200/80 rounded-lg text-xs text-slate-600">
+              <span className="font-semibold text-slate-800">Data Akun Pendidik Tersimpan:</span>{' '}
+              Username <code className="font-mono font-bold text-indigo-700 bg-white px-1.5 py-0.5 rounded border">{paymentSession.createdAdminUsername}</code> dengan sandi yang telah Anda buat. Akun akan langsung aktif segera setelah pembayaran diverifikasi.
+            </div>
+
+            {/* Action Buttons */}
+            <div className="space-y-3 pt-2">
+              {paymentSession.snapToken ? (
                 <button
+                  id="btn-open-snap"
                   type="button"
-                  onClick={() => handleLookupNpsn()}
-                  disabled={cleanNpsnDigits.length !== 8 || isSearchingNpsn}
-                  className="px-4 py-2.5 bg-blue-700 hover:bg-blue-800 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 shadow-2xs"
+                  onClick={() => triggerSnapPay(paymentSession.snapToken!, paymentSession)}
+                  className="w-full inline-flex items-center justify-center gap-2 py-3.5 px-6 rounded-xl bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700 hover:from-indigo-700 hover:to-blue-700 text-white font-bold text-sm shadow-md transition-all"
                 >
-                  <Search size={14} />
-                  <span>Cek NPSN</span>
+                  <CreditCard className="w-4 h-4" />
+                  <span>Bayar Sekarang via Midtrans Snap</span>
+                </button>
+              ) : null}
+
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  id="btn-check-payment-status"
+                  type="button"
+                  disabled={isCheckingPayment}
+                  onClick={() => handleCheckStatus(paymentSession.orderId)}
+                  className="flex-1 inline-flex items-center justify-center gap-2 py-3 px-4 rounded-xl border border-indigo-300 text-indigo-700 font-semibold text-xs hover:bg-indigo-50 disabled:opacity-60 transition-colors"
+                >
+                  {isCheckingPayment ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+                  ) : (
+                    <RefreshCw className="w-4 h-4" />
+                  )}
+                  <span>Cek Status Pembayaran (Midtrans)</span>
+                </button>
+
+                {/* Sandbox / Testing Simulation Button */}
+                <button
+                  id="btn-simulate-settlement"
+                  type="button"
+                  disabled={isCheckingPayment}
+                  onClick={() => handleSimulatePayment(paymentSession.orderId)}
+                  className="inline-flex items-center justify-center gap-1.5 py-3 px-4 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 font-semibold text-xs transition-colors"
+                  title="Gunakan ini untuk testing/demo sandbox tanpa harus transfer bank langsung"
+                >
+                  <Zap className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Verifikasi Instan (Testing)</span>
                 </button>
               </div>
 
-              {lookupError && (
-                <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 p-2.5 rounded-lg flex items-start gap-2">
-                  <HelpCircle size={14} className="text-amber-600 shrink-0 mt-0.5" />
-                  <span>{lookupError}</span>
+              <div className="text-center text-[11px] text-slate-400 pt-1">
+                Terintegrasi ke Super Admin Kawacanaan. Super Admin juga dapat memverifikasi tagihan ini secara manual di dashboard.
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* ------------------------------------------------------------- */
+          /* VIEW 3: FORMULIR PENDAFTARAN & PEMILIHAN PAKET */
+          /* ------------------------------------------------------------- */
+          <form
+            id="register-school-form"
+            onSubmit={handleSubmit}
+            className="p-5 sm:p-7 space-y-6 max-h-[75vh] overflow-y-auto"
+          >
+            {submitError && (
+              <div
+                id="submit-error-alert"
+                className="p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3 text-rose-800 text-xs sm:text-sm"
+              >
+                <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-semibold">Pendaftaran belum dapat diproses:</div>
+                  <div>{submitError}</div>
                 </div>
-              )}
+              </div>
+            )}
 
-              {/* Data Sekolah Terverifikasi Resmi */}
-              {lookupSuccess && (
-                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl space-y-1 text-xs text-emerald-900 animate-in fade-in">
-                  <div className="flex items-center gap-1.5 font-black text-emerald-800">
-                    <CheckCircle2 size={15} className="text-emerald-600" />
-                    <span>Sekolah Terverifikasi Kemendikdasmen:</span>
+            {/* SELEKSI PAKET KAWACANAAN */}
+            <div id="plan-selection-section" className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                  Pilih Paket Sistem Kawacanaan
+                </label>
+
+                {/* Billing Cycle Switcher */}
+                {selectedPlan !== 'free' && (
+                  <div className="inline-flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setBillingCycle('monthly')}
+                      className={`px-2.5 py-1 rounded-md font-medium transition-all ${
+                        billingCycle === 'monthly'
+                          ? 'bg-white text-indigo-700 shadow-sm'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Bulanan
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBillingCycle('yearly')}
+                      className={`px-2.5 py-1 rounded-md font-medium transition-all flex items-center gap-1 ${
+                        billingCycle === 'yearly'
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <span>Tahunan</span>
+                      <span className="text-[10px] bg-amber-400 text-slate-950 font-bold px-1 rounded">
+                        Hemat 2 Bln
+                      </span>
+                    </button>
                   </div>
-                  <div className="font-bold text-sm text-slate-900">{schoolName}</div>
-                  <div className="text-[11px] text-slate-600 font-medium flex items-center gap-1">
-                    <MapPin size={12} className="text-slate-400 shrink-0" />
-                    <span>{alamat || `${desaKelurahan}, ${kecamatan}, ${kabupatenKota}`}</span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* 1. Paket Gratis */}
+                <div
+                  onClick={() => setSelectedPlan('free')}
+                  className={`relative p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
+                    selectedPlan === 'free'
+                      ? 'border-emerald-600 bg-emerald-50/50 shadow-sm ring-2 ring-emerald-500/20'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-bold text-emerald-700">Gratis Selamanya</span>
+                    <input
+                      type="radio"
+                      name="plan"
+                      checked={selectedPlan === 'free'}
+                      onChange={() => setSelectedPlan('free')}
+                      className="text-emerald-600 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div className="text-base font-extrabold text-slate-900">Rp 0</div>
+                  <div className="text-[11px] text-slate-500 mt-1 line-clamp-2">
+                    1 rombel binaan, 32 siswa. Langsung aktif tanpa kartu kredit.
                   </div>
                 </div>
-              )}
 
-              {/* Nama Sekolah & Status */}
+                {/* 2. Paket Guru Mandiri */}
+                <div
+                  onClick={() => setSelectedPlan('teacher')}
+                  className={`relative p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
+                    selectedPlan === 'teacher'
+                      ? 'border-blue-600 bg-blue-50/50 shadow-sm ring-2 ring-blue-500/20'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-bold text-blue-700">Guru Mandiri</span>
+                    <input
+                      type="radio"
+                      name="plan"
+                      checked={selectedPlan === 'teacher'}
+                      onChange={() => setSelectedPlan('teacher')}
+                      className="text-blue-600 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="text-base font-extrabold text-slate-900">
+                    {billingCycle === 'yearly' ? 'Rp 290.000' : 'Rp 29.000'}
+                    <span className="text-[10px] font-normal text-slate-500">
+                      /{billingCycle === 'yearly' ? 'thn' : 'bln'}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-1 line-clamp-2">
+                    Hingga 5 rombel SD, rekap multi-jadwal, grafik otomatis.
+                  </div>
+                </div>
+
+                {/* 3. Paket Sekolah Dasar Lengkap */}
+                <div
+                  onClick={() => setSelectedPlan('school')}
+                  className={`relative p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
+                    selectedPlan === 'school'
+                      ? 'border-indigo-600 bg-indigo-50/50 shadow-sm ring-2 ring-indigo-500/20'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-bold text-indigo-700">Sekolah Lengkap</span>
+                    <input
+                      type="radio"
+                      name="plan"
+                      checked={selectedPlan === 'school'}
+                      onChange={() => setSelectedPlan('school')}
+                      className="text-indigo-600 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div className="text-base font-extrabold text-slate-900">
+                    {billingCycle === 'yearly' ? 'Rp 2.490.000' : 'Rp 249.000'}
+                    <span className="text-[10px] font-normal text-slate-500">
+                      /{billingCycle === 'yearly' ? 'thn' : 'bln'}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-1 line-clamp-2">
+                    Seluruh rombel kelas 1–6, semua guru mapel & portal siswa.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* STEP 1: PENCARIAN NPSN RESMI KEMENDIKDASMEN */}
+            <div id="step-npsn" className="space-y-4 pt-2 border-t border-slate-200">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <School className="w-4 h-4 text-indigo-600" />
+                  1. Data Sekolah (NPSN Kemendikdasmen)
+                </label>
+                <span className="text-[11px] text-slate-400">8 Digit Angka</span>
+              </div>
+
+              <div className="relative">
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      id="input-npsn"
+                      type="text"
+                      maxLength={8}
+                      value={npsn}
+                      onChange={handleNpsnChange}
+                      placeholder="Contoh: 20100123"
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm font-mono tracking-wider font-semibold text-slate-800 uppercase"
+                    />
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  </div>
+
+                  <button
+                    id="btn-lookup-npsn"
+                    type="button"
+                    onClick={() => handleLookupNpsn()}
+                    disabled={isSearchingNpsn || cleanNpsnDigits.length !== 8}
+                    className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:bg-slate-200 text-white disabled:text-slate-400 font-semibold text-xs inline-flex items-center gap-2 transition-colors"
+                  >
+                    {isSearchingNpsn ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <span>Cari NPSN</span>
+                    )}
+                  </button>
+                </div>
+
+                {lookupSuccess && (
+                  <div className="mt-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-start gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold">Data Sekolah Ditemukan:</span>{' '}
+                      {schoolName} ({statusSekolah})
+                      {alamat && <span className="block text-[11px] text-emerald-700 mt-0.5">{alamat}</span>}
+                    </div>
+                  </div>
+                )}
+
+                {lookupError && (
+                  <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <span>{lookupError}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Detail Sekolah Manual / Hasil Lookup */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">
-                    Nama Resmi Sekolah:
+                  <label className="text-xs font-semibold text-slate-600 block mb-1">
+                    Nama Sekolah Resmi
                   </label>
                   <input
+                    id="input-school-name"
                     type="text"
                     value={schoolName}
                     onChange={(e) => setSchoolName(e.target.value)}
-                    placeholder="SD NEGERI ..."
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:border-blue-600"
+                    placeholder="SD NEGERI 01..."
                     required
+                    className="w-full px-3.5 py-2 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800"
                   />
                 </div>
 
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">
-                    Status Sekolah:
+                  <label className="text-xs font-semibold text-slate-600 block mb-1">
+                    Status Sekolah
                   </label>
                   <select
+                    id="select-school-status"
                     value={statusSekolah}
-                    onChange={(e) => setStatusSekolah(e.target.value as 'Negeri' | 'Swasta')}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-blue-600"
+                    onChange={(e: any) => setStatusSekolah(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800 bg-white"
                   >
-                    <option value="Negeri">Sekolah Negeri (SDN)</option>
-                    <option value="Swasta">Sekolah Swasta (SDS / SD IT / MI)</option>
+                    <option value="Negeri">Negeri</option>
+                    <option value="Swasta">Swasta</option>
                   </select>
                 </div>
               </div>
             </div>
 
-            {/* SECTION 2: DATA AKUN GURU (JIKA PAKET GURU/GRATIS) ATAU ADMIN (JIKA PAKET SEKOLAH) */}
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3.5">
-              <label className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                {isTeacherRegistration ? <GraduationCap size={14} className="text-blue-600" /> : <User size={14} />}
-                <span>
-                  {isTeacherRegistration ? '2. Data Akun Guru & Penugasan Kelas' : '2. Data Akun Administrator Sekolah'}
-                </span>
-                <span className="text-rose-500">*</span>
-              </label>
-
-              {/* Auto Generated Username Box */}
-              <div className="p-3 bg-white border border-blue-200 rounded-xl flex items-center justify-between shadow-2xs">
-                <div className="space-y-0.5">
-                  <span className="text-[10px] uppercase font-bold text-blue-600 block">
-                    {isTeacherRegistration ? 'Username Akun Guru Dibuat Otomatis:' : 'Username Administrator Dibuat Otomatis:'}
-                  </span>
-                  <div className="font-mono font-black text-sm text-slate-900 flex items-center gap-2">
-                    <span>{generatedUsername}</span>
-                    <span className="text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-sans font-bold">
-                      {isTeacherRegistration ? 'Format guru.<NPSN>' : 'Format admin.<NPSN>'}
-                    </span>
-                  </div>
-                </div>
-                <div className="text-right text-[10px] text-slate-400 hidden sm:block">
-                  Role: <strong>{isTeacherRegistration ? (teacherType === 'WALI_KELAS' ? 'WALI KELAS' : 'GURU MAPEL') : 'ADMIN UTAMA'}</strong>
-                </div>
+            {/* STEP 2: DATA AKUN GURU / PENANGGUNG JAWAB */}
+            <div id="step-user-account" className="space-y-4 pt-2 border-t border-slate-200">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <User className="w-4 h-4 text-indigo-600" />
+                  2. Akun Pendidik & Penugasan
+                </label>
+                <span className="text-[11px] text-slate-400">Kredensial Akses</span>
               </div>
 
-              {/* Pilihan Tugas Guru (Wali Kelas vs Guru Mapel) */}
+              {/* Spesifik Wali Kelas vs Guru Mapel jika registrasi guru */}
               {isTeacherRegistration && (
-                <div className="p-3 bg-blue-50/70 border border-blue-100 rounded-xl space-y-2.5">
-                  <span className="text-[10px] uppercase font-black text-blue-900 block">
-                    Penugasan Guru di Sekolah:
-                  </span>
-                  <div className="grid grid-cols-2 gap-2">
-                    <label
-                      className={`p-2 rounded-lg border text-xs font-bold flex items-center gap-2 cursor-pointer transition-all ${
-                        teacherType === 'WALI_KELAS'
-                          ? 'bg-white border-blue-600 text-blue-900 shadow-xs'
-                          : 'bg-white/60 border-slate-200 text-slate-600'
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="teacherType"
-                        checked={teacherType === 'WALI_KELAS'}
-                        onChange={() => setTeacherType('WALI_KELAS')}
-                        className="text-blue-600"
-                      />
-                      <span>Wali Kelas</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">
+                      Peran Pendidik
                     </label>
-
-                    <label
-                      className={`p-2 rounded-lg border text-xs font-bold flex items-center gap-2 cursor-pointer transition-all ${
-                        teacherType === 'GURU_MAPEL'
-                          ? 'bg-white border-blue-600 text-blue-900 shadow-xs'
-                          : 'bg-white/60 border-slate-200 text-slate-600'
-                      }`}
+                    <select
+                      id="select-teacher-type"
+                      value={teacherType}
+                      onChange={(e: any) => setTeacherType(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-medium text-slate-800 bg-white"
                     >
-                      <input
-                        type="radio"
-                        name="teacherType"
-                        checked={teacherType === 'GURU_MAPEL'}
-                        onChange={() => setTeacherType('GURU_MAPEL')}
-                        className="text-blue-600"
-                      />
-                      <span>Guru Mata Pelajaran</span>
-                    </label>
+                      <option value="WALI_KELAS">Wali Kelas SD</option>
+                      <option value="GURU_MAPEL">Guru Mata Pelajaran</option>
+                    </select>
                   </div>
 
                   {teacherType === 'WALI_KELAS' ? (
                     <div>
-                      <label className="text-[10px] uppercase font-bold text-slate-600 block mb-1">
-                        Pilih Kelas yang Diampu:
+                      <label className="text-xs font-semibold text-slate-700 block mb-1">
+                        Tingkat Rombel Binaan
                       </label>
                       <select
+                        id="select-teacher-grade"
                         value={teacherGrade}
-                        onChange={(e) => setTeacherGrade(Number(e.target.value))}
-                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-blue-600"
+                        onChange={(e: any) => setTeacherGrade(Number(e.target.value))}
+                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-medium text-slate-800 bg-white"
                       >
-                        <option value={1}>Kelas 1 (Fase A)</option>
-                        <option value={2}>Kelas 2 (Fase A)</option>
-                        <option value={3}>Kelas 3 (Fase B)</option>
-                        <option value={4}>Kelas 4 (Fase B)</option>
-                        <option value={5}>Kelas 5 (Fase C)</option>
-                        <option value={6}>Kelas 6 (Fase C)</option>
+                        {[1, 2, 3, 4, 5, 6].map((g) => (
+                          <option key={g} value={g}>
+                            Kelas {g} SD
+                          </option>
+                        ))}
                       </select>
                     </div>
                   ) : (
                     <div>
-                      <label className="text-[10px] uppercase font-bold text-slate-600 block mb-1">
-                        Pilih Mata Pelajaran:
+                      <label className="text-xs font-semibold text-slate-700 block mb-1">
+                        Mata Pelajaran yang Diampu
                       </label>
                       <select
+                        id="select-teacher-subject"
                         value={teacherSubject}
                         onChange={(e) => setTeacherSubject(e.target.value)}
-                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-blue-600"
+                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-medium text-slate-800 bg-white"
                       >
-                        <option value="PJOK">Pendidikan Jasmani, Olahraga & Kesehatan (PJOK)</option>
-                        <option value="PABP">Pendidikan Agama & Budi Pekerti (PABP)</option>
+                        <option value="PJOK">Pendidikan Jasmani & Olahraga (PJOK)</option>
+                        <option value="PAI">Pendidikan Agama Islam (PAI)</option>
+                        <option value="PAK">Pendidikan Agama Kristen</option>
                         <option value="Bahasa Inggris">Bahasa Inggris</option>
-                        <option value="Seni Budaya & Prakarya">Seni Budaya & Prakarya (SBdP)</option>
-                        <option value="Bahasa Daerah / Mulok">Bahasa Daerah / Muatan Lokal</option>
+                        <option value="Seni Budaya">Seni Budaya / Kesenian</option>
+                        <option value="Pendidikan Pancasila">Pendidikan Pancasila / PKn</option>
                       </select>
                     </div>
                   )}
@@ -709,116 +1204,114 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">
-                    {isTeacherRegistration ? 'Nama Lengkap Guru (dengan Gelar):' : 'Nama Administrator / Penanggung Jawab:'}{' '}
-                    <span className="text-rose-500">*</span>
+                  <label className="text-xs font-semibold text-slate-600 block mb-1">
+                    Nama Lengkap & Gelar *
                   </label>
                   <input
+                    id="input-full-name"
                     type="text"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
-                    placeholder={isTeacherRegistration ? 'Contoh: Rahmawati, S.Pd' : 'Contoh: Drs. H. Suryanto, M.Pd'}
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:border-blue-600"
+                    placeholder="Budi Santoso, S.Pd."
                     required
+                    className="w-full px-3.5 py-2 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800"
                   />
                 </div>
 
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">
-                    Nomor WhatsApp / HP Aktif:
+                  <label className="text-xs font-semibold text-slate-600 block mb-1">
+                    Nomor WhatsApp / HP
                   </label>
                   <input
+                    id="input-phone"
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    placeholder="Contoh: 081234567890"
-                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:border-blue-600"
+                    placeholder="08123456789"
+                    className="w-full px-3.5 py-2 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800"
                   />
                 </div>
+              </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">
-                    {isTeacherRegistration ? 'NIP / NUPTK (Opsional):' : 'Email Resmi Sekolah:'}
+                  <label className="text-xs font-semibold text-slate-600 block mb-1">
+                    Username Sistem (Format Standar)
                   </label>
-                  {isTeacherRegistration ? (
-                    <input
-                      type="text"
-                      value={teacherNip}
-                      onChange={(e) => setTeacherNip(e.target.value)}
-                      placeholder="19850101 201001 1 001 atau -"
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:border-blue-600"
-                    />
-                  ) : (
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="sekolah@kemdikbud.go.id"
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:border-blue-600"
-                    />
-                  )}
+                  <div className="px-3.5 py-2 rounded-lg bg-slate-100 border border-slate-300 text-xs font-mono font-bold text-indigo-700">
+                    {generatedUsername}
+                  </div>
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">
+                    Otomatis dibuat berbasis peran dan NPSN.
+                  </span>
                 </div>
 
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">
-                    Buat Kata Sandi Akun: <span className="text-rose-500">*</span>
+                  <label className="text-xs font-semibold text-slate-600 block mb-1">
+                    Kata Sandi (Password) *
                   </label>
                   <div className="relative">
                     <input
+                      id="input-password"
                       type={showPassword ? 'text' : 'password'}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Minimal 8 karakter..."
-                      minLength={8}
-                      className="w-full px-3 py-2 pr-9 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:border-blue-600"
+                      placeholder="Minimal 6 karakter"
                       required
+                      minLength={6}
+                      className="w-full px-3.5 py-2 pr-9 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
-                      tabIndex={-1}
+                      className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600"
                     >
-                      {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
                 </div>
               </div>
-
             </div>
 
-            {/* Submit CTA */}
-            <div className="pt-1">
+            {/* SUBMIT BUTTON & PRICE FOOTER */}
+            <div className="pt-3 border-t border-slate-200">
               <button
+                id="btn-submit-registration"
                 type="submit"
-                disabled={isSubmitting}
-                className="w-full py-3.5 px-6 bg-[#0B2F64] hover:bg-blue-700 active:scale-98 disabled:bg-slate-400 text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
+                disabled={isSubmitting || cleanNpsnDigits.length !== 8}
+                className={`w-full py-3.5 px-6 rounded-xl font-bold text-sm text-white shadow-md inline-flex items-center justify-center gap-2 transition-all ${
+                  selectedPlan === 'free'
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700'
+                    : 'bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700 hover:from-indigo-700 hover:to-blue-700'
+                } disabled:opacity-60`}
               >
                 {isSubmitting ? (
                   <>
-                    <Loader2 size={17} className="animate-spin" />
-                    <span>Sedang Menyiapkan Akun & Rombel...</span>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Mempersiapkan Akun & Gateway...</span>
+                  </>
+                ) : selectedPlan === 'free' ? (
+                  <>
+                    <span>Aktifkan Akun Guru Gratis (Rp 0)</span>
+                    <ArrowRight className="w-4 h-4" />
                   </>
                 ) : (
                   <>
-                    <Sparkles size={17} />
                     <span>
-                      {isTeacherRegistration ? 'Aktifkan Akun Guru & Rombel Kelas' : 'Daftarkan Sekolah & Aktifkan Admin'}
+                      Lanjut ke Pembayaran Midtrans ({formatRupiah(activeAmount)})
                     </span>
-                    <ArrowRight size={17} />
+                    <ArrowRight className="w-4 h-4" />
                   </>
                 )}
               </button>
-              <div className="text-center mt-2 text-[11px] text-slate-400">
-                Data terenkripsi dan langsung siap dipakai login ke dashboard.
+
+              <div className="text-center mt-2.5 text-[11px] text-slate-400">
+                Terhubung ke Gateway Midtrans & Sistem Kawacanaan. Data aman dan terenkripsi.
               </div>
             </div>
-
           </form>
         )}
-
       </div>
     </div>
   );
 };
-

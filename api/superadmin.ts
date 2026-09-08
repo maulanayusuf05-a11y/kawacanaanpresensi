@@ -715,6 +715,93 @@ export default async function handler(req:any,res:any){
       return json(res,200,{ok:true,payments:(data||[]).map((p:any)=>({id:p.id,invoiceNo:p.invoice_no,planId:p.plan_name?.toLowerCase().includes('guru')?'teacher':'school',planName:p.plan_name,amount:Number(p.amount),uniqueCode:Number(p.unique_code),totalAmount:Number(p.total_amount),schoolName:p.school_name,npsn:p.npsn||'',contactName:p.contact_name,contactPhone:p.contact_phone||'',email:p.email||'',status:p.status,paymentMethod:p.payment_method,createdAt:p.created_at,paidAt:p.paid_at||undefined,expiresAt:p.expires_at||'',qrisNmid:p.qris_nmid||''}))});
     }
 
+    if(action==='approve_payment'||action==='settle_payment'){
+      const paymentId = req.body.payment_id || req.body.id;
+      const invoiceNo = req.body.invoice_no || req.body.invoiceNo;
+      if (!paymentId && !invoiceNo) return json(res, 400, { error: 'ID Pembayaran atau No Invoice wajib diisi.' });
+
+      let query = admin.from('payments').select('*');
+      if (paymentId) query = query.eq('id', paymentId);
+      else query = query.eq('invoice_no', invoiceNo);
+      const { data: payment, error: pErr } = await query.maybeSingle();
+
+      if (pErr || !payment) return json(res, 404, { error: 'Transaksi pembayaran tidak ditemukan.' });
+
+      const paidAt = new Date().toISOString();
+      await admin.from('payments').update({
+        status: 'SETTLED',
+        paid_at: paidAt,
+      }).eq('id', payment.id);
+
+      // Cari sekolah terkait
+      let targetSchoolId = payment.school_id;
+      if (!targetSchoolId && payment.npsn) {
+        const { data: sch } = await admin.from('schools').select('id').eq('npsn', payment.npsn).maybeSingle();
+        targetSchoolId = sch?.id;
+      }
+      if (!targetSchoolId && payment.school_name) {
+        const { data: sch } = await admin.from('schools').select('id').ilike('name', payment.school_name).maybeSingle();
+        targetSchoolId = sch?.id;
+      }
+
+      if (targetSchoolId) {
+        const { data: school } = await admin.from('schools').select('*').eq('id', targetSchoolId).single();
+        if (school) {
+          const isYearly = payment.plan_name?.toLowerCase().includes('tahun') || payment.amount >= 200000;
+          const durationDays = isYearly ? 365 : 30;
+          const now = new Date();
+          const currentExpiry = school.subscription_expires_at ? new Date(school.subscription_expires_at) : now;
+          const baseDate = currentExpiry > now ? currentExpiry : now;
+          const newExpiry = new Date(baseDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
+          const targetPlan = payment.plan_name?.toLowerCase().includes('guru') ? 'guru_pro' : 'sekolah_pro';
+
+          await admin.from('schools').update({
+            status: 'active',
+            plan: targetPlan,
+            subscription_expires_at: newExpiry.toISOString(),
+          }).eq('id', school.id);
+
+          await admin.from('audit_logs').insert({
+            school_id: school.id,
+            actor_id: caller.user.id,
+            actor_name: profile.name || 'Super Admin',
+            actor_role: 'SUPER_ADMIN',
+            action: 'SUPERADMIN_MANUAL_PAYMENT_APPROVAL',
+            details: {
+              invoice_no: payment.invoice_no,
+              amount: payment.total_amount || payment.amount,
+              previous_expiry: school.subscription_expires_at,
+              new_expiry: newExpiry.toISOString(),
+            },
+          });
+        }
+      }
+
+      return json(res, 200, { ok: true, message: `Pembayaran ${payment.invoice_no} berhasil diverifikasi LUNAS.` });
+    }
+
+    if(action==='delete_payment'){
+      const paymentId = req.body.payment_id || req.body.id;
+      const invoiceNo = req.body.invoice_no || req.body.invoiceNo;
+      if (!paymentId && !invoiceNo) return json(res, 400, { error: 'ID Pembayaran atau No Invoice wajib diisi.' });
+
+      let query = admin.from('payments').delete();
+      if (paymentId) query = query.eq('id', paymentId);
+      else query = query.eq('invoice_no', invoiceNo);
+      const { error: delErr } = await query;
+      if (delErr) throw delErr;
+
+      await admin.from('audit_logs').insert({
+        actor_id: caller.user.id,
+        actor_name: profile.name || 'Super Admin',
+        actor_role: 'SUPER_ADMIN',
+        action: 'SUPERADMIN_DELETE_PAYMENT',
+        details: { payment_id: paymentId, invoice_no: invoiceNo },
+      });
+
+      return json(res, 200, { ok: true, message: 'Data pembayaran berhasil dihapus.' });
+    }
+
     if(action==='audit'){
       const limit=Math.min(Number(req.body.limit||150),500);
       const {data,error}=await admin.from('audit_logs').select('*, schools(name)').order('created_at',{ascending:false}).limit(limit); if(error) throw error;
