@@ -905,6 +905,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       localStorage.removeItem(SESSION_LAST_ACTIVE_KEY);
       localStorage.removeItem(SESSION_LOGIN_TIME_KEY);
       localStorage.removeItem("kawacanaan_last_workspace_id");
+      localStorage.removeItem("kawacanaan_cached_school_ws");
       try {
         for (let i = sessionStorage.length - 1; i >= 0; i--) {
           const sKey = sessionStorage.key(i);
@@ -920,6 +921,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         if (
           key &&
           (key.startsWith("kawacanaan_last_workspace_id_") ||
+            key.startsWith("kawacanaan_school_ws_") ||
             key.startsWith("kawacanaan_summary_cache_") ||
             key.startsWith("sb-") ||
             key.includes("supabase.auth.token"))
@@ -1719,10 +1721,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         );
         if (ws.workspaceType !== "personal" && ws.workspaceType !== "individu") {
           localStorage.setItem(`kawacanaan_school_ws_${ws.userId}`, JSON.stringify(ws));
-          localStorage.setItem("kawacanaan_cached_school_ws", JSON.stringify(ws));
         }
       }
-      localStorage.setItem("kawacanaan_last_workspace_id", ws.workspaceId);
 
       setSwitchingWorkspaceProgress(45);
       setSwitchingWorkspaceMessage(
@@ -1818,10 +1818,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           ws.workspaceType !== "personal" && ws.workspaceType !== "individu",
       );
 
-      // 2. Periksa cache ruang kerja sekolah di localStorage jika belum ada di memori
+      // 2. Periksa cache ruang kerja sekolah di localStorage khusus akun ini jika belum ada di memori
       const cachedSchoolRaw =
-        localStorage.getItem(`kawacanaan_school_ws_${currentUser.id}`) ||
-        localStorage.getItem("kawacanaan_cached_school_ws");
+        localStorage.getItem(`kawacanaan_school_ws_${currentUser.id}`);
       let cachedSchoolWs: WorkspaceMembership | null = null;
       if (cachedSchoolRaw) {
         try {
@@ -1876,10 +1875,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           `kawacanaan_school_ws_${currentUser.id}`,
           JSON.stringify(schoolWs),
         );
-        localStorage.setItem(
-          "kawacanaan_cached_school_ws",
-          JSON.stringify(schoolWs),
-        );
         await selectWorkspace(schoolWs);
         showToast(
           `Beralih ke Ruang Kerja Sekolah: ${schoolWs.workspaceName}`,
@@ -1925,10 +1920,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     ) {
       localStorage.setItem(
         `kawacanaan_school_ws_${currentUser.id}`,
-        JSON.stringify(activeWorkspace),
-      );
-      localStorage.setItem(
-        "kawacanaan_cached_school_ws",
         JSON.stringify(activeWorkspace),
       );
     }
@@ -2061,13 +2052,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           const { data: sessionData } = await supabase.auth.getSession();
           const token = sessionData.session?.access_token || "";
           const cachedSchoolRaw =
-            localStorage.getItem(`kawacanaan_school_ws_${userId}`) ||
-            localStorage.getItem("kawacanaan_cached_school_ws");
+            localStorage.getItem(`kawacanaan_school_ws_${userId}`);
           let knownSchoolId = "";
           if (cachedSchoolRaw) {
             try {
               const parsed = JSON.parse(cachedSchoolRaw);
-              knownSchoolId = parsed?.workspaceId || "";
+              if (parsed?.userId === userId) {
+                knownSchoolId = parsed?.workspaceId || "";
+              }
             } catch (_) {}
           }
           return fetch("/api/onboarding", {
@@ -2087,22 +2079,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       if (onboardingRes?.success && Array.isArray(onboardingRes.workspaces)) {
         memberships = onboardingRes.workspaces;
       }
-      // Gabungkan cache ruang kerja sekolah jika server hanya merespons ruang individu
-      const cachedSchoolRaw =
-        localStorage.getItem(`kawacanaan_school_ws_${userId}`) ||
-        localStorage.getItem("kawacanaan_cached_school_ws");
-      if (cachedSchoolRaw) {
-        try {
-          const parsed = JSON.parse(cachedSchoolRaw);
-          if (
-            parsed?.workspaceId &&
-            !memberships.some((m) => m.workspaceId === parsed.workspaceId)
-          ) {
-            memberships.unshift(parsed);
-          }
-        } catch (_) {}
-      }
       baseProfile = profileRes?.data || null;
+
+      // ISOLASI KETAT: Hanya gabungkan cache sekolah jika user BUKAN pengguna ruang kerja individu murni
+      const isPersonalAccount =
+        baseProfile?.workspace_type === "personal" ||
+        baseProfile?.registration_mode === "personal";
+
+      if (!isPersonalAccount) {
+        const cachedSchoolRaw =
+          localStorage.getItem(`kawacanaan_school_ws_${userId}`);
+        if (cachedSchoolRaw) {
+          try {
+            const parsed = JSON.parse(cachedSchoolRaw);
+            if (
+              parsed?.workspaceId &&
+              parsed?.userId === userId &&
+              parsed?.workspaceType !== "personal" &&
+              !memberships.some((m) => m.workspaceId === parsed.workspaceId)
+            ) {
+              memberships.unshift(parsed);
+            }
+          } catch (_) {}
+        }
+      }
     } catch (_) {}
 
     if (isLoggingOutRef.current || requestId !== loadRequestRef.current) {
@@ -2254,10 +2254,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       return;
     }
 
-    // Tentukan ruang kerja aktif secara otomatis (berdasarkan ruang kerja terakhir yang digunakan)
+    // Tentukan ruang kerja aktif secara otomatis (berdasarkan ruang kerja terakhir khusus user ini)
     const lastUsedWsId =
-      localStorage.getItem(`kawacanaan_last_workspace_id_${userId}`) ||
-      localStorage.getItem("kawacanaan_last_workspace_id");
+      localStorage.getItem(`kawacanaan_last_workspace_id_${userId}`);
 
     let chosenWorkspace: WorkspaceMembership | null = null;
 
@@ -2273,11 +2272,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     }
 
     if (!chosenWorkspace) {
-      chosenWorkspace =
-        memberships.find(
-          (ws) =>
-            ws.workspaceType !== "personal" && ws.workspaceType !== "individu",
-        ) || memberships[0];
+      const isPersonalUser =
+        baseProfile?.workspace_type === "personal" ||
+        baseProfile?.registration_mode === "personal";
+      if (isPersonalUser) {
+        chosenWorkspace =
+          memberships.find(
+            (ws) =>
+              ws.workspaceType === "personal" || ws.workspaceType === "individu",
+          ) || memberships[0];
+      } else {
+        chosenWorkspace =
+          memberships.find(
+            (ws) =>
+              ws.workspaceType !== "personal" && ws.workspaceType !== "individu",
+          ) || memberships[0];
+      }
     }
 
     setActiveWorkspace(chosenWorkspace);
@@ -2290,10 +2300,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         chosenWorkspace.workspaceId,
       );
     }
-    localStorage.setItem(
-      "kawacanaan_last_workspace_id",
-      chosenWorkspace.workspaceId,
-    );
 
     if (isLoggingOutRef.current || requestId !== loadRequestRef.current) {
       return;

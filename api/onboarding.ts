@@ -435,10 +435,10 @@ export default async function handler(req: any, res: any) {
         }
       }
 
-      // Cari berdasarkan NIP (jika username berupa NIP atau profile memiliki nip)
+      // Cari berdasarkan NIP resmi (minimal 16 digit dan bukan placeholder)
       const rawNip = String((profile as any)?.nip || profile?.username || workspaceAuth.user.user_metadata?.nip || '').trim();
       const cleanNip = rawNip.replace(/[^0-9]/g, '');
-      if (cleanNip.length >= 8) {
+      if (cleanNip.length >= 16 && rawNip !== '-') {
         const { data: teachersByNip } = await db
           .from('teachers')
           .select('id, school_id, nama, nip, tugas_utama')
@@ -451,22 +451,11 @@ export default async function handler(req: any, res: any) {
         }
       }
 
-      // Cari berdasarkan Nama lengkap
-      const teacherName = String(profile?.name || workspaceAuth.user.user_metadata?.name || '').trim();
-      if (teacherName.length >= 3) {
-        const { data: teachersByName } = await db
-          .from('teachers')
-          .select('id, school_id, nama, nip, tugas_utama')
-          .ilike('nama', teacherName);
-        for (const t of teachersByName || []) {
-          if (!seenTeacherIds.has(t.id)) {
-            seenTeacherIds.add(t.id);
-            allTeacherRecords.push(t);
-          }
-        }
-      }
+      const isPersonalProfile =
+        profile?.workspace_type === 'personal' ||
+        (profile as any)?.registration_mode === 'personal';
 
-      // Kumpulkan seluruh kandidat school ID yang pernah terhubung dengan user
+      // Kumpulkan seluruh kandidat school ID yang sah dan terverifikasi untuk user ini
       const candidateSchoolIds: string[] = [];
       const addCandidate = (id?: string | null) => {
         const s = String(id || '').trim();
@@ -475,28 +464,27 @@ export default async function handler(req: any, res: any) {
         }
       };
 
-      // Dari profile aktif
+      // 1. Dari profile aktif
       addCandidate(profile?.school_id);
 
-      // Dari auth user metadata (disimpan permanen di Supabase Auth)
-      addCandidate(workspaceAuth.user.user_metadata?.school_workspace_id);
-      addCandidate(workspaceAuth.user.user_metadata?.linked_school_id);
-      addCandidate(workspaceAuth.user.user_metadata?.school_id);
-      addCandidate(workspaceAuth.user.user_metadata?.personal_workspace_id);
-
-      // Dari body parameter jika client mengirimkan ID sekolah yang diketahui
-      addCandidate(body?.known_school_workspace_id);
-      addCandidate(body?.last_school_workspace_id);
-      addCandidate(body?.schoolId || body?.school_id);
-
-      // Dari owned schools (mis. ruang kerja individu mandiri)
+      // 2. Dari owned schools (mis. ruang kerja individu atau sekolah milik user ini)
       for (const s of ownedSchools || []) {
         addCandidate(s.id);
       }
 
-      // Dari data guru di seluruh sekolah
+      // 3. Dari data guru resmi di mana akun ini tertaut
       for (const t of allTeacherRecords) {
         addCandidate(t.school_id);
+      }
+
+      // 4. Dari auth user metadata:
+      // Hanya sertakan personal_workspace_id jika ada
+      addCandidate(workspaceAuth.user.user_metadata?.personal_workspace_id);
+
+      // Hanya izinkan school_workspace_id jika profil bukan akun khusus personal
+      if (!isPersonalProfile) {
+        addCandidate(workspaceAuth.user.user_metadata?.school_workspace_id);
+        addCandidate(workspaceAuth.user.user_metadata?.linked_school_id);
       }
 
       for (const sId of candidateSchoolIds) {
@@ -518,10 +506,28 @@ export default async function handler(req: any, res: any) {
         const isPersonal =
           school?.workspace_type === 'personal' ||
           (school as any)?.is_personal === true ||
-          (sId === profile?.school_id && ((profile as any)?.workspace_type === 'personal' || (profile as any)?.registration_mode === 'personal')) ||
+          (sId === profile?.school_id && isPersonalProfile) ||
           school?.plan === 'mulai' ||
           school?.plan === 'teacher' ||
           school?.plan === 'guru';
+
+        // ISOLASI DATA KETAT:
+        // Jika sekolah adalah institusi (bukan ruang kerja individu),
+        // pastikan user memiliki hak akses resmi yang sah ke sekolah tersebut:
+        // - Pemilik sekolah (owner_id)
+        // - Atau profile.school_id sesuai DAN bukan mode personal
+        // - Atau akun memiliki record guru resmi (allTeacherRecords) di sekolah tersebut
+        if (!isPersonal) {
+          const isLegitimateSchoolMember =
+            school.owner_id === userId ||
+            (sId === profile?.school_id && !isPersonalProfile) ||
+            allTeacherRecords.some((t: any) => t.school_id === sId);
+
+          if (!isLegitimateSchoolMember) {
+            // Tolak sekolah yang tidak memiliki relasi resmi dengan user!
+            continue;
+          }
+        }
 
         const teacherForSchool = allTeacherRecords.find((t: any) => t.school_id === sId);
         const academicYear = String(sp?.tahun_pelajaran || '2026/2027').trim() || '2026/2027';
@@ -567,16 +573,10 @@ export default async function handler(req: any, res: any) {
             userRole = assignmentRole;
           } else if (isPersonal) {
             userRole = profileRole || 'WALI KELAS';
-          } else {
-            // Sekolah institusi: ambil role tersimpan di metadata atau profile atau guru
-            const metaRole = workspaceAuth.user.user_metadata?.school_workspace_role;
-            if (metaRole === 'WALI KELAS' || metaRole === 'GURU MAPEL') {
-              userRole = metaRole;
-            } else if (profile?.role === 'WALI KELAS' || profile?.role === 'GURU MAPEL') {
-              userRole = profile.role;
-            } else {
-              userRole = 'WALI KELAS';
-            }
+          } else if (teacherForSchool) {
+            userRole = teacherForSchool.tugas_utama?.toLowerCase()?.includes('mapel') ? 'GURU MAPEL' : 'WALI KELAS';
+          } else if (school.owner_id === userId) {
+            userRole = 'ADMIN';
           }
         }
 
@@ -591,12 +591,12 @@ export default async function handler(req: any, res: any) {
           workspaceName: isPersonal ? 'Ruang Kerja Individu' : (school?.name || sp?.nama_sekolah || 'Ruang Kerja Sekolah'),
           workspaceType: isPersonal ? 'personal' : 'school',
           registrationMode: isPersonal ? 'personal' : 'school',
-          npsn: school?.npsn || sp?.npsn || null,
+          npsn: isPersonal ? null : (school?.npsn || sp?.npsn || null),
           subscriptionPlan: school?.plan || (isPersonal ? 'teacher' : 'sekolah'),
           joinedAt: school?.created_at || profile?.created_at || new Date().toISOString(),
         });
 
-        // Selalu simpan ID sekolah institusi ke auth user_metadata agar tidak hilang saat beralih ke individu
+        // Simpan referensi ruang kerja ke auth user_metadata sesuai jenisnya
         if (!isPersonal) {
           try {
             await db.auth.admin.updateUserById(userId, {
@@ -605,6 +605,16 @@ export default async function handler(req: any, res: any) {
                 school_workspace_id: sId,
                 school_workspace_role: userRole,
                 school_workspace_name: school?.name || sp?.nama_sekolah || 'Ruang Kerja Sekolah',
+              }
+            });
+          } catch (_) {}
+        } else {
+          try {
+            await db.auth.admin.updateUserById(userId, {
+              user_metadata: {
+                ...(workspaceAuth.user.user_metadata || {}),
+                personal_workspace_id: sId,
+                workspace_type: 'personal',
               }
             });
           } catch (_) {}
@@ -1690,6 +1700,27 @@ export default async function handler(req: any, res: any) {
         student_id: body.studentId || null,
       });
 
+      // Update user_metadata pada akun autentikasi agar secara permanen terikat ke ruang kerjanya
+      try {
+        await db.auth.admin.updateUserById(newUserId, {
+          user_metadata: {
+            name: fullName,
+            username,
+            registration_mode: mode === 'personal' ? 'personal' : 'school',
+            workspace_type: mode === 'personal' ? 'personal' : 'school',
+            school_id: finalSchoolId,
+            ...(mode === 'personal'
+              ? {
+                  personal_workspace_id: finalSchoolId,
+                  personal_workspace_name: 'Ruang Kerja Individu',
+                }
+              : {
+                  school_workspace_id: finalSchoolId,
+                  school_workspace_role: role,
+                }),
+          },
+        });
+      } catch (_) {}
 
       return json(res, 200, {
         ok: true,

@@ -157,6 +157,29 @@ export const FreeStartModal: React.FC<FreeStartModalProps> = ({
         throw new Error(data.error || (lang === 'ID' ? 'Pendaftaran gagal. Silakan coba lagi.' : 'Registration failed.'));
       }
 
+      // Bersihkan seluruh cache lama yang mungkin tersisa di browser dari akun/sekolah sebelumnya
+      try {
+        localStorage.removeItem('kawacanaan_cached_school_ws');
+        localStorage.removeItem('kawacanaan_last_workspace_id');
+        if (data.userId && data.schoolId) {
+          localStorage.setItem(`kawacanaan_last_workspace_id_${data.userId}`, data.schoolId);
+          const personalWs = {
+            id: `ws-mem-${data.userId}-${data.schoolId}`,
+            userId: data.userId,
+            workspaceId: data.schoolId,
+            workspaceCode: null,
+            role: payloadRole,
+            workspaceName: 'Ruang Kerja Individu',
+            workspaceType: 'personal',
+            registrationMode: 'personal',
+            npsn: null,
+            subscriptionPlan: 'mulai',
+            joinedAt: new Date().toISOString(),
+          };
+          localStorage.setItem(`kawacanaan_school_ws_${data.userId}`, JSON.stringify(personalWs));
+        }
+      } catch (_) {}
+
       // Otomatis login dengan akun yang baru dibuat dan masuk langsung ke Ruang Kerja
       const loginResult = await loginWithCredentials(cleanUsername, password);
       if (!loginResult.success) {
