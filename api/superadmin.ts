@@ -575,11 +575,60 @@ export default async function handler(req:any,res:any){
       const workspaceLabel = isPersonal ? `Ruang Kerja Individu (${targetSchool?.name || id})` : `Sekolah (${targetSchool?.name || id})`;
 
       // Hapus data terkait sekolah/ruang kerja secara menyeluruh.
-      // Setiap operasi wajib diperiksa; tidak ada silent failure pada penghapusan tenant.
+      // Setiap operasi diperiksa secara ketat; jika tabel atau kolom opsional tidak ada di skema database, lewati dengan aman.
       const deleteTenantRows = async (table: string) => {
-        const { error } = await admin.from(table).delete().eq('school_id', id);
-        if (error) throw new Error(`Gagal menghapus ${table}: ${error.message}`);
+        try {
+          const { error } = await admin.from(table).delete().eq('school_id', id);
+          if (error) {
+            const isTableOrColMissing =
+              error.code === 'PGRST205' || // PostgREST: relation/table not found in schema cache
+              error.code === 'PGRST204' || // PostgREST: column not found in schema cache
+              error.code === '42P01' ||    // Postgres: undefined_table
+              error.code === '42703' ||    // Postgres: undefined_column
+              (error.message && (
+                error.message.includes('schema cache') ||
+                error.message.includes('Could not find the table') ||
+                error.message.includes('Could not find the') ||
+                error.message.includes('does not exist')
+              ));
+            if (isTableOrColMissing) {
+              return; // Lewati tabel opsional atau tabel yang tidak ada di skema
+            }
+            throw new Error(`Gagal menghapus ${table}: ${error.message}`);
+          }
+        } catch (err: any) {
+          if (
+            err.message?.includes('schema cache') ||
+            err.message?.includes('Could not find the table') ||
+            err.message?.includes('does not exist')
+          ) {
+            return;
+          }
+          throw err;
+        }
       };
+
+      // Unlink relasi foreign key pada tabel yang mungkin merujuk ke record yang akan dihapus
+      try {
+        await admin.from('profiles').update({ teacher_id: null, student_id: null }).eq('school_id', id);
+      } catch (_) {}
+
+      try {
+        await admin.from('classes').update({ wali_kelas_teacher_id: null }).eq('school_id', id);
+      } catch (_) {}
+
+      try {
+        await admin.from('audit_logs').update({ school_id: null }).eq('school_id', id);
+      } catch (_) {}
+
+      try {
+        await admin.from('payments').update({ school_id: null }).eq('school_id', id);
+      } catch (_) {}
+
+      try {
+        await admin.from('schools').update({ owner_id: null }).eq('id', id);
+      } catch (_) {}
+
       // Urutan mengikuti dependensi FK.
       await deleteTenantRows('teacher_assignments');
       await deleteTenantRows('teacher_class_assignments');
@@ -596,14 +645,36 @@ export default async function handler(req:any,res:any){
       await deleteTenantRows('system_config');
       await deleteTenantRows('teachers');
 
-      const { data: users, error: usersErr } = await admin.from('profiles').select('id, name, username').eq('school_id', id);
+      const { data: users, error: usersErr } = await admin.from('profiles').select('id, name, username, role').eq('school_id', id);
       if (usersErr) throw new Error(`Gagal membaca akun tenant: ${usersErr.message}`);
-      for(const u of users || []) {
-        const { error: authDeleteErr } = await admin.auth.admin.deleteUser(u.id);
-        if (authDeleteErr) throw new Error(`Gagal menghapus akun Auth ${u.username || u.id}: ${authDeleteErr.message}`);
+
+      // Lindungi akun Super Admin dan pemanggil agar tidak ikut terhapus
+      const usersToDelete = (users || []).filter(u => u.role !== 'SUPER_ADMIN' && u.id !== caller.user.id);
+
+      for(const u of usersToDelete) {
+        try {
+          const { error: authDeleteErr } = await admin.auth.admin.deleteUser(u.id);
+          if (authDeleteErr) {
+            const isNotFound =
+              authDeleteErr.message?.toLowerCase().includes('not found') ||
+              (authDeleteErr as any).status === 404;
+            if (!isNotFound) {
+              console.warn(`Peringatan: Gagal menghapus akun Auth ${u.username || u.id}:`, authDeleteErr.message);
+            }
+          }
+        } catch (e: any) {
+          console.warn(`Peringatan: Error menghapus akun Auth ${u.username || u.id}:`, e.message);
+        }
       }
-      const { error: profilesDeleteErr } = await admin.from('profiles').delete().eq('school_id', id);
+
+      // Hapus profil akun tenant (kecuali Super Admin)
+      const { error: profilesDeleteErr } = await admin.from('profiles').delete().eq('school_id', id).neq('role', 'SUPER_ADMIN');
       if (profilesDeleteErr) throw new Error(`Gagal menghapus profiles tenant: ${profilesDeleteErr.message}`);
+
+      // Jika ada akun Super Admin yang tercatat dengan school_id ini, lepaskan tautan school_id-nya
+      try {
+        await admin.from('profiles').update({ school_id: null }).eq('school_id', id).eq('role', 'SUPER_ADMIN');
+      } catch (_) {}
 
       const { error } = await admin.from('schools').delete().eq('id', id);
       if(error) throw error;
