@@ -231,7 +231,6 @@ export const DataKelasView: React.FC = () => {
   // Import Kelas Modal State
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importTab, setImportTab] = useState<'upload' | 'paste'>('upload');
-  const [importMode, setImportMode] = useState<'append' | 'replace'>('append');
   const [fileName, setFileName] = useState('');
   const [pasteText, setPasteText] = useState('');
   const [parsedClasses, setParsedClasses] = useState<ParsedClassItem[]>([]);
@@ -669,7 +668,7 @@ export const DataKelasView: React.FC = () => {
         waliKelasNameInput: c.waliKelasNameInput,
       }));
 
-      await importClasses(payload, importMode === 'replace');
+      await importClasses(payload);
 
       setImportProgress(100);
       setImportStatusMessage('Selesai! Seluruh data rombongan belajar berhasil diimpor.');
@@ -1389,62 +1388,6 @@ export const DataKelasView: React.FC = () => {
                   </div>
                 </div>
               )}
-
-              {/* Step 3: Import Mode Option */}
-              <div className="space-y-2 pt-2 border-t border-slate-100">
-                <label className="block text-[11px] font-extrabold text-slate-700 uppercase tracking-wider">
-                  Opsi Penempatan Data Kelas
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  <label
-                    className={`flex items-start gap-2.5 p-3 rounded-2xl border cursor-pointer transition-all ${
-                      importMode === 'append'
-                        ? 'bg-blue-50/70 border-blue-500 ring-2 ring-blue-500/20 text-slate-900'
-                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="classImportMode"
-                      checked={importMode === 'append'}
-                      onChange={() => setImportMode('append')}
-                      className="mt-0.5"
-                    />
-                    <div>
-                      <p className="font-extrabold text-xs text-slate-900">
-                        Tambahkan ke Data Kelas Saat Ini
-                      </p>
-                      <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
-                        Menyisipkan rombel baru tanpa menghapus daftar kelas yang sudah ada.
-                      </p>
-                    </div>
-                  </label>
-
-                  <label
-                    className={`flex items-start gap-2.5 p-3 rounded-2xl border cursor-pointer transition-all ${
-                      importMode === 'replace'
-                        ? 'bg-blue-50/70 border-blue-500 ring-2 ring-blue-500/20 text-slate-900'
-                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="classImportMode"
-                      checked={importMode === 'replace'}
-                      onChange={() => setImportMode('replace')}
-                      className="mt-0.5"
-                    />
-                    <div>
-                      <p className="font-extrabold text-xs text-slate-900">
-                        Gantikan Seluruh Data Kelas
-                      </p>
-                      <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
-                        Menghapus data kelas lama dan mengisi dengan daftar rombel yang baru diimpor.
-                      </p>
-                    </div>
-                  </label>
-                </div>
-              </div>
             </div>
 
             {/* Footer Modal Actions */}

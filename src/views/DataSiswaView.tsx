@@ -214,7 +214,6 @@ export const DataSiswaView: React.FC = () => {
   // Import Modal States
   const [selectedImportClassId, setSelectedImportClassId] = useState(myAssignedClasses[0]?.id || classes[0]?.id || '');
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [importMode, setImportMode] = useState<'replace' | 'append'>('append');
   const [importTab, setImportTab] = useState<'file' | 'paste'>('file');
   const [pasteText, setPasteText] = useState('');
   const [parsedStudents, setParsedStudents] = useState<ParsedStudentItem[]>([]);
@@ -431,7 +430,18 @@ export const DataSiswaView: React.FC = () => {
     }
 
     if (maxStudentsLimit) {
-      const projectedCount = importMode === 'replace' ? validOnes.length : students.length + validOnes.length;
+      const existingKeySet = new Set(
+        students.map(
+          (s) => `${(s.nama || '').trim().toLowerCase()}__${(s.nisn || '').trim().toLowerCase()}`
+        )
+      );
+      const newItemsCount = validOnes.filter((v) => {
+        const vNama = (v.nama || '').trim().toLowerCase();
+        const vNisn = (v.nisn || '').trim().toLowerCase();
+        if (!vNisn) return true;
+        return !existingKeySet.has(`${vNama}__${vNisn}`);
+      }).length;
+      const projectedCount = students.length + newItemsCount;
       if (projectedCount > maxStudentsLimit) {
         showToast(
           `Jumlah data (${projectedCount} siswa) melebihi batas kuota paket Anda (${maxStudentsLimit} siswa). Silakan sesuaikan jumlah data yang diimpor.`,
@@ -508,7 +518,7 @@ export const DataSiswaView: React.FC = () => {
       const singleTargetClassId =
         distinctClasses.length === 1 ? (distinctClasses[0] as string) : (selectedImportClassId || undefined);
 
-      await importStudents(payload, importMode === 'replace', singleTargetClassId);
+      await importStudents(payload, false, singleTargetClassId);
 
       setImportProgress(100);
       setImportStatusMessage('Selesai! Seluruh data siswa berhasil diperbarui.');
@@ -1185,67 +1195,6 @@ export const DataSiswaView: React.FC = () => {
                   </div>
                 </div>
               )}
-
-              {/* Step 4: Import Mode Option */}
-              <div className="space-y-2 pt-2 border-t border-slate-100">
-                <label className="block text-[11px] font-extrabold text-slate-700 uppercase tracking-wider">
-                  Langkah 3: Opsi Penempatan Data
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  <label
-                    className={`flex items-start gap-2.5 p-3 rounded-2xl border cursor-pointer transition-all ${
-                      importMode === 'append'
-                        ? 'bg-blue-50/70 border-blue-500 ring-2 ring-blue-500/20 text-slate-900'
-                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="importMode"
-                      checked={importMode === 'append'}
-                      onChange={() => setImportMode('append')}
-                      className="mt-0.5"
-                    />
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <p className="font-extrabold text-xs text-slate-900">
-                          Gabungkan &amp; Perbarui Data
-                        </p>
-                        <span className="px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 font-bold text-[9px]">
-                          Direkomendasikan
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
-                        Menambahkan siswa baru dan memperbarui data siswa yang sudah ada tanpa menghapus siswa di kelas lain.
-                      </p>
-                    </div>
-                  </label>
-
-                  <label
-                    className={`flex items-start gap-2.5 p-3 rounded-2xl border cursor-pointer transition-all ${
-                      importMode === 'replace'
-                        ? 'bg-blue-50/70 border-blue-500 ring-2 ring-blue-500/20 text-slate-900'
-                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="importMode"
-                      checked={importMode === 'replace'}
-                      onChange={() => setImportMode('replace')}
-                      className="mt-0.5"
-                    />
-                    <div>
-                      <p className="font-extrabold text-xs text-slate-900">
-                        Gantikan Siswa Rombel Terpilih
-                      </p>
-                      <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
-                        Hanya me-reset siswa pada rombel yang diimpor. Siswa di kelas lain tetap aman dan tidak terhapus.
-                      </p>
-                    </div>
-                  </label>
-                </div>
-              </div>
             </div>
 
             {/* Footer Modal Actions */}

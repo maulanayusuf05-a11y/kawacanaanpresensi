@@ -2943,7 +2943,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         p_replace_existing: replaceExisting,
         p_actor_user_id: currentUser?.id || null,
       });
-      if (error) throw error;
+      if (error) {
+        console.warn("[importClasses] RPC fallback to direct upsert:", error.message);
+        const { data: existingCls } = await supabase
+          .from("classes")
+          .select("id, name")
+          .eq("school_id", schoolId);
+        const existingMap = new Map<string, string>();
+        (existingCls || []).forEach((c: any) => {
+          existingMap.set(String(c.name || "").trim().toLowerCase(), c.id);
+        });
+
+        for (const p of payload) {
+          const matchedId = existingMap.get(p.name.toLowerCase());
+          if (matchedId) {
+            await supabase
+              .from("classes")
+              .update({
+                name: p.name,
+                grade: p.grade,
+                academic_year: p.academic_year,
+                wali_kelas_teacher_id: p.wali_kelas_teacher_id,
+              })
+              .eq("id", matchedId);
+          } else {
+            await supabase.from("classes").insert({
+              school_id: schoolId,
+              name: p.name,
+              grade: p.grade,
+              academic_year: p.academic_year,
+              wali_kelas_teacher_id: p.wali_kelas_teacher_id,
+            });
+          }
+        }
+      }
     }
 
     await loadData(currentUser?.id);
@@ -3012,48 +3045,63 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     const schoolId = currentUser?.schoolId;
     if (!schoolId) throw new Error("Sekolah aktif tidak ditemukan.");
 
-    if (replaceExisting) {
-      const { error: deleteError } = await supabase
-        .from("teachers")
-        .delete()
-        .eq("school_id", schoolId);
-      if (deleteError) throw deleteError;
-    }
+    // Ambil data guru yang sudah ada di sekolah ini
+    const { data: existingTeachersData, error: fetchErr } = await supabase
+      .from("teachers")
+      .select("*")
+      .eq("school_id", schoolId);
+    if (fetchErr) throw fetchErr;
+
+    const existingTeachers = existingTeachersData || [];
+    const usedExistingIds = new Set<string>();
 
     for (const t of items) {
+      const cleanName = t.nama.trim();
+      const rawTugas = (t.tugasUtama || t.tugas_utama || "Belum ditugaskan").trim();
+      const normalizedName = cleanName.toLowerCase();
+      const normalizedTugas = rawTugas.toLowerCase();
+
       const row = {
         school_id: schoolId,
-        nama: t.nama.trim(),
+        nama: cleanName,
         nip: t.nip && t.nip.trim() !== "-" ? t.nip.trim() : null,
         jenis_kelamin: t.jenisKelamin || "L",
-        tugas_utama: t.tugasUtama || t.tugas_utama || "Belum ditugaskan",
+        tugas_utama: rawTugas,
       };
 
-      if (row.nip && !replaceExisting) {
-        const { data: existing, error: lookupError } = await supabase
-          .from("teachers")
-          .select("id")
-          .eq("school_id", schoolId)
-          .eq("nip", row.nip)
-          .maybeSingle();
-        if (lookupError) throw lookupError;
+      // Logika otomatis:
+      // Jika terdapat nama dan tugas utama yang sama: sistem otomatis menggantikan data tersebut (update)
+      // Jika hanya nama yang sama dengan tugas utama yang berbeda atau pendidik baru: sistem tetap menambahkan datanya (insert)
+      const matched = existingTeachers.find((ex: any) => {
+        if (usedExistingIds.has(ex.id)) return false;
+        const exName = String(ex.nama || "").trim().toLowerCase();
+        const exTugas = String(ex.tugas_utama || "").trim().toLowerCase();
+        return exName === normalizedName && exTugas === normalizedTugas;
+      });
 
-        if (existing) {
-          const { error: updateError } = await supabase
-            .from("teachers")
-            .update({
-              nama: row.nama,
-              jenis_kelamin: row.jenis_kelamin,
-              tugas_utama: row.tugas_utama,
-            })
-            .eq("id", existing.id);
-          if (updateError) throw updateError;
-          continue;
+      if (matched) {
+        usedExistingIds.add(matched.id);
+        const { error: updateError } = await supabase
+          .from("teachers")
+          .update({
+            nama: row.nama,
+            nip: row.nip || matched.nip || null,
+            jenis_kelamin: row.jenis_kelamin,
+            tugas_utama: row.tugas_utama,
+          })
+          .eq("id", matched.id);
+        if (updateError) throw updateError;
+      } else {
+        const { data: inserted, error: insertError } = await supabase
+          .from("teachers")
+          .insert(row)
+          .select("*")
+          .single();
+        if (insertError) throw insertError;
+        if (inserted) {
+          existingTeachers.push(inserted);
         }
       }
-
-      const { error: insertError } = await supabase.from("teachers").insert(row);
-      if (insertError) throw insertError;
     }
 
     await loadData(currentUser?.id);
@@ -3254,29 +3302,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       });
 
       if (rpcErr) {
-        console.warn("[importStudents] RPC gagal, mencoba fallback batch insert ke tabel students:", rpcErr.message);
-        if (replaceExisting) {
-          let delQuery = supabase.from("students").delete().eq("school_id", schoolId);
-          if (effectiveTargetClassId) {
-            delQuery = delQuery.eq("class_id", effectiveTargetClassId);
-            await delQuery;
-          } else if (touchedClasses.length > 0) {
-            delQuery = delQuery.in("class_id", touchedClasses);
-            await delQuery;
+        console.warn("[importStudents] RPC gagal, mencoba fallback matching ke tabel students:", rpcErr.message);
+        const { data: existingStudentsData } = await supabase
+          .from("students")
+          .select("id, nama, nisn")
+          .eq("school_id", schoolId);
+        const existingList = existingStudentsData || [];
+        const usedIds = new Set<string>();
+
+        for (const st of payload) {
+          const cleanNama = (st.nama || "").trim().toLowerCase();
+          const cleanNisn = (st.nisn || "").trim().toLowerCase();
+          let matched: any = null;
+          if (cleanNama && cleanNisn) {
+            matched = existingList.find((ex: any) => {
+              if (usedIds.has(ex.id)) return false;
+              const exNama = String(ex.nama || "").trim().toLowerCase();
+              const exNisn = String(ex.nisn || "").trim().toLowerCase();
+              return exNama === cleanNama && exNisn === cleanNisn;
+            });
           }
-        }
 
-        const rows = payload.map((st) => ({
-          school_id: schoolId,
-          nama: st.nama,
-          nisn: st.nisn,
-          gender: st.gender,
-          class_id: st.class_id,
-        }));
-
-        const { error: insErr } = await supabase.from("students").insert(rows);
-        if (insErr) {
-          throw new Error(rpcErr.message || insErr.message || "Gagal mengimpor data siswa.");
+          if (matched) {
+            usedIds.add(matched.id);
+            await supabase
+              .from("students")
+              .update({
+                nama: st.nama,
+                nisn: st.nisn,
+                gender: st.gender,
+                class_id: st.class_id,
+              })
+              .eq("id", matched.id);
+          } else {
+            const { data: insData, error: insErr } = await supabase
+              .from("students")
+              .insert({
+                school_id: schoolId,
+                nama: st.nama,
+                nisn: st.nisn,
+                gender: st.gender,
+                class_id: st.class_id,
+              })
+              .select("id, nama, nisn")
+              .single();
+            if (insErr) {
+              throw new Error(rpcErr.message || insErr.message || "Gagal mengimpor data siswa.");
+            }
+            if (insData) {
+              existingList.push(insData);
+            }
+          }
         }
       }
     }

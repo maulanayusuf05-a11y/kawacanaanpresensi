@@ -660,16 +660,22 @@ export default async function handler(req: any, res: any) {
           const itemClassId = rawItem.classId || rawItem.class_id || effectiveTargetClassId || null;
 
           let matchedExisting: any = null;
-          if (itemNisn && existingByNisn.has(itemNisn.toLowerCase())) {
-            const candidate = existingByNisn.get(itemNisn.toLowerCase());
-            if (!usedExistingIds.has(candidate.id)) {
+          const cleanItemNama = itemNama.toLowerCase();
+          const cleanItemNisn = itemNisn ? itemNisn.toLowerCase() : '';
+
+          // Aturan presisi:
+          // - Jika terdapat siswa dengan nama dan NISN yang sama, otomatis gantikan data tersebut (update)
+          // - Jika hanya nama yang sama (NISN berbeda atau belum ada) atau siswa baru, sistem harus tetap menambahkan datanya (insert)
+          if (cleanItemNama && cleanItemNisn) {
+            const candidate = existingStudents.find((st: any) => {
+              if (usedExistingIds.has(st.id)) return false;
+              const stNama = String(st.nama || '').trim().toLowerCase();
+              const stNisn = String(st.nisn || '').trim().toLowerCase();
+              return stNama === cleanItemNama && stNisn === cleanItemNisn;
+            });
+            if (candidate) {
               matchedExisting = candidate;
             }
-          }
-
-          if (!matchedExisting && itemNama) {
-            const candidates = existingByName.get(itemNama.toLowerCase()) || [];
-            matchedExisting = candidates.find((c: any) => !usedExistingIds.has(c.id));
           }
 
           if (matchedExisting) {
@@ -910,9 +916,27 @@ export default async function handler(req: any, res: any) {
         const grade = item.grade || (matchNum ? parseInt(matchNum[0], 10) : 1);
         let waliId = item.wali_kelas_teacher_id || item.waliKelasTeacherId || null;
         if (!waliId && item.waliKelasNameInput) {
-          const cleanWali = String(item.waliKelasNameInput).trim().toLowerCase();
-          const match = teachersList.find((t: any) => String(t.nama || '').trim().toLowerCase() === cleanWali);
-          if (match) waliId = match.id;
+          const cleanWali = String(item.waliKelasNameInput).trim();
+          const cleanWaliLower = cleanWali.toLowerCase();
+          const match = teachersList.find((t: any) => String(t.nama || '').trim().toLowerCase() === cleanWaliLower);
+          if (match) {
+            waliId = match.id;
+          } else if (cleanWali) {
+            const { data: newTeacher } = await admin
+              .from('teachers')
+              .insert({
+                school_id: schoolId,
+                nama: cleanWali,
+                tugas_utama: 'Wali Kelas',
+                jenis_kelamin: 'L',
+              })
+              .select('id, nama')
+              .single();
+            if (newTeacher?.id) {
+              waliId = newTeacher.id;
+              teachersList.push(newTeacher);
+            }
+          }
         }
 
         const existing = classByName.get(rawName.toLowerCase());
