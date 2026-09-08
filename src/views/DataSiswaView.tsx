@@ -199,6 +199,7 @@ export const DataSiswaView: React.FC = () => {
   // Add/Edit Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+  const [isSavingStudent, setIsSavingStudent] = useState(false);
   const [formData, setFormData] = useState<{ nisn: string; nama: string; gender: 'L' | 'P'; classId: string }>({
     nisn: '',
     nama: '',
@@ -288,31 +289,42 @@ export const DataSiswaView: React.FC = () => {
 
   const handleSaveStudent = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.nisn.trim() || !formData.nama.trim()) return;
+    const cleanNama = formData.nama.trim();
+    if (!cleanNama) {
+      showToast('Nama lengkap siswa wajib diisi.', 'error');
+      return;
+    }
 
     const selectedCls = availableClasses.find((c) => c.id === formData.classId) || availableClasses[0];
-    const targetClassId = selectedCls && selectedCls.id !== 'onboarding-class-default' ? selectedCls.id : null;
+    const targetClassId = selectedCls && selectedCls.id !== 'onboarding-class-default' ? selectedCls.id : (availableClasses[0]?.id || classes[0]?.id || null);
 
-    if (editingStudent) {
-      await updateStudent(editingStudent.id, {
-        nisn: formData.nisn.trim(),
-        nama: formData.nama.trim().toUpperCase(),
-        gender: formData.gender,
-        classId: targetClassId,
-      });
-    } else {
-      if (maxStudentsLimit && students.length >= maxStudentsLimit) {
-        showToast(`Batas kuota siswa untuk paket Anda (${maxStudentsLimit} siswa) telah tercapai.`, 'error');
-        return;
+    setIsSavingStudent(true);
+    try {
+      if (editingStudent) {
+        await updateStudent(editingStudent.id, {
+          nisn: formData.nisn.trim(),
+          nama: cleanNama.toUpperCase(),
+          gender: formData.gender,
+          classId: targetClassId,
+        });
+      } else {
+        if (maxStudentsLimit && students.length >= maxStudentsLimit) {
+          showToast(`Batas kuota siswa untuk paket Anda (${maxStudentsLimit} siswa) telah tercapai.`, 'error');
+          return;
+        }
+        await addStudent({
+          nisn: formData.nisn.trim(),
+          nama: cleanNama.toUpperCase(),
+          gender: formData.gender,
+          classId: targetClassId,
+        });
       }
-      await addStudent({
-        nisn: formData.nisn.trim(),
-        nama: formData.nama.trim().toUpperCase(),
-        gender: formData.gender,
-        classId: targetClassId,
-      });
+      setIsModalOpen(false);
+    } catch (err: any) {
+      showToast(err?.message || 'Gagal menyimpan data siswa.', 'error');
+    } finally {
+      setIsSavingStudent(false);
     }
-    setIsModalOpen(false);
   };
 
   const handleDelete = async (id: string) => {
@@ -475,7 +487,7 @@ export const DataSiswaView: React.FC = () => {
       for (const s of validOnes) {
         let targetClassId = s.matchedClassId || null;
 
-        if (!targetClassId && s.classNameInput && isAdmin) {
+        if (!targetClassId && s.classNameInput && (isAdmin || isPersonalWorkspace || isWaliKelas)) {
           const inputClean = s.classNameInput.trim();
           if (createdClassMap.has(inputClean.toLowerCase())) {
             targetClassId = createdClassMap.get(inputClean.toLowerCase()) || null;
@@ -1313,9 +1325,11 @@ export const DataSiswaView: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md cursor-pointer"
+                  disabled={isSavingStudent}
+                  className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 rounded-xl shadow-md cursor-pointer flex items-center gap-1.5"
                 >
-                  Simpan
+                  {isSavingStudent && <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                  <span>{isSavingStudent ? 'Menyimpan...' : 'Simpan'}</span>
                 </button>
               </div>
             </form>

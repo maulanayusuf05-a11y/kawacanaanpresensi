@@ -2249,6 +2249,116 @@ export default async function handler(req: any, res: any) {
     }
 
     // -------------------------------------------------------------
+    // SAVE STUDENT (TAMBAH / PERBARUI DATA SISWA)
+    // -------------------------------------------------------------
+    if (action === 'save_student') {
+      const studentId = body.studentId || body.id || null;
+      let schoolId = body.schoolId || body.school_id || null;
+      const nama = String(body.nama || '').trim();
+      let gender: 'L' | 'P' = String(body.gender || 'L').toUpperCase() === 'P' ? 'P' : 'L';
+
+      if (!nama) {
+        return json(res, 400, { error: 'Nama lengkap siswa wajib diisi.' });
+      }
+
+      if (!schoolId) {
+        const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+        if (token) {
+          try {
+            const { data: authData } = await db.auth.getUser(token);
+            if (authData?.user) {
+              const { data: prof } = await db.from('profiles').select('school_id').eq('id', authData.user.id).maybeSingle();
+              schoolId = prof?.school_id || authData.user.user_metadata?.school_id || authData.user.user_metadata?.school_workspace_id;
+            }
+          } catch (_) {}
+        }
+      }
+
+      if (!schoolId) {
+        return json(res, 400, { error: 'ID sekolah / ruang kerja wajib disertakan.' });
+      }
+
+      let classId = body.classId || body.class_id || null;
+      if (!classId) {
+        const { data: existingClass } = await db
+          .from('classes')
+          .select('id')
+          .eq('school_id', schoolId)
+          .limit(1)
+          .maybeSingle();
+
+        if (existingClass?.id) {
+          classId = existingClass.id;
+        } else {
+          const { data: newCls } = await db
+            .from('classes')
+            .insert({
+              school_id: schoolId,
+              name: 'Kelas 1',
+              grade: 1,
+              academic_year: '2026/2027',
+            })
+            .select('id')
+            .maybeSingle();
+          classId = newCls?.id || null;
+        }
+      }
+
+      let nisn = String(body.nisn || '').trim();
+      if (!nisn || nisn === '-') {
+        nisn = '99' + Math.floor(10000000 + Math.random() * 90000000);
+      }
+
+      let studentRow: any = null;
+      if (studentId) {
+        const { data: updated, error: uErr } = await db
+          .from('students')
+          .update({
+            nama,
+            gender,
+            nisn,
+            class_id: classId,
+          })
+          .eq('id', studentId)
+          .eq('school_id', schoolId)
+          .select('*, classes:class_id(id,name)')
+          .maybeSingle();
+
+        if (uErr) {
+          console.error('Error updating student in onboarding:', uErr);
+          return json(res, 500, { error: `Gagal memperbarui data siswa: ${uErr.message}` });
+        }
+        studentRow = updated;
+      } else {
+        const { data: inserted, error: iErr } = await db
+          .from('students')
+          .insert({
+            school_id: schoolId,
+            class_id: classId,
+            nama,
+            gender,
+            nisn,
+          })
+          .select('*, classes:class_id(id,name)')
+          .maybeSingle();
+
+        if (iErr) {
+          console.error('Error inserting student in onboarding:', iErr);
+          return json(res, 500, { error: `Gagal menambahkan data siswa: ${iErr.message}` });
+        }
+        studentRow = inserted;
+      }
+
+      return json(res, 200, {
+        ok: true,
+        success: true,
+        student: studentRow,
+        studentId: studentRow?.id,
+        message: `Data siswa ${nama} berhasil disimpan.`,
+      });
+    }
+
+    // -------------------------------------------------------------
     // SAVE SYSTEM CONFIG (PENGATURAN SISTEM)
     // -------------------------------------------------------------
     if (action === 'save_system_config' || action === 'update_system_config') {

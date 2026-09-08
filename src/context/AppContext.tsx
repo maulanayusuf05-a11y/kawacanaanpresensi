@@ -3469,46 +3469,182 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const addStudent = async (st: Omit<Student, "id">) => {
     const schoolId = currentUser?.schoolId;
     if (!schoolId) throw new Error("Sekolah aktif tidak ditemukan.");
-    const { data, error } = await supabase
-      .from("students")
-      .insert({
-        school_id: schoolId,
-        nama: st.nama.trim(),
-        nisn: st.nisn || null,
-        gender: st.gender || "L",
-        class_id: st.classId || null,
-      })
-      .select("*,classes:class_id(id,name)")
-      .single();
-    if (error) throw error;
-    setStudents((p) => [
-      ...p,
-      dbStudent({ ...data, class_name: data.classes?.name || "" }),
-    ]);
+
+    let insertedRow: any = null;
+    let apiError: string | null = null;
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token || "";
+      const apiRes = await fetch("/api/admin-users", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          action: "save_student",
+          schoolId,
+          nama: st.nama.trim(),
+          nisn: st.nisn?.trim() || null,
+          gender: st.gender || "L",
+          classId: st.classId || null,
+        }),
+      });
+      const jsonRes = await apiRes.json().catch(() => ({}));
+      if (apiRes.ok && (jsonRes.ok || jsonRes.success) && jsonRes.student) {
+        insertedRow = jsonRes.student;
+      } else if (!apiRes.ok && jsonRes.error) {
+        apiError = jsonRes.error;
+      }
+    } catch (err: any) {
+      console.warn("API save_student failed, trying fallback:", err?.message);
+    }
+
+    // Secondary fallback via onboarding API if admin-users returned error
+    if (!insertedRow) {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token || "";
+        const apiRes = await fetch("/api/onboarding", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            action: "save_student",
+            schoolId,
+            nama: st.nama.trim(),
+            nisn: st.nisn?.trim() || null,
+            gender: st.gender || "L",
+            classId: st.classId || null,
+          }),
+        });
+        const jsonRes = await apiRes.json().catch(() => ({}));
+        if (apiRes.ok && (jsonRes.ok || jsonRes.success) && jsonRes.student) {
+          insertedRow = jsonRes.student;
+        }
+      } catch (_) {}
+    }
+
+    if (!insertedRow) {
+      if (apiError) throw new Error(apiError);
+      // Direct supabase insert
+      const fallbackNisn = st.nisn?.trim() || ('99' + Math.floor(10000000 + Math.random() * 90000000));
+      const { data, error } = await supabase
+        .from("students")
+        .insert({
+          school_id: schoolId,
+          nama: st.nama.trim(),
+          nisn: fallbackNisn,
+          gender: st.gender || "L",
+          class_id: st.classId || null,
+        })
+        .select("*,classes:class_id(id,name)")
+        .maybeSingle();
+      if (error) throw error;
+      insertedRow = data;
+    }
+
+    const newStudent = dbStudent({ ...insertedRow, class_name: insertedRow?.classes?.name || "" });
+    setStudents((p) => [...p, newStudent]);
+    if (currentUser) {
+      loadDataForSchool(schoolId, currentUser, currentUser.role).catch(() => {});
+    }
+    showToast(`Data siswa ${st.nama} berhasil disimpan.`, "success");
+    return newStudent;
   };
   const updateStudent = async (id: string, st: Omit<Student, "id">) => {
     const schoolId = currentUser?.schoolId;
     if (!schoolId) throw new Error("Sekolah aktif tidak ditemukan.");
-    const { data, error } = await supabase
-      .from("students")
-      .update({
-        nama: st.nama.trim(),
-        nisn: st.nisn || null,
-        gender: st.gender || "L",
-        class_id: st.classId || null,
-      })
-      .eq("id", id)
-      .eq("school_id", schoolId)
-      .select("*,classes:class_id(id,name)")
-      .single();
-    if (error) throw error;
+
+    let updatedRow: any = null;
+    let apiError: string | null = null;
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token || "";
+      const apiRes = await fetch("/api/admin-users", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          action: "save_student",
+          studentId: id,
+          schoolId,
+          nama: st.nama.trim(),
+          nisn: st.nisn?.trim() || null,
+          gender: st.gender || "L",
+          classId: st.classId || null,
+        }),
+      });
+      const jsonRes = await apiRes.json().catch(() => ({}));
+      if (apiRes.ok && (jsonRes.ok || jsonRes.success) && jsonRes.student) {
+        updatedRow = jsonRes.student;
+      } else if (!apiRes.ok && jsonRes.error) {
+        apiError = jsonRes.error;
+      }
+    } catch (err: any) {
+      console.warn("API update student failed, trying fallback:", err?.message);
+    }
+
+    if (!updatedRow) {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token || "";
+        const apiRes = await fetch("/api/onboarding", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            action: "save_student",
+            studentId: id,
+            schoolId,
+            nama: st.nama.trim(),
+            nisn: st.nisn?.trim() || null,
+            gender: st.gender || "L",
+            classId: st.classId || null,
+          }),
+        });
+        const jsonRes = await apiRes.json().catch(() => ({}));
+        if (apiRes.ok && (jsonRes.ok || jsonRes.success) && jsonRes.student) {
+          updatedRow = jsonRes.student;
+        }
+      } catch (_) {}
+    }
+
+    if (!updatedRow) {
+      if (apiError) throw new Error(apiError);
+      const { data, error } = await supabase
+        .from("students")
+        .update({
+          nama: st.nama.trim(),
+          nisn: st.nisn?.trim() || null,
+          gender: st.gender || "L",
+          class_id: st.classId || null,
+        })
+        .eq("id", id)
+        .eq("school_id", schoolId)
+        .select("*,classes:class_id(id,name)")
+        .maybeSingle();
+      if (error) throw error;
+      updatedRow = data;
+    }
+
+    const updatedStudent = dbStudent({ ...updatedRow, class_name: updatedRow?.classes?.name || "" });
     setStudents((p) =>
-      p.map((x) =>
-        x.id === id
-          ? dbStudent({ ...data, class_name: data.classes?.name || "" })
-          : x,
-      ),
+      p.map((x) => (x.id === id ? updatedStudent : x)),
     );
+    if (currentUser) {
+      loadDataForSchool(schoolId, currentUser, currentUser.role).catch(() => {});
+    }
+    showToast(`Data siswa ${st.nama} berhasil diperbarui.`, "success");
+    return updatedStudent;
   };
   const deleteStudent = async (id: string) => {
     try {

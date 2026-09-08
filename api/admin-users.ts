@@ -122,16 +122,46 @@ export default async function handler(req: any, res: any) {
     ''
   ).trim().toUpperCase();
 
-  const isAuthorizedAdmin = ['ADMIN', 'SUPER_ADMIN', 'ADMIN SEKOLAH'].includes(callerRole);
-  if (!isAuthorizedAdmin) {
-    return json(res, 403, { error: 'Hanya ADMIN sekolah atau SUPER ADMIN yang dapat mengelola akun.' });
-  }
-
   const body = req.body || {};
   const action = body.action;
   const role = body.role as Role | undefined;
   const callerSchoolId = profile?.school_id || caller.user.user_metadata?.school_workspace_id || caller.user.user_metadata?.school_id || null;
-  const schoolId = callerRole === 'SUPER_ADMIN' ? (body.schoolId || body.school_id || callerSchoolId) : callerSchoolId;
+  const schoolId = callerRole === 'SUPER_ADMIN' ? (body.schoolId || body.school_id || callerSchoolId) : (callerSchoolId || body.schoolId || body.school_id);
+
+  // Cek apakah workspace ini adalah ruang kerja personal atau pengguna adalah pemilik (owner)
+  let isPersonalOwner = false;
+  const checkSchoolId = schoolId || callerSchoolId || body.schoolId || body.school_id;
+  if (checkSchoolId) {
+    const { data: sch } = await admin
+      .from('schools')
+      .select('id, owner_id, is_personal, workspace_type')
+      .eq('id', checkSchoolId)
+      .maybeSingle();
+    if (sch && (sch.owner_id === caller.user.id || sch.is_personal === true || sch.workspace_type === 'personal')) {
+      isPersonalOwner = true;
+    }
+  }
+
+  const studentAndClassActions = [
+    'import_students',
+    'save_student',
+    'delete_student',
+    'delete_students_by_class',
+    'import_classes',
+    'save_class',
+    'delete_class',
+  ];
+  const isStudentOrClassAction = studentAndClassActions.includes(action);
+  const isTeacherOrWali = ['WALI KELAS', 'GURU MAPEL', 'KEPALA SEKOLAH'].includes(callerRole);
+
+  const isAuthorizedAdmin =
+    ['ADMIN', 'SUPER_ADMIN', 'ADMIN SEKOLAH'].includes(callerRole) ||
+    isPersonalOwner ||
+    (isStudentOrClassAction && (isTeacherOrWali || isPersonalOwner));
+
+  if (!isAuthorizedAdmin) {
+    return json(res, 403, { error: 'Hanya ADMIN sekolah atau SUPER ADMIN yang dapat mengelola akun.' });
+  }
 
   const getAcademicYear = async (id: string) => {
     const { data } = await admin.from('school_profile').select('tahun_pelajaran').eq('school_id', id).maybeSingle();
@@ -776,9 +806,107 @@ export default async function handler(req: any, res: any) {
       });
     }
 
+    if (action === 'save_student') {
+      if (!['ADMIN', 'SUPER_ADMIN', 'KEPALA SEKOLAH', 'WALI KELAS', 'GURU MAPEL'].includes(callerRole) && !isPersonalOwner) {
+        return json(res, 403, { error: 'Tidak berwenang menyimpan data siswa.' });
+      }
+      const targetSchoolId = schoolId || callerSchoolId || body.schoolId || body.school_id;
+      if (!targetSchoolId) {
+        return json(res, 400, { error: 'ID sekolah / ruang kerja wajib disertakan.' });
+      }
+
+      const studentId = body.studentId || body.id || null;
+      const nama = String(body.nama || '').trim();
+      if (!nama) {
+        return json(res, 400, { error: 'Nama lengkap siswa wajib diisi.' });
+      }
+
+      let gender: 'L' | 'P' = String(body.gender || 'L').toUpperCase() === 'P' ? 'P' : 'L';
+
+      // Pastikan class_id selalu valid (tidak pernah null)
+      let classId = body.classId || body.class_id || null;
+      if (!classId) {
+        const { data: existingClass } = await admin
+          .from('classes')
+          .select('id')
+          .eq('school_id', targetSchoolId)
+          .limit(1)
+          .maybeSingle();
+
+        if (existingClass?.id) {
+          classId = existingClass.id;
+        } else {
+          const { data: newCls } = await admin
+            .from('classes')
+            .insert({
+              school_id: targetSchoolId,
+              name: 'Kelas 1',
+              grade: 1,
+              academic_year: await getAcademicYear(targetSchoolId),
+            })
+            .select('id')
+            .maybeSingle();
+          classId = newCls?.id || null;
+        }
+      }
+
+      // Pastikan NISN tidak pernah null (karena constraint not-null database)
+      let nisn = String(body.nisn || '').trim();
+      if (!nisn || nisn === '-') {
+        nisn = '99' + Math.floor(10000000 + Math.random() * 90000000);
+      }
+
+      let studentRow: any = null;
+      if (studentId) {
+        const { data: updated, error: uErr } = await admin
+          .from('students')
+          .update({
+            nama,
+            gender,
+            nisn,
+            class_id: classId,
+          })
+          .eq('id', studentId)
+          .eq('school_id', targetSchoolId)
+          .select('*, classes:class_id(id,name)')
+          .maybeSingle();
+
+        if (uErr) {
+          console.error('[admin-users] Error updating student:', uErr.message);
+          return json(res, 500, { error: `Gagal memperbarui data siswa: ${uErr.message}` });
+        }
+        studentRow = updated;
+      } else {
+        const { data: inserted, error: iErr } = await admin
+          .from('students')
+          .insert({
+            school_id: targetSchoolId,
+            class_id: classId,
+            nama,
+            gender,
+            nisn,
+          })
+          .select('*, classes:class_id(id,name)')
+          .maybeSingle();
+
+        if (iErr) {
+          console.error('[admin-users] Error inserting student:', iErr.message);
+          return json(res, 500, { error: `Gagal menambahkan siswa baru: ${iErr.message}` });
+        }
+        studentRow = inserted;
+      }
+
+      return json(res, 200, {
+        ok: true,
+        success: true,
+        student: studentRow,
+        message: `Data siswa ${nama} berhasil disimpan.`,
+      });
+    }
+
     if (action === 'import_students') {
-      if (!['ADMIN', 'SUPER_ADMIN', 'KEPALA SEKOLAH'].includes(callerRole)) {
-        return json(res, 403, { error: 'Hanya Admin atau Kepala Sekolah yang berwenang mengimpor data siswa.' });
+      if (!['ADMIN', 'SUPER_ADMIN', 'KEPALA SEKOLAH', 'WALI KELAS', 'GURU MAPEL'].includes(callerRole) && !isPersonalOwner) {
+        return json(res, 403, { error: 'Hanya Admin, Kepala Sekolah, atau Wali Kelas yang berwenang mengimpor data siswa.' });
       }
       if (!schoolId) {
         return json(res, 400, { error: 'ID sekolah tidak ditemukan.' });
@@ -792,6 +920,27 @@ export default async function handler(req: any, res: any) {
         return json(res, 400, { error: 'Tidak ada data siswa yang dikirim.' });
       }
 
+      // Ambil seluruh kelas sekolah untuk fallback jika ada item tanpa class_id
+      const { data: schoolClasses } = await admin
+        .from('classes')
+        .select('id, name')
+        .eq('school_id', schoolId);
+
+      let defaultClassId = targetClassId || schoolClasses?.[0]?.id || null;
+      if (!defaultClassId) {
+        const { data: newCls } = await admin
+          .from('classes')
+          .insert({
+            school_id: schoolId,
+            name: 'Kelas 1',
+            grade: 1,
+            academic_year: await getAcademicYear(schoolId),
+          })
+          .select('id')
+          .maybeSingle();
+        defaultClassId = newCls?.id || null;
+      }
+
       // Coba panggil import_students_atomic via service role jika tersedia di database
       // 1. Validasi kelas yang disentuh dalam batch impor (touched classes)
       const touchedClassIds = new Set<string>();
@@ -802,7 +951,7 @@ export default async function handler(req: any, res: any) {
       });
 
       // Tentukan targetClassId tunggal jika semua item menuju kelas yang sama
-      const effectiveTargetClassId = targetClassId || (touchedClassIds.size === 1 ? Array.from(touchedClassIds)[0] : null);
+      const effectiveTargetClassId = targetClassId || (touchedClassIds.size === 1 ? Array.from(touchedClassIds)[0] : defaultClassId);
 
       // Smart in-place synchronization:
       // Selalu ambil seluruh data siswa sekolah untuk matching nama + nisn
@@ -828,13 +977,23 @@ export default async function handler(req: any, res: any) {
 
       const usedExistingIds = new Set<string>();
       const toUpdate: Array<{ id: string; nama: string; nisn: string | null; gender: 'L' | 'P'; class_id: string | null }> = [];
-      const toInsert: Array<{ school_id: string; nama: string; nisn: string | null; gender: 'L' | 'P'; class_id: string | null }> = [];
+      const toInsert: Array<{ school_id: string; nama: string; nisn: string; gender: 'L' | 'P'; class_id: string }> = [];
 
       for (const rawItem of items) {
         const itemNama = String(rawItem.nama || '').trim();
-        const itemNisn = rawItem.nisn && String(rawItem.nisn).trim() !== '-' ? String(rawItem.nisn).trim() : null;
+        let itemNisn = rawItem.nisn && String(rawItem.nisn).trim() !== '-' ? String(rawItem.nisn).trim() : null;
+        if (!itemNisn) {
+          itemNisn = '99' + Math.floor(10000000 + Math.random() * 90000000);
+        }
         const itemGender: 'L' | 'P' = rawItem.gender === 'P' ? 'P' : 'L';
-        const itemClassId = rawItem.classId || rawItem.class_id || effectiveTargetClassId || null;
+        let itemClassId = rawItem.classId || rawItem.class_id || effectiveTargetClassId || null;
+        if (!itemClassId && rawItem.className) {
+          const matchCls = (schoolClasses || []).find((c: any) => c.name.toLowerCase() === String(rawItem.className).trim().toLowerCase());
+          if (matchCls) itemClassId = matchCls.id;
+        }
+        if (!itemClassId) {
+          itemClassId = defaultClassId;
+        }
 
         let matchedExisting: any = null;
         const cleanItemNama = itemNama.toLowerCase();
@@ -957,7 +1116,7 @@ export default async function handler(req: any, res: any) {
     }
 
     if (action === 'delete_student') {
-      if (!['ADMIN', 'SUPER_ADMIN', 'KEPALA SEKOLAH'].includes(callerRole)) {
+      if (!['ADMIN', 'SUPER_ADMIN', 'KEPALA SEKOLAH', 'WALI KELAS', 'GURU MAPEL'].includes(callerRole) && !isPersonalOwner) {
         return json(res, 403, { error: 'Tidak berwenang menghapus siswa.' });
       }
       const studentId = body.studentId || body.student_id;
@@ -1002,7 +1161,7 @@ export default async function handler(req: any, res: any) {
     }
 
     if (action === 'delete_students_by_class') {
-      if (!['ADMIN', 'SUPER_ADMIN'].includes(callerRole)) {
+      if (!['ADMIN', 'SUPER_ADMIN', 'KEPALA SEKOLAH', 'WALI KELAS', 'GURU MAPEL'].includes(callerRole) && !isPersonalOwner) {
         return json(res, 403, { error: 'Tidak berwenang menghapus siswa kelas.' });
       }
       const classId = body.classId || body.class_id;
@@ -1054,7 +1213,7 @@ export default async function handler(req: any, res: any) {
     }
 
     if (action === 'delete_class') {
-      if (!['ADMIN', 'SUPER_ADMIN'].includes(callerRole)) {
+      if (!['ADMIN', 'SUPER_ADMIN', 'KEPALA SEKOLAH', 'WALI KELAS'].includes(callerRole) && !isPersonalOwner) {
         return json(res, 403, { error: 'Tidak berwenang menghapus kelas.' });
       }
       const classId = body.classId || body.class_id;
@@ -1088,7 +1247,7 @@ export default async function handler(req: any, res: any) {
     }
 
     if (action === 'import_classes') {
-      if (!['ADMIN', 'SUPER_ADMIN'].includes(callerRole)) {
+      if (!['ADMIN', 'SUPER_ADMIN', 'KEPALA SEKOLAH', 'WALI KELAS'].includes(callerRole) && !isPersonalOwner) {
         return json(res, 403, { error: 'Tidak berwenang mengimpor kelas.' });
       }
       const items = Array.isArray(body.items) ? body.items : [];
