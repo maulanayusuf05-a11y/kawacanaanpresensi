@@ -5,6 +5,7 @@ import { NavItem } from '../types';
 interface NavbarProps {
   onOpenLogin: () => void;
   onOpenRegister: () => void;
+  onOpenRegisterSchool?: () => void;
   lang: 'ID' | 'EN';
   setLang: (lang: 'ID' | 'EN') => void;
 }
@@ -12,6 +13,7 @@ interface NavbarProps {
 export const Navbar: React.FC<NavbarProps> = ({ 
   onOpenLogin, 
   onOpenRegister,
+  onOpenRegisterSchool,
   lang,
   setLang 
 }) => {
@@ -265,16 +267,20 @@ export const Navbar: React.FC<NavbarProps> = ({
               }}
               className="w-full py-3 bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold uppercase tracking-widest rounded-lg shadow-sm transition-all cursor-pointer text-center"
             >
-              {lang === 'ID' ? 'Daftar Sekolah Baru' : 'Register New School'}
+              {lang === 'ID' ? 'Mulai Gratis' : 'Start for Free'}
             </button>
             <button
               onClick={() => {
                 setMobileMenuOpen(false);
-                onOpenLogin();
+                if (onOpenRegisterSchool) {
+                  onOpenRegisterSchool();
+                } else {
+                  onOpenRegister();
+                }
               }}
               className="w-full py-3 bg-[#0B2F64] hover:bg-blue-900 text-white text-xs font-bold uppercase tracking-widest rounded-lg shadow-sm transition-all cursor-pointer text-center"
             >
-              {lang === 'ID' ? 'Masuk ke Sistem' : 'Sign In'}
+              {lang === 'ID' ? 'Daftar Sekolah' : 'Register School'}
             </button>
           </div>
         </div>

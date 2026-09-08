@@ -55,6 +55,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({ onEnterSystem 
       <Navbar
         onOpenLogin={handleOpenLogin}
         onOpenRegister={() => handleOpenRegister('free')}
+        onOpenRegisterSchool={() => handleOpenRegister('school')}
         lang={lang}
         setLang={setLang}
       />
@@ -62,6 +63,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({ onEnterSystem 
       <main className="relative">
         <HeroSection
           onOpenRegister={() => handleOpenRegister('free')}
+          onOpenRegisterSchool={() => handleOpenRegister('school')}
           onOpenLogin={handleOpenLogin}
           lang={lang}
         />

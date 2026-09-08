@@ -4,12 +4,14 @@ import { DeviceMockup } from './DeviceMockup';
 
 interface HeroSectionProps {
   onOpenRegister: () => void;
+  onOpenRegisterSchool?: () => void;
   onOpenLogin: () => void;
   lang: 'ID' | 'EN';
 }
 
 export const HeroSection: React.FC<HeroSectionProps> = ({ 
   onOpenRegister, 
+  onOpenRegisterSchool,
   onOpenLogin,
   lang 
 }) => {
@@ -73,25 +75,25 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             {/* Action Buttons Group with Blue Theme Styling */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4 pt-1 w-full sm:w-auto">
               
-              {/* Primary Blue Button: DAFTAR SEKOLAH BARU */}
+              {/* Primary Blue Button: MULAI GRATIS */}
               <button
                 type="button"
                 id="btn-hero-trial"
                 onClick={onOpenRegister}
                 className="w-full sm:w-auto bg-blue-700 hover:bg-blue-800 active:scale-95 text-white px-6 sm:px-8 py-3.5 sm:py-4 text-xs sm:text-sm font-bold uppercase tracking-widest transition-all shadow-md shadow-blue-700/25 flex items-center justify-center gap-2 cursor-pointer rounded-lg"
               >
-                <span>{lang === 'ID' ? 'DAFTAR SEKOLAH BARU' : 'REGISTER SCHOOL'}</span>
+                <span>{lang === 'ID' ? 'MULAI GRATIS' : 'START FOR FREE'}</span>
                 <ArrowRight className="w-4 h-4 shrink-0" />
               </button>
 
-              {/* Secondary Button: MASUK KE SISTEM */}
+              {/* Secondary Button: DAFTAR SEKOLAH */}
               <button
                 type="button"
-                id="btn-hero-login"
-                onClick={onOpenLogin}
+                id="btn-hero-register-school"
+                onClick={onOpenRegisterSchool || onOpenRegister}
                 className="w-full sm:w-auto border-2 border-[#0B2F64] bg-white hover:bg-blue-50 text-[#0B2F64] px-6 sm:px-8 py-3.5 sm:py-4 text-xs sm:text-sm font-bold uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs rounded-lg"
               >
-                <span>{lang === 'ID' ? 'MASUK KE SISTEM' : 'ENTER SYSTEM'}</span>
+                <span>{lang === 'ID' ? 'DAFTAR SEKOLAH' : 'REGISTER SCHOOL'}</span>
                 <ArrowRight className="w-4 h-4 shrink-0" />
               </button>
 
