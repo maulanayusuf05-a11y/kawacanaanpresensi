@@ -787,25 +787,14 @@ export const AbsensiView: React.FC = () => {
 
       {/* Unsaved Changes Alert Banner */}
       {isDirty && !isDateLocked && (
-        <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 text-xs font-semibold animate-fadeIn">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping" />
-            <span>Ada perubahan absensi yang belum disimpan. Klik <strong>Simpan Presensi</strong> untuk menyimpan permanen.</span>
-          </div>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={isSaving}
-            className="px-3 py-1.5 bg-blue-600 text-white rounded-lg font-bold text-xs hover:bg-blue-700 active:scale-95 transition-all cursor-pointer inline-flex items-center gap-1.5 shrink-0"
-          >
-            {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-            <span>{isSaving ? 'Menyimpan...' : 'Simpan Sekarang'}</span>
-          </button>
+        <div className="flex items-center gap-2.5 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 text-xs font-bold animate-fadeIn">
+          <span className="w-2.5 h-2.5 rounded-full bg-blue-600 shrink-0 animate-ping" />
+          <span>Ada perubahan absensi yang belum disimpan. Klik <strong>Simpan Presensi</strong> untuk menyimpan permanen.</span>
         </div>
       )}
 
       {/* Bulk Action Buttons */}
-      <div className={`grid grid-cols-1 ${attendanceMode === 'DAILY' ? 'sm:grid-cols-4' : 'sm:grid-cols-3'} gap-2.5 sm:gap-3`}>
+      <div className={`grid grid-cols-1 ${attendanceMode === 'DAILY' ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-2.5 sm:gap-3`}>
         <button
           type="button"
           onClick={handleHadirSemua}
@@ -837,29 +826,6 @@ export const AbsensiView: React.FC = () => {
             <span>Pulang Masal</span>
           </button>
         )}
-
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={isDateLocked || isSaving}
-          id="btn-simpan-top"
-          className={`py-3 px-4 rounded-xl border font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-xs min-h-[44px] ${
-            isDateLocked || isSaving
-              ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
-              : isDirty
-              ? 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700 active:scale-98 cursor-pointer shadow-md'
-              : 'border-blue-300 bg-blue-50 hover:bg-blue-100 active:scale-98 text-blue-700 cursor-pointer'
-          }`}
-        >
-          {isSaving ? (
-            <Loader2 size={16} className="animate-spin" />
-          ) : isDateLocked ? (
-            <Lock size={16} />
-          ) : (
-            <Save size={16} />
-          )}
-          <span>{isSaving ? 'Menyimpan...' : 'Simpan Presensi'}</span>
-        </button>
 
         <button
           type="button"
