@@ -2221,6 +2221,119 @@ export default async function handler(req: any, res: any) {
       });
     }
 
+    if (action === 'save_class') {
+      const classId = body.classId || body.id;
+      const schoolId = body.schoolId || (body.school_id as string) || '';
+      const name = String(body.name || '').trim();
+      const grade = Number(body.grade) || 1;
+      const academicYear = String(body.academicYear || body.academic_year || '2026/2027').trim();
+      const waliKelasTeacherId = body.waliKelasTeacherId || null;
+
+      if (!schoolId) {
+        return json(res, 400, { error: 'ID sekolah / ruang kerja wajib tersedia.' });
+      }
+      if (!name) {
+        return json(res, 400, { error: 'Nama rombel kelas wajib diisi.' });
+      }
+
+      // Validasi duplikasi nama kelas di tahun ajaran yang sama
+      let dupQuery = db.from('classes')
+        .select('id')
+        .eq('school_id', schoolId)
+        .eq('academic_year', academicYear)
+        .ilike('name', name);
+      if (classId) {
+        dupQuery = dupQuery.neq('id', classId);
+      }
+      const { data: dup } = await dupQuery.maybeSingle();
+      if (dup) {
+        return json(res, 400, { error: `Rombel "${name}" sudah ada pada tahun ajaran ${academicYear}.` });
+      }
+
+      // Jika ada wali kelas, pastikan 1 guru = 1 rombel pada tahun ajaran yang sama
+      if (waliKelasTeacherId) {
+        let releaseQuery = db.from('classes')
+          .update({ wali_kelas_teacher_id: null })
+          .eq('school_id', schoolId)
+          .eq('academic_year', academicYear)
+          .eq('wali_kelas_teacher_id', waliKelasTeacherId);
+        if (classId) {
+          releaseQuery = releaseQuery.neq('id', classId);
+        }
+        await releaseQuery;
+
+        await db.from('profiles')
+          .update({ class_ids: classId ? [classId] : [] })
+          .eq('school_id', schoolId)
+          .eq('teacher_id', waliKelasTeacherId);
+      }
+
+      let classRow: any = null;
+      if (classId) {
+        const { data: updated, error: uErr } = await db.from('classes')
+          .update({
+            name,
+            grade,
+            academic_year: academicYear,
+            wali_kelas_teacher_id: waliKelasTeacherId,
+          })
+          .eq('id', classId)
+          .select('*, wali:wali_kelas_teacher_id(id,nama)')
+          .maybeSingle();
+        if (uErr) throw uErr;
+        classRow = updated;
+      } else {
+        const { data: inserted, error: iErr } = await db.from('classes')
+          .insert({
+            school_id: schoolId,
+            name,
+            grade,
+            academic_year: academicYear,
+            wali_kelas_teacher_id: waliKelasTeacherId,
+          })
+          .select('*, wali:wali_kelas_teacher_id(id,nama)')
+          .maybeSingle();
+        if (iErr) throw iErr;
+        classRow = inserted;
+        if (waliKelasTeacherId && classRow?.id) {
+          await db.from('profiles')
+            .update({ class_ids: [classRow.id] })
+            .eq('school_id', schoolId)
+            .eq('teacher_id', waliKelasTeacherId);
+        }
+      }
+
+      // Update school_profile.kelas jika ini ruang kerja personal
+      try {
+        const { data: schoolRow } = await db.from('schools').select('workspace_type,is_personal').eq('id', schoolId).maybeSingle();
+        if (schoolRow?.workspace_type === 'personal' || schoolRow?.is_personal) {
+          await db.from('school_profile').update({ kelas: name }).eq('school_id', schoolId);
+        }
+      } catch (_) {}
+
+      return json(res, 200, {
+        ok: true,
+        success: true,
+        class: classRow,
+      });
+    }
+
+    if (action === 'delete_class') {
+      const classId = body.classId || body.id;
+      const schoolId = body.schoolId || (body.school_id as string) || '';
+      if (!classId) return json(res, 400, { error: 'ID kelas wajib diisi.' });
+
+      const { data: stus } = await db.from('students').select('id').eq('class_id', classId).limit(1);
+      if (stus && stus.length > 0) {
+        return json(res, 400, { error: 'Tidak dapat menghapus kelas yang masih memiliki siswa.' });
+      }
+
+      const { error: dErr } = await db.from('classes').delete().eq('id', classId).eq('school_id', schoolId);
+      if (dErr) throw dErr;
+
+      return json(res, 200, { ok: true, success: true });
+    }
+
     return json(res, 400, { error: `Aksi ${action} tidak dikenali.` });
   } catch (err: any) {
     console.error('Onboarding handler error:', err);

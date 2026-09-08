@@ -47,6 +47,7 @@ export const DataGuruView: React.FC = () => {
     addTeacher,
     updateTeacher,
     deleteTeacher,
+    updateClass,
     importTeachers,
     executeTeacherAssignment,
     addUser,
@@ -148,66 +149,108 @@ export const DataGuruView: React.FC = () => {
       badgeColor: string;
     }> = [];
 
-    // Prioritas 1: Rombel aktif Wali Kelas atau status eksplisit Wali Kelas (Eksklusif: 1 Guru = 1 Rombel)
-    const isWali =
-      homeroomClasses.length > 0 ||
-      (t.tugasUtama || t.tugas_utama || '').trim().toLowerCase().includes('wali') ||
-      (isPersonalWorkspace && isWaliKelas && (t.id === currentUser?.teacherId || normalizeTeacherName(t.nama) === normalizeTeacherName(currentUser?.name)));
+    const savedRegRole = localStorage.getItem('kawacanaan_last_registered_role');
+    const rawDuty = (t.tugasUtama || t.tugas_utama || '').trim().toLowerCase();
+    const isExplicitMapel =
+      rawDuty.includes('mapel') ||
+      rawDuty.includes('pelajaran') ||
+      (isPersonalWorkspace && (isGuruMapel || savedRegRole === 'GURU MAPEL'));
+    const isExplicitWali =
+      rawDuty.includes('wali') ||
+      (isPersonalWorkspace && (isWaliKelas || savedRegRole === 'WALI KELAS'));
 
-    if (homeroomClasses.length > 0) {
-      const activeYear = schoolProfile?.tahunPelajaran || '2026/2027';
-      const yearMatchingClasses = homeroomClasses.filter((hc) => !hc.academicYear || hc.academicYear === activeYear);
-      const effectiveClass = yearMatchingClasses.length > 0 ? yearMatchingClasses[yearMatchingClasses.length - 1] : homeroomClasses[homeroomClasses.length - 1];
-      badges.push({
-        type: 'Wali Kelas',
-        label: formatHomeroomDutyLabel(effectiveClass.name),
-        title: `Wali Kelas untuk ${effectiveClass.name}`,
-        badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-      });
-    } else if (isWali) {
-      badges.push({
-        type: 'Wali Kelas',
-        label: 'Wali Kelas',
-        title: 'Wali Kelas (Belum ada rombel terhubung)',
-        badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-      });
-    }
+    // Jika di ruang kerja individu dan peran eksplisit adalah Guru Mapel, utamakan Guru Mapel
+    if (isPersonalWorkspace && isExplicitMapel && !rawDuty.includes('wali')) {
+      if (assignedSubjects.length > 0) {
+        const seenDutyLabels = new Set<string>();
+        assignedSubjects.forEach((sub) => {
+          const dutyLabel = formatSubjectTeacherDutyLabel(sub.name, sub.code);
+          const targetNames = (sub.targetClassIds || [])
+            .map((cid) => (classes || []).find((c) => c.id === cid)?.name || '')
+            .filter(Boolean);
+          const tooltipText = targetNames.length > 0
+            ? `${sub.name} (Kelas: ${targetNames.join(', ')})`
+            : sub.name;
 
-    // Prioritas 2: Penugasan Mapel aktif atau status eksplisit Guru Mapel
-    const isMapel =
-      assignedSubjects.length > 0 ||
-      (t.tugasUtama || t.tugas_utama || '').trim().toLowerCase().includes('mapel') ||
-      (t.tugasUtama || t.tugas_utama || '').trim().toLowerCase().includes('pelajaran') ||
-      (isPersonalWorkspace && isGuruMapel && (t.id === currentUser?.teacherId || normalizeTeacherName(t.nama) === normalizeTeacherName(currentUser?.name)));
+          if (!seenDutyLabels.has(dutyLabel)) {
+            seenDutyLabels.add(dutyLabel);
+            badges.push({
+              type: 'Guru Mapel',
+              label: dutyLabel,
+              title: tooltipText,
+              badgeColor: 'bg-amber-50 text-amber-800 border-amber-200',
+            });
+          }
+        });
+      }
+      if (badges.length === 0) {
+        badges.push({
+          type: 'Guru Mapel',
+          label: 'Guru Mapel',
+          title: 'Guru Mapel (Mata Pelajaran)',
+          badgeColor: 'bg-amber-50 text-amber-800 border-amber-200',
+        });
+      }
+    } else {
+      // Prioritas 1: Rombel aktif Wali Kelas atau status eksplisit Wali Kelas (Eksklusif: 1 Guru = 1 Rombel)
+      const isWali =
+        homeroomClasses.length > 0 ||
+        isExplicitWali ||
+        (isPersonalWorkspace && isWaliKelas && (t.id === currentUser?.teacherId || normalizeTeacherName(t.nama) === normalizeTeacherName(currentUser?.name)));
 
-    if (assignedSubjects.length > 0) {
-      const seenDutyLabels = new Set<string>();
-      assignedSubjects.forEach((sub) => {
-        const dutyLabel = formatSubjectTeacherDutyLabel(sub.name, sub.code);
-        const targetNames = (sub.targetClassIds || [])
-          .map((cid) => (classes || []).find((c) => c.id === cid)?.name || '')
-          .filter(Boolean);
-        const tooltipText = targetNames.length > 0
-          ? `${sub.name} (Kelas: ${targetNames.join(', ')})`
-          : sub.name;
+      if (homeroomClasses.length > 0) {
+        const activeYear = schoolProfile?.tahunPelajaran || '2026/2027';
+        const yearMatchingClasses = homeroomClasses.filter((hc) => !hc.academicYear || hc.academicYear === activeYear);
+        const effectiveClass = yearMatchingClasses.length > 0 ? yearMatchingClasses[yearMatchingClasses.length - 1] : homeroomClasses[homeroomClasses.length - 1];
+        badges.push({
+          type: 'Wali Kelas',
+          label: formatHomeroomDutyLabel(effectiveClass.name),
+          title: `Wali Kelas untuk ${effectiveClass.name}`,
+          badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+        });
+      } else if (isWali) {
+        badges.push({
+          type: 'Wali Kelas',
+          label: 'Wali Kelas',
+          title: 'Wali Kelas',
+          badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+        });
+      }
 
-        if (!seenDutyLabels.has(dutyLabel)) {
-          seenDutyLabels.add(dutyLabel);
-          badges.push({
-            type: 'Guru Mapel',
-            label: dutyLabel,
-            title: tooltipText,
-            badgeColor: 'bg-amber-50 text-amber-800 border-amber-200',
-          });
-        }
-      });
-    } else if (isMapel && badges.length === 0) {
-      badges.push({
-        type: 'Guru Mapel',
-        label: 'Guru Mapel',
-        title: 'Guru Mapel (Belum ada mapel terhubung)',
-        badgeColor: 'bg-amber-50 text-amber-800 border-amber-200',
-      });
+      // Prioritas 2: Penugasan Mapel aktif atau status eksplisit Guru Mapel
+      const isMapel =
+        assignedSubjects.length > 0 ||
+        isExplicitMapel;
+
+      if (assignedSubjects.length > 0 && badges.length === 0) {
+        const seenDutyLabels = new Set<string>();
+        assignedSubjects.forEach((sub) => {
+          const dutyLabel = formatSubjectTeacherDutyLabel(sub.name, sub.code);
+          const targetNames = (sub.targetClassIds || [])
+            .map((cid) => (classes || []).find((c) => c.id === cid)?.name || '')
+            .filter(Boolean);
+          const tooltipText = targetNames.length > 0
+            ? `${sub.name} (Kelas: ${targetNames.join(', ')})`
+            : sub.name;
+
+          if (!seenDutyLabels.has(dutyLabel)) {
+            seenDutyLabels.add(dutyLabel);
+            badges.push({
+              type: 'Guru Mapel',
+              label: dutyLabel,
+              title: tooltipText,
+              badgeColor: 'bg-amber-50 text-amber-800 border-amber-200',
+            });
+          }
+        });
+      } else if (isMapel && badges.length === 0) {
+        badges.push({
+          type: 'Guru Mapel',
+          label: 'Guru Mapel',
+          title: 'Guru Mapel (Belum ada mapel terhubung)',
+          badgeColor: 'bg-amber-50 text-amber-800 border-amber-200',
+        });
+      }
     }
 
     // Default mutlak: BELUM DITUGASKAN
@@ -239,7 +282,9 @@ export const DataGuruView: React.FC = () => {
     if (isPersonalWorkspace) {
       const cleanUserName = normalizeTeacherName(effectiveName);
       const userNip = normalizeNip(currentUser?.nip) || (/^\d{8,}$/.test(currentUser?.username || '') ? normalizeNip(currentUser?.username) : '');
-      const expectedDuty = isWaliKelas ? 'Wali Kelas' : 'Guru Mapel';
+      const savedRegRole = localStorage.getItem('kawacanaan_last_registered_role');
+      const isRegisteredMapel = isGuruMapel || savedRegRole === 'GURU MAPEL';
+      const expectedDuty = isRegisteredMapel ? 'Guru Mapel' : 'Wali Kelas';
 
       const found = (teachers || []).find((t) => {
         if (currentUser?.teacherId && t.id === currentUser.teacherId) return true;
@@ -249,13 +294,15 @@ export const DataGuruView: React.FC = () => {
       }) || (teachers && teachers[0]);
 
       if (found) {
+        const rawTugas = (found.tugasUtama || found.tugas_utama || '').trim();
+        const effectiveDuty = (rawTugas && rawTugas !== 'Belum ditugaskan') ? rawTugas : expectedDuty;
         return [{
           ...found,
           nama: (found.nama && found.nama !== 'Pengguna' && found.nama !== 'Guru') ? found.nama : effectiveName,
           nip: (found.nip && found.nip !== '-') ? found.nip : (userNip || currentUser?.nip || '-'),
-          jabatan: found.jabatan || expectedDuty,
-          tugasUtama: found.tugasUtama || found.tugas_utama || expectedDuty,
-          tugas_utama: found.tugas_utama || found.tugasUtama || expectedDuty,
+          jabatan: found.jabatan || effectiveDuty,
+          tugasUtama: effectiveDuty,
+          tugas_utama: effectiveDuty,
         }];
       }
       return [
@@ -401,16 +448,28 @@ export const DataGuruView: React.FC = () => {
 
     // Initial state for Tugas Utama in edit modal based on assignments and current teacher role
     const homeroomClass = classes.find((c) => c.waliKelasTeacherId === t.id);
-    const assignedSubject = subjects.find((s) => s.teacherId === t.id);
     const normTugas = (t.tugasUtama || t.tugas_utama || '').trim().toLowerCase();
+    const savedRegRole = localStorage.getItem('kawacanaan_last_registered_role');
 
-    if (homeroomClass || normTugas.includes('wali')) {
-      setModalRoleType('WALI_KELAS');
-      setModalWaliClassId(homeroomClass ? homeroomClass.id : '');
+    let initialRoleType: 'WALI_KELAS' | 'GURU_MAPEL' = 'WALI_KELAS';
+    if (isPersonalWorkspace) {
+      if (normTugas.includes('mapel') || isGuruMapel || savedRegRole === 'GURU MAPEL') {
+        initialRoleType = 'GURU_MAPEL';
+      } else {
+        initialRoleType = 'WALI_KELAS';
+      }
     } else {
-      setModalRoleType('GURU_MAPEL');
-      setModalWaliClassId('');
+      if (homeroomClass || normTugas.includes('wali')) {
+        initialRoleType = 'WALI_KELAS';
+      } else if (normTugas.includes('mapel')) {
+        initialRoleType = 'GURU_MAPEL';
+      } else {
+        initialRoleType = 'WALI_KELAS';
+      }
     }
+
+    setModalRoleType(initialRoleType);
+    setModalWaliClassId(homeroomClass ? homeroomClass.id : '');
 
     setOpen(true);
   };
@@ -549,6 +608,31 @@ export const DataGuruView: React.FC = () => {
       } else {
         const created = await addTeacher(payload);
         targetTeacherId = (created as any)?.id;
+      }
+
+      // Sinkronkan peran saat ini jika ini personal workspace
+      if (isPersonalWorkspace) {
+        const newRole = modalRoleType === 'WALI_KELAS' ? 'WALI KELAS' : 'GURU MAPEL';
+        localStorage.setItem('kawacanaan_last_registered_role', newRole);
+        if (currentUser) {
+          currentUser.role = newRole;
+        }
+        if (targetTeacherId && classes.length > 0) {
+          const firstCls = classes[0];
+          if (modalRoleType === 'WALI_KELAS' && firstCls.waliKelasTeacherId !== targetTeacherId) {
+            await updateClass(firstCls.id, {
+              ...firstCls,
+              waliKelasTeacherId: targetTeacherId,
+              waliKelasName: nama.trim(),
+            });
+          } else if (modalRoleType === 'GURU_MAPEL' && firstCls.waliKelasTeacherId === targetTeacherId) {
+            await updateClass(firstCls.id, {
+              ...firstCls,
+              waliKelasTeacherId: null,
+              waliKelasName: null,
+            });
+          }
+        }
       }
 
       // If in school workspace as Admin and penugasan is configured in modal
@@ -1312,45 +1396,39 @@ export const DataGuruView: React.FC = () => {
 
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Tugas Utama *</label>
-                  {isAdmin && !isPersonalWorkspace ? (
-                    <select
-                      value={modalRoleType}
-                      onChange={(e) => setModalRoleType(e.target.value as 'WALI_KELAS' | 'GURU_MAPEL')}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 font-bold focus:bg-white focus:border-blue-600 outline-none text-slate-800"
-                    >
-                      <option value="WALI_KELAS">Wali Kelas</option>
-                      <option value="GURU_MAPEL">Guru Mapel</option>
-                    </select>
-                  ) : (
-                    <div className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-100 text-slate-600 font-medium">
-                      Otomatis
-                    </div>
-                  )}
+                  <select
+                    value={modalRoleType}
+                    onChange={(e) => setModalRoleType(e.target.value as 'WALI_KELAS' | 'GURU_MAPEL')}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 font-bold focus:bg-white focus:border-blue-600 outline-none text-slate-800"
+                  >
+                    <option value="WALI_KELAS">Wali Kelas</option>
+                    <option value="GURU_MAPEL">Guru Mapel</option>
+                  </select>
                 </div>
               </div>
 
-              {isAdmin && !isPersonalWorkspace && modalRoleType === 'WALI_KELAS' && (
+              {modalRoleType === 'WALI_KELAS' && (
                 <div className="p-3 bg-emerald-50/70 rounded-xl border border-emerald-200 space-y-1.5">
                   <div className="flex items-start gap-2">
                     <CheckCircle2 size={16} className="text-emerald-600 shrink-0 mt-0.5" />
                     <div>
                       <h4 className="font-bold text-emerald-950 text-xs">Tugas Utama: Wali Kelas</h4>
                       <p className="text-[11px] text-emerald-800 leading-relaxed">
-                        Data guru akan terdaftar dengan tugas utama <strong>Wali Kelas</strong>. Rombel/nama kelas binaan dapat ditentukan langsung saat menambah kelas di menu <strong>Data Kelas</strong>.
+                        Data guru terdaftar dengan tugas utama <strong>Wali Kelas</strong>. Rombel/nama kelas binaan dapat dikelola langsung di menu <strong>Data Kelas</strong>.
                       </p>
                     </div>
                   </div>
                 </div>
               )}
 
-              {isAdmin && !isPersonalWorkspace && modalRoleType === 'GURU_MAPEL' && (
+              {modalRoleType === 'GURU_MAPEL' && (
                 <div className="p-3 bg-amber-50/70 rounded-xl border border-amber-200 space-y-1.5">
                   <div className="flex items-start gap-2">
                     <CheckCircle2 size={16} className="text-amber-600 shrink-0 mt-0.5" />
                     <div>
                       <h4 className="font-bold text-amber-950 text-xs">Tugas Utama: Guru Mapel</h4>
                       <p className="text-[11px] text-amber-800 leading-relaxed">
-                        Data guru akan terdaftar dengan tugas utama <strong>Guru Mapel</strong>. Penetapan mata pelajaran dan kelas yang diajar dapat ditentukan melalui menu <strong>Data Mata Pelajaran</strong> dan <strong>Data Kelas</strong>.
+                        Data guru terdaftar dengan tugas utama <strong>Guru Mapel</strong>. Penetapan mata pelajaran dan kelas yang diampu dapat ditentukan melalui menu <strong>Data Mata Pelajaran</strong> dan <strong>Data Kelas</strong>.
                       </p>
                     </div>
                   </div>
