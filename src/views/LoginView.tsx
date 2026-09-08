@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import { KawacanaanEmblem } from '../components/KawacanaanEmblem';
 import { EducationIllustration } from '../components/EducationIllustration';
 import { GlowingLoadingCircle } from '../components/GlowingLoadingCircle';
+import { FreeStartModal } from '../landing/components/FreeStartModal';
 import {
   supabase,
   signInWithEmail,
@@ -41,6 +42,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onBackToLanding }) => {
 
   // Mode: 'login' | 'forgot-password'
   const [authMode, setAuthMode] = useState<'login' | 'forgot-password'>('login');
+  const [isFreeStartOpen, setIsFreeStartOpen] = useState(false);
 
   // Form states
   const [emailOrUser, setEmailOrUser] = useState(() => {
@@ -419,7 +421,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onBackToLanding }) => {
                   Belum punya akun?{' '}
                   <button
                     type="button"
-                    onClick={() => openOnboarding()}
+                    onClick={() => setIsFreeStartOpen(true)}
                     className="font-bold text-blue-700 hover:underline cursor-pointer"
                     id="btn-link-buat-akun-gratis"
                   >
@@ -509,6 +511,15 @@ export const LoginView: React.FC<LoginViewProps> = ({ onBackToLanding }) => {
           </span>
         </div>
       </div>
+
+      {/* Modal Mulai Gratis: Pemilihan Peran & Pendaftaran Akun Pendidik (alur pendaftaran sama persis dengan page landing) */}
+      <FreeStartModal
+        isOpen={isFreeStartOpen}
+        onClose={() => setIsFreeStartOpen(false)}
+        onOpenLogin={() => setIsFreeStartOpen(false)}
+        onEnterSystem={() => setIsFreeStartOpen(false)}
+        lang="ID"
+      />
     </div>
   );
 };
