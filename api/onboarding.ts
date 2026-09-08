@@ -1709,8 +1709,6 @@ export default async function handler(req: any, res: any) {
         username,
         email: authEmail,
         role: role as any,
-        workspace_type: mode === 'personal' ? 'personal' : 'school',
-        registration_mode: mode === 'personal' ? 'personal' : 'school',
         is_active: true,
         must_change_password: false,
         student_id: body.studentId || null,
@@ -1899,12 +1897,17 @@ export default async function handler(req: any, res: any) {
         if (fallbackProfileErr) throw new Error(`Gagal menyimpan profil Wali Kelas: ${fallbackProfileErr.message}`);
       }
 
-      const { error: workspaceProfileErr } = await db.from('profiles').update({
-        workspace_type: mode === 'personal' ? 'personal' : 'school',
-        registration_mode: mode === 'personal' ? 'personal' : 'school',
-        is_google_auth: true, auth_provider: 'google',
-      }).eq('id', callerUser.id);
-      if (workspaceProfileErr) throw new Error(`Gagal menyinkronkan status workspace Wali Kelas: ${workspaceProfileErr.message}`);
+      try {
+        await db.from('profiles').update({
+          is_google_auth: true, auth_provider: 'google',
+        }).eq('id', callerUser.id);
+        await db.auth.admin.updateUserById(callerUser.id, {
+          user_metadata: {
+            workspace_type: mode === 'personal' ? 'personal' : 'school',
+            registration_mode: mode === 'personal' ? 'personal' : 'school',
+          }
+        });
+      } catch (_) {}
 
       // Upsert teacher record
 
@@ -2020,12 +2023,17 @@ export default async function handler(req: any, res: any) {
         if (fallbackProfileErr) throw new Error(`Gagal menyimpan profil Guru Mapel: ${fallbackProfileErr.message}`);
       }
 
-      const { error: workspaceProfileErr } = await db.from('profiles').update({
-        workspace_type: mode === 'personal' ? 'personal' : 'school',
-        registration_mode: mode === 'personal' ? 'personal' : 'school',
-        is_google_auth: true, auth_provider: 'google',
-      }).eq('id', callerUser.id);
-      if (workspaceProfileErr) throw new Error(`Gagal menyinkronkan status workspace Guru Mapel: ${workspaceProfileErr.message}`);
+      try {
+        await db.from('profiles').update({
+          is_google_auth: true, auth_provider: 'google',
+        }).eq('id', callerUser.id);
+        await db.auth.admin.updateUserById(callerUser.id, {
+          user_metadata: {
+            workspace_type: mode === 'personal' ? 'personal' : 'school',
+            registration_mode: mode === 'personal' ? 'personal' : 'school',
+          }
+        });
+      } catch (_) {}
 
       // Upsert teacher record
       // Upsert subject record
@@ -2181,15 +2189,31 @@ export default async function handler(req: any, res: any) {
           .from('teachers')
           .update({
             nama,
-            nip,
+            nip: nip || null,
             jenis_kelamin: jenisKelamin,
             tugas_utama: tugasUtama || null,
           })
           .eq('id', teacherId)
           .select()
-          .single();
+          .maybeSingle();
 
-        if (!uErr && updated) {
+        if (uErr) {
+          console.error('Error updating teacher in onboarding:', uErr);
+          return json(res, 500, { error: `Gagal memperbarui data guru: ${uErr.message}` });
+        }
+
+        if (updated) {
+          // Sinkronkan nama profil yang tertaut ke teacher ini jika ada
+          try {
+            await db.from('profiles').update({ name: nama }).eq('teacher_id', teacherId);
+            if (schoolId && tugasUtama === 'Wali Kelas') {
+              await db.from('school_profile').update({
+                nama_wali_kelas: nama,
+                nip_wali_kelas: nip || null,
+              }).eq('school_id', schoolId);
+            }
+          } catch (_) {}
+
           return json(res, 200, {
             ok: true,
             success: true,
@@ -2203,21 +2227,83 @@ export default async function handler(req: any, res: any) {
         .from('teachers')
         .insert({
           nama,
-          nip,
+          nip: nip || null,
           jenis_kelamin: jenisKelamin,
           tugas_utama: tugasUtama || null,
           school_id: schoolId,
         })
         .select()
-        .single();
+        .maybeSingle();
 
-      if (iErr) throw iErr;
+      if (iErr) {
+        console.error('Error inserting teacher in onboarding:', iErr);
+        return json(res, 500, { error: `Gagal menambahkan data guru: ${iErr.message}` });
+      }
 
       return json(res, 200, {
         ok: true,
         success: true,
-        teacher: { ...inserted, tugas_utama: inserted.tugas_utama },
-        teacherId: inserted.id,
+        teacher: { ...(inserted || {}), tugas_utama: inserted?.tugas_utama || tugasUtama },
+        teacherId: inserted?.id,
+      });
+    }
+
+    // -------------------------------------------------------------
+    // SAVE SYSTEM CONFIG (PENGATURAN SISTEM)
+    // -------------------------------------------------------------
+    if (action === 'save_system_config' || action === 'update_system_config') {
+      let schoolId = body.schoolId || body.school_id || null;
+      const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+      if (!schoolId && token) {
+        try {
+          const { data: authData } = await db.auth.getUser(token);
+          if (authData?.user) {
+            const { data: prof } = await db.from('profiles').select('school_id').eq('id', authData.user.id).maybeSingle();
+            schoolId = prof?.school_id || authData.user.user_metadata?.school_id || null;
+          }
+        } catch (_) {}
+      }
+
+      if (!schoolId) {
+        return json(res, 400, { error: 'ID ruang kerja / sekolah wajib disertakan.' });
+      }
+
+      const payload: any = {
+        school_id: schoolId,
+        app_title: body.appTitle || body.app_title || 'Kawacanaan Presensi',
+        app_subtitle: body.appSubtitle !== undefined ? body.appSubtitle : (body.app_subtitle || ''),
+        footer_copyright: body.footerCopyright !== undefined ? body.footerCopyright : (body.footer_copyright || ''),
+        school_logo_url: body.schoolLogoUrl !== undefined ? body.schoolLogoUrl : (body.school_logo_url || ''),
+        letterhead_type: body.letterheadType || body.letterhead_type || 'standard_text',
+        letterhead_image_url: body.letterheadImageUrl !== undefined ? body.letterheadImageUrl : (body.letterhead_image_url || ''),
+        show_letterhead: body.showLetterhead !== undefined ? body.showLetterhead : (body.show_letterhead !== undefined ? body.show_letterhead : true),
+        default_check_in_time: body.defaultCheckInTime || body.default_check_in_time || '06:30',
+        default_check_out_time: body.defaultCheckOutTime || body.default_check_out_time || '12:20',
+        report_place: body.reportPlace !== undefined ? body.reportPlace : (body.report_place || ''),
+        report_date: body.reportDate !== undefined ? body.reportDate : (body.report_date || ''),
+        active_study_days: Array.isArray(body.activeStudyDays) ? body.activeStudyDays : (Array.isArray(body.active_study_days) ? body.active_study_days : [1, 2, 3, 4, 5]),
+        student_self_attendance_enabled: body.studentSelfAttendanceEnabled !== undefined ? body.studentSelfAttendanceEnabled : (body.student_self_attendance_enabled !== undefined ? body.student_self_attendance_enabled : true),
+        check_in_start_time: body.checkInStartTime || body.check_in_start_time || '06:00',
+        check_in_deadline_time: body.checkInDeadlineTime || body.check_in_deadline_time || '07:00',
+        check_out_start_time: body.checkOutStartTime || body.check_out_start_time || '12:30',
+        auto_mark_late: body.autoMarkLate !== undefined ? body.autoMarkLate : (body.auto_mark_late !== undefined ? body.auto_mark_late : true),
+      };
+
+      const { data: updatedConfig, error: cfgErr } = await db
+        .from('system_config')
+        .upsert(payload, { onConflict: 'school_id' })
+        .select()
+        .maybeSingle();
+
+      if (cfgErr) {
+        console.error('Error saving system_config in onboarding:', cfgErr);
+        return json(res, 500, { error: `Gagal menyimpan pengaturan sistem: ${cfgErr.message}` });
+      }
+
+      return json(res, 200, {
+        ok: true,
+        success: true,
+        config: updatedConfig || payload,
       });
     }
 

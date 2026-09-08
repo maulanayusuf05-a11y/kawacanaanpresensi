@@ -576,6 +576,20 @@ export const Header: React.FC = () => {
                           <Settings className="w-5 h-5 text-slate-400 group-hover:text-blue-600 transition-colors stroke-[1.75]" />
                           <span className="font-semibold">Ubah Password</span>
                         </button>
+
+                        {/* 3. Pengaturan Sistem */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowProfileDropdown(false);
+                            setActiveView('pengaturan');
+                          }}
+                          className="w-full flex items-center gap-3.5 px-3 py-2.5 rounded-2xl text-sm font-medium text-slate-700 hover:text-blue-600 hover:bg-slate-50 transition-colors group cursor-pointer"
+                          id="btn-menu-pengaturan-sistem"
+                        >
+                          <Settings className="w-5 h-5 text-blue-600 stroke-[1.75]" />
+                          <span className="font-semibold">Pengaturan Sistem</span>
+                        </button>
                       </div>
 
                       {/* Divider */}

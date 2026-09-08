@@ -608,6 +608,7 @@ export const DashboardView: React.FC = () => {
     return menuItems.filter((item) => {
       if (!currentUser) return false;
       if (currentUser.role === 'ADMIN' || currentUser.role === 'SUPER_ADMIN') return true;
+      if (isPersonalWorkspace && item.id === 'pengaturan') return true;
       if (currentUser.role === 'WALI KELAS') {
         return [
           'data-referensi',
@@ -615,10 +616,10 @@ export const DashboardView: React.FC = () => {
           'absensi',
           'rekapitulasi',
           'laporan',
+          'pengaturan',
         ].includes(item.id);
       }
       if (
-        currentUser.role === 'GURU MAPEL' ||
         currentUser.role === 'GURU MAPEL'
       ) {
         return [
@@ -637,7 +638,7 @@ export const DashboardView: React.FC = () => {
       }
       return false;
     });
-  }, [currentUser, menuItems]);
+  }, [currentUser, menuItems, isPersonalWorkspace]);
 
   // Role-specific widgets definition
   const isWaliKelas = userScope.isWaliKelas || currentUser?.role === 'WALI KELAS';

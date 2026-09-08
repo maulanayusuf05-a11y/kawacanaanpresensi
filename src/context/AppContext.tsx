@@ -2721,32 +2721,63 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     showToast("Identitas Sekolah berhasil disimpan");
   };
   const updateSystemConfig = async (c: SystemConfig) => {
-    const { error } = await supabase
-      .from("system_config")
-      .upsert(
-        {
-          school_id: currentUser?.schoolId || null,
-          app_title: c.appTitle,
-          app_subtitle: c.appSubtitle,
-          footer_copyright: c.footerCopyright,
-          school_logo_url: c.schoolLogoUrl || "",
-          letterhead_type: c.letterheadType || "standard_text",
-          letterhead_image_url: c.letterheadImageUrl || "",
-          show_letterhead: c.showLetterhead ?? true,
-          default_check_in_time: c.defaultCheckInTime,
-          default_check_out_time: c.defaultCheckOutTime,
-          report_place: c.reportPlace,
-          report_date: c.reportDate,
-          active_study_days: c.activeStudyDays || activeStudyDays,
-          student_self_attendance_enabled: c.studentSelfAttendanceEnabled,
-          check_in_start_time: c.checkInStartTime,
-          check_in_deadline_time: c.checkInDeadlineTime,
-          check_out_start_time: c.checkOutStartTime,
-          auto_mark_late: c.autoMarkLate,
+    const schoolId = currentUser?.schoolId || null;
+    let savedSuccessfully = false;
+
+    // 1. Simpan melalui API Onboarding (menggunakan service role Supabase agar bebas hambatan RLS)
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token || "";
+      const apiRes = await fetch("/api/onboarding", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        { onConflict: "school_id" },
-      );
-    if (error) return showToast(error.message, "error");
+        body: JSON.stringify({
+          action: "save_system_config",
+          schoolId,
+          ...c,
+        }),
+      });
+      const jsonRes = await apiRes.json().catch(() => ({}));
+      if (apiRes.ok && (jsonRes.ok || jsonRes.success)) {
+        savedSuccessfully = true;
+      }
+    } catch (apiErr: any) {
+      console.warn("API save_system_config warning:", apiErr?.message);
+    }
+
+    // 2. Fallback upsert langsung jika API offline
+    if (!savedSuccessfully && schoolId) {
+      const { error } = await supabase
+        .from("system_config")
+        .upsert(
+          {
+            school_id: schoolId,
+            app_title: c.appTitle,
+            app_subtitle: c.appSubtitle,
+            footer_copyright: c.footerCopyright,
+            school_logo_url: c.schoolLogoUrl || "",
+            letterhead_type: c.letterheadType || "standard_text",
+            letterhead_image_url: c.letterheadImageUrl || "",
+            show_letterhead: c.showLetterhead ?? true,
+            default_check_in_time: c.defaultCheckInTime,
+            default_check_out_time: c.defaultCheckOutTime,
+            report_place: c.reportPlace,
+            report_date: c.reportDate,
+            active_study_days: c.activeStudyDays || activeStudyDays,
+            student_self_attendance_enabled: c.studentSelfAttendanceEnabled,
+            check_in_start_time: c.checkInStartTime,
+            check_in_deadline_time: c.checkInDeadlineTime,
+            check_out_start_time: c.checkOutStartTime,
+            auto_mark_late: c.autoMarkLate,
+          },
+          { onConflict: "school_id" },
+        );
+      if (error) return showToast(error.message, "error");
+    }
+
     setSystemConfig(c);
     setActiveStudyDays(c.activeStudyDays || activeStudyDays);
     showToast("Pengaturan Sistem berhasil diperbarui");
@@ -3239,19 +3270,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           ? "Guru Mapel"
           : rawTugas || "Belum ditugaskan";
 
-    const { data, error } = await supabase
-      .from("teachers")
-      .insert({
-        school_id: schoolId,
-        nama: t.nama.trim(),
-        nip: t.nip || null,
-        jenis_kelamin: t.jenisKelamin || "L",
-        tugas_utama: finalTugasUtama,
-      })
-      .select("*")
-      .single();
-    if (error) throw error;
-    const newT = dbTeacher(data);
+    let insertedRow: any = null;
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token || "";
+      const apiRes = await fetch("/api/onboarding", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          action: "save_teacher",
+          schoolId,
+          nama: t.nama.trim(),
+          nip: t.nip?.trim() || null,
+          jenisKelamin: t.jenisKelamin || "L",
+          tugasUtama: finalTugasUtama,
+        }),
+      });
+      const jsonRes = await apiRes.json().catch(() => ({}));
+      if (apiRes.ok && (jsonRes.ok || jsonRes.success) && jsonRes.teacher) {
+        insertedRow = jsonRes.teacher;
+      } else if (!apiRes.ok && jsonRes.error) {
+        throw new Error(jsonRes.error);
+      }
+    } catch (apiErr: any) {
+      if (apiErr.message && !apiErr.message.includes("fetch")) {
+        throw apiErr;
+      }
+    }
+
+    if (!insertedRow) {
+      const { data, error } = await supabase
+        .from("teachers")
+        .insert({
+          school_id: schoolId,
+          nama: t.nama.trim(),
+          nip: t.nip?.trim() || null,
+          jenis_kelamin: t.jenisKelamin || "L",
+          tugas_utama: finalTugasUtama,
+        })
+        .select("*")
+        .maybeSingle();
+      if (error) throw error;
+      insertedRow = data;
+    }
+
+    const newT = dbTeacher(insertedRow);
     setTeachers((p) => [...p, newT]);
     showToast(`Data guru ${t.nama} berhasil ditambahkan`);
     return newT;
@@ -3267,22 +3333,69 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           ? "Guru Mapel"
           : rawTugas || "Belum ditugaskan";
 
-    const { data, error } = await supabase
-      .from("teachers")
-      .update({
+    let updatedRow: any = null;
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token || "";
+      const apiRes = await fetch("/api/onboarding", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          action: "save_teacher",
+          teacherId: id,
+          schoolId,
+          nama: t.nama.trim(),
+          nip: t.nip?.trim() || null,
+          jenisKelamin: t.jenisKelamin || "L",
+          tugasUtama: finalTugasUtama,
+        }),
+      });
+      const jsonRes = await apiRes.json().catch(() => ({}));
+      if (apiRes.ok && (jsonRes.ok || jsonRes.success) && jsonRes.teacher) {
+        updatedRow = jsonRes.teacher;
+      } else if (!apiRes.ok && jsonRes.error) {
+        throw new Error(jsonRes.error);
+      }
+    } catch (apiErr: any) {
+      if (apiErr.message && !apiErr.message.includes("fetch")) {
+        throw apiErr;
+      }
+    }
+
+    if (!updatedRow) {
+      const { data, error } = await supabase
+        .from("teachers")
+        .update({
+          nama: t.nama.trim(),
+          nip: t.nip?.trim() || null,
+          jenis_kelamin: t.jenisKelamin || "L",
+          tugas_utama: finalTugasUtama,
+        })
+        .eq("id", id)
+        .eq("school_id", schoolId)
+        .select("*")
+        .maybeSingle();
+      if (error) throw error;
+      updatedRow = data || {
+        id,
+        school_id: schoolId,
         nama: t.nama.trim(),
-        nip: t.nip || null,
+        nip: t.nip?.trim() || null,
         jenis_kelamin: t.jenisKelamin || "L",
         tugas_utama: finalTugasUtama,
-      })
-      .eq("id", id)
-      .eq("school_id", schoolId)
-      .select("*")
-      .single();
-    if (error) throw error;
-    const updatedT = dbTeacher(data);
+      };
+    }
+
+    const updatedT = dbTeacher(updatedRow);
     setTeachers((p) => p.map((x) => (x.id === id ? updatedT : x)));
+    if (currentUser && (currentUser.teacherId === id || currentUser.name === t.nama.trim())) {
+      setCurrentUser((prev) => (prev ? { ...prev, name: t.nama.trim() } : null));
+    }
     showToast(`Data guru ${t.nama} berhasil diperbarui`);
+    return updatedT;
   };
   const importTeachers = async (
     items: Omit<Teacher, "id">[],
