@@ -148,15 +148,16 @@ export const DataGuruView: React.FC = () => {
       badgeColor: string;
     }> = [];
 
-    // Prioritas 1: Rombel aktif Wali Kelas atau status eksplisit Wali Kelas
+    // Prioritas 1: Rombel aktif Wali Kelas atau status eksplisit Wali Kelas (Eksklusif: 1 Guru = 1 Rombel)
     if (homeroomClasses.length > 0) {
-      homeroomClasses.forEach((hc) => {
-        badges.push({
-          type: 'Wali Kelas',
-          label: formatHomeroomDutyLabel(hc.name),
-          title: `Wali Kelas untuk ${hc.name}`,
-          badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-        });
+      const activeYear = schoolProfile?.tahunPelajaran || '2026/2027';
+      const yearMatchingClasses = homeroomClasses.filter((hc) => !hc.academicYear || hc.academicYear === activeYear);
+      const effectiveClass = yearMatchingClasses.length > 0 ? yearMatchingClasses[yearMatchingClasses.length - 1] : homeroomClasses[homeroomClasses.length - 1];
+      badges.push({
+        type: 'Wali Kelas',
+        label: formatHomeroomDutyLabel(effectiveClass.name),
+        title: `Wali Kelas untuk ${effectiveClass.name}`,
+        badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200',
       });
     } else if ((t.tugasUtama || t.tugas_utama || '').trim() === 'Wali Kelas') {
       badges.push({

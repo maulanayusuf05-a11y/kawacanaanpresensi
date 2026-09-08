@@ -143,11 +143,13 @@ export function getUserRoleScope(
     }
   }
 
-  // WALI KELAS: explicit classes.wali_kelas_teacher_id relation, classIds, or verified name
+  // WALI KELAS: explicit classes.wali_kelas_teacher_id relation, classIds, or verified name (Eksklusif 1 Rombel)
   const assignedWaliClass = isWaliKelas
     ? classes.find((schoolClass) => {
+        if (Array.isArray(currentUser.classIds) && currentUser.classIds.length > 0) {
+          return currentUser.classIds.includes(schoolClass.id);
+        }
         if (effectiveTeacherId && schoolClass.waliKelasTeacherId === effectiveTeacherId) return true;
-        if (currentUser.classIds?.includes(schoolClass.id)) return true;
         if (schoolClass.waliKelasName) {
           const cleanWaliName = normalizeTeacherName(schoolClass.waliKelasName);
           if (cleanTeacherName && cleanWaliName === cleanTeacherName) return true;
@@ -201,14 +203,6 @@ export function getUserRoleScope(
     accessibleClasses = classes;
   } else if (isWaliKelas) {
     accessibleClasses = assignedWaliClass ? [assignedWaliClass] : [];
-    if (currentUser.classIds && currentUser.classIds.length > 0) {
-      const extra = classes.filter((c) => currentUser.classIds?.includes(c.id));
-      extra.forEach((c) => {
-        if (!accessibleClasses.some((ac) => ac.id === c.id)) {
-          accessibleClasses.push(c);
-        }
-      });
-    }
   } else if (isGuruMapel) {
     const targetClassIds = new Set<string>();
     assignedSubjects.forEach((subject) => {

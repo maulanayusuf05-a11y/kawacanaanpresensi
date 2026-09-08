@@ -202,8 +202,8 @@ export const DataPenggunaView: React.FC = () => {
         (t.nama && uName && String(t.nama).trim().toLowerCase() === uName))
     );
 
-    // Homeroom assignments
-    const homeroomClasses = safeClasses.filter(
+    // Homeroom assignments (Eksklusif: 1 Guru = 1 Rombel)
+    let homeroomClasses = safeClasses.filter(
       (c) =>
         c &&
         ((matchedTeacher && c.waliKelasTeacherId === matchedTeacher.id) ||
@@ -211,6 +211,11 @@ export const DataPenggunaView: React.FC = () => {
         (c.waliKelasName && uName && String(c.waliKelasName).trim().toLowerCase() === uName) ||
         (u.role === 'WALI KELAS' && u.classIds && u.classIds.includes(c.id)))
     );
+
+    if (homeroomClasses.length > 1) {
+      const preferred = homeroomClasses.find((c) => u.classIds && u.classIds.includes(c.id)) || homeroomClasses[0];
+      homeroomClasses = preferred ? [preferred] : [homeroomClasses[0]];
+    }
 
     // Subject teacher assignments
     const teacherSubjects = safeSubjects.filter(
@@ -234,8 +239,10 @@ export const DataPenggunaView: React.FC = () => {
 
     if (isWali && !isMapel) {
       const classNames = homeroomClasses.map((c) => c?.name).filter(Boolean);
-      const classList = classNames.length > 0 ? classNames : (u.classNames && u.classNames.length > 0 ? u.classNames : []);
-      const assignedClassStr = classList.length > 0 ? classList.join(', ') : '';
+      const classList = classNames.length > 0
+        ? [classNames[0]]
+        : (u.classNames && u.classNames.length > 0 ? [u.classNames[0]] : []);
+      const assignedClassStr = classList.length > 0 ? classList[0] : '';
       return {
         type: 'WALI_KELAS' as const,
         roleLabel: 'Wali Kelas',

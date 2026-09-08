@@ -1178,7 +1178,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       const matchedTeacher = baseTeachers.find(
         (t) => t.id === assignedTeacherId,
       );
-      const waliName = matchedTeacher?.nama || c.wali?.nama || null;
+      const waliName = matchedTeacher?.nama || c.wali?.nama || c.wali_kelas_name || null;
 
       return {
         id: c.id,
@@ -1189,6 +1189,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         waliKelasName: waliName,
       };
     });
+
+    // Self-Healing Exclusivity: 1 Guru = 1 Rombel Binaan (Wali Kelas)
+    // Jika ada guru yang terdaftar di lebih dari satu rombel, tentukan rombel definitif
+    // berdasarkan profil akun (class_ids) atau penugasan terbaru, lalu bersihkan kelas duplikat
+    const teacherHomeroomMap = new Map<string, any[]>();
+    classList.forEach((c: any) => {
+      if (c.waliKelasTeacherId) {
+        const list = teacherHomeroomMap.get(c.waliKelasTeacherId) || [];
+        list.push(c);
+        teacherHomeroomMap.set(c.waliKelasTeacherId, list);
+      }
+    });
+
+    teacherHomeroomMap.forEach((matchedList, teacherId) => {
+      if (matchedList.length > 1) {
+        const relatedProfile = (allProfiles.data || []).find((p: any) => p.teacher_id === teacherId);
+        const preferredClassId =
+          (Array.isArray(relatedProfile?.class_ids) && relatedProfile.class_ids.find((cid: string) => matchedList.some((m: any) => m.id === cid))) ||
+          matchedList[matchedList.length - 1].id;
+
+        matchedList.forEach((c: any) => {
+          if (c.id !== preferredClassId) {
+            c.waliKelasTeacherId = null;
+            c.waliKelasName = null;
+            // Bersihkan di background Supabase agar data persisten terbebas dari duplikasi
+            Promise.resolve(
+              supabase
+                .from("classes")
+                .update({ wali_kelas_teacher_id: null, wali_kelas_name: null })
+                .eq("id", c.id),
+            ).catch(() => {});
+          }
+        });
+      }
+    });
+
     setClasses(classList);
     const ss = rawStudents.map((x: any) =>
       dbStudent({ ...x, class_name: x.classes?.name || x.class_name || "" }),
@@ -1269,9 +1305,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 
       let ids: string[] = [];
       if (isWali) {
-        ids = classList
-          .filter((c: any) => c.waliKelasTeacherId === u.teacherId && (!c.academicYear || c.academicYear === activeAcademicYear))
-          .map((c: any) => c.id);
+        const matchedWaliClasses = classList.filter(
+          (c: any) =>
+            c.waliKelasTeacherId === u.teacherId &&
+            (!c.academicYear || c.academicYear === activeAcademicYear),
+        );
+        const preferred =
+          matchedWaliClasses.find((c: any) =>
+            Array.isArray(p.class_ids) && p.class_ids.includes(c.id),
+          ) || matchedWaliClasses[0];
+        ids = preferred ? [preferred.id] : [];
       }
       if (hasMapel) {
         const unique = new Set<string>(ids);
@@ -1349,6 +1392,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       }
       if (myWaliClasses.length === 0 && Array.isArray(masterJson?.resolvedClassIds) && masterJson.resolvedClassIds.length > 0) {
         myWaliClasses = classList.filter((c: any) => masterJson.resolvedClassIds.includes(c.id));
+      }
+      // Pastikan Wali Kelas hanya memiliki tepat 1 rombel binaan (Eksklusif)
+      if (myWaliClasses.length > 1) {
+        const preferredId =
+          (Array.isArray(masterJson?.resolvedClassIds) && masterJson.resolvedClassIds[0]) ||
+          (Array.isArray(baseProfile?.class_ids) && baseProfile.class_ids[0]) ||
+          myWaliClasses[myWaliClasses.length - 1].id;
+        const preferredClass = myWaliClasses.find((c: any) => c.id === preferredId) || myWaliClasses[myWaliClasses.length - 1];
+        myWaliClasses = preferredClass ? [preferredClass] : [myWaliClasses[0]];
       }
       me.classIds = myWaliClasses.map((c: any) => c.id);
       me.classNames = myWaliClasses.map((c: any) => c.name);
@@ -2780,19 +2832,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         if (c.waliKelasTeacherId) {
           await ensureTeacherCanBeWaliKelas(c.waliKelasTeacherId, academicYear);
 
-          const existingHomeroom = classes.find(
-            (existing) =>
-              existing.id !== id &&
-              existing.waliKelasTeacherId === c.waliKelasTeacherId &&
-              (!existing.academicYear || existing.academicYear === academicYear),
-          );
-          if (existingHomeroom) {
-            throw new Error(
-              `Guru ini sudah menjadi Wali Kelas di "${existingHomeroom.name}" untuk tahun ajaran ${academicYear}.`,
-            );
-          }
+          // Lepaskan penugasan lama di rombel lain pada database Supabase (Eksklusif 1 Guru = 1 Rombel)
+          await supabase
+            .from("classes")
+            .update({ wali_kelas_teacher_id: null, wali_kelas_name: null })
+            .eq("school_id", schoolId)
+            .neq("id", id)
+            .eq("wali_kelas_teacher_id", c.waliKelasTeacherId);
+
+          // Sinkronkan class_ids pada akun profil pengguna terkait
+          await supabase
+            .from("profiles")
+            .update({ class_ids: [id] })
+            .eq("school_id", schoolId)
+            .eq("teacher_id", c.waliKelasTeacherId);
         }
         classUpdate.wali_kelas_teacher_id = c.waliKelasTeacherId || null;
+      }
+      if (Object.prototype.hasOwnProperty.call(c, "waliKelasName")) {
+        classUpdate.wali_kelas_name = c.waliKelasName || null;
+        if (c.waliKelasName) {
+          await supabase
+            .from("classes")
+            .update({ wali_kelas_teacher_id: null, wali_kelas_name: null })
+            .eq("school_id", schoolId)
+            .neq("id", id)
+            .ilike("wali_kelas_name", c.waliKelasName.trim());
+        }
       }
       const { data: updatedData, error } = await supabase
         .from("classes")
@@ -2811,12 +2877,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               grade: updatedData.grade,
               academicYear: updatedData.academic_year,
               waliKelasTeacherId: updatedData.wali_kelas_teacher_id || null,
-              waliKelasName: updatedData.wali?.nama || null,
+              waliKelasName: updatedData.wali?.nama || updatedData.wali_kelas_name || null,
             };
           }
           if (
             updatedData.wali_kelas_teacher_id &&
             x.waliKelasTeacherId === updatedData.wali_kelas_teacher_id
+          ) {
+            return {
+              ...x,
+              waliKelasTeacherId: null,
+              waliKelasName: null,
+            };
+          }
+          if (
+            updatedData.wali_kelas_name &&
+            x.waliKelasName &&
+            x.waliKelasName.trim().toLowerCase() === updatedData.wali_kelas_name.trim().toLowerCase()
           ) {
             return {
               ...x,
@@ -3857,6 +3934,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           .eq("wali_kelas_teacher_id", teacherId);
         data = fallback.data || [];
       }
+      if (data && data.length > 1) {
+        const preferredId = (Array.isArray((base as any).class_ids) && (base as any).class_ids[0]) ||
+          (Array.isArray((base as any).classIds) && (base as any).classIds[0]) ||
+          null;
+        const preferred = data.find((x: any) => x.id === preferredId) || data[data.length - 1];
+        data = preferred ? [preferred] : [data[0]];
+      }
       ids = (data || []).map((x: any) => x.id);
       return {
         ...base,
@@ -3915,17 +3999,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       const nu = await hydrateUser({ ...data, teacher_id: teacherId });
       setUsers((p) => [...p.filter((x) => x.id !== nu.id), nu]);
       if (u.role === "WALI KELAS" && teacherId) {
-        const ids = nu.classIds || [];
+        const assignedClassId = nu.classIds && nu.classIds.length > 0 ? nu.classIds[0] : null;
         setClasses((prev) =>
-          prev.map((c) =>
-            ids.includes(c.id)
-              ? {
-                  ...c,
-                  waliKelasTeacherId: teacherId,
-                  waliKelasName: data.name,
-                }
-              : c,
-          ),
+          prev.map((c) => {
+            if (assignedClassId && c.id === assignedClassId) {
+              return {
+                ...c,
+                waliKelasTeacherId: teacherId,
+                waliKelasName: data.name,
+              };
+            }
+            if (c.waliKelasTeacherId === teacherId && c.id !== assignedClassId) {
+              return {
+                ...c,
+                waliKelasTeacherId: null,
+                waliKelasName: null,
+              };
+            }
+            return c;
+          }),
         );
       }
       showToast(`Akun pengguna ${u.name} berhasil ditambahkan`);
@@ -3971,13 +4063,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       setUsers((p) => p.map((x) => (x.id === id ? { ...x, ...nu } : x)));
       if (currentUser?.id === id)
         setCurrentUser((p) => (p ? { ...p, ...nu } : p));
-      setClasses((prev) =>
-        prev.map((c) =>
-          c.waliKelasTeacherId === teacherId && nu.role !== "WALI KELAS"
-            ? { ...c, waliKelasTeacherId: null, waliKelasName: null }
-            : c,
-        ),
-      );
+      if (nu.role === "WALI KELAS" && teacherId) {
+        const assignedClassId = nu.classIds && nu.classIds.length > 0 ? nu.classIds[0] : null;
+        setClasses((prev) =>
+          prev.map((c) => {
+            if (assignedClassId && c.id === assignedClassId) {
+              return {
+                ...c,
+                waliKelasTeacherId: teacherId,
+                waliKelasName: nu.name,
+              };
+            }
+            if (c.waliKelasTeacherId === teacherId && c.id !== assignedClassId) {
+              return {
+                ...c,
+                waliKelasTeacherId: null,
+                waliKelasName: null,
+              };
+            }
+            return c;
+          }),
+        );
+      } else {
+        setClasses((prev) =>
+          prev.map((c) =>
+            c.waliKelasTeacherId === teacherId && nu.role !== "WALI KELAS"
+              ? { ...c, waliKelasTeacherId: null, waliKelasName: null }
+              : c,
+          ),
+        );
+      }
       showToast("Data akun pengguna berhasil diperbarui");
     } catch (e: any) {
       showToast(e.message || "Gagal memperbarui akun pengguna.", "error");

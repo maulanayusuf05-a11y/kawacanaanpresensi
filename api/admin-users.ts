@@ -246,8 +246,8 @@ export default async function handler(req: any, res: any) {
       }
 
       let teacherId: string | null = body.teacherId || null;
+      let teacher: any = null;
       if (role === 'WALI KELAS' || role === 'GURU MAPEL') {
-        let teacher: any = null;
         if (teacherId) {
           const { data: t } = await admin.from('teachers').select('id,tugas_utama,nama,nip').eq('school_id', schoolId).eq('id', teacherId).maybeSingle();
           teacher = t;
@@ -289,17 +289,42 @@ export default async function handler(req: any, res: any) {
 
       if (teacherId && role === 'WALI KELAS') {
         const year = await getAcademicYear(schoolId);
+        const targetClassId = classIds[0] || null;
         try {
           await admin.rpc('assign_homeroom_teacher', {
             p_school_id: schoolId,
             p_teacher_id: teacherId,
-            p_class_id: classIds[0] || null,
+            p_class_id: targetClassId,
             p_academic_year: year,
             p_actor_user_id: caller.user.id,
           });
         } catch (e: any) {
           console.warn('[admin-users] assign_homeroom_teacher warning:', e?.message);
         }
+
+        if (targetClassId) {
+          await admin.from('classes').update({
+            wali_kelas_teacher_id: teacherId,
+            wali_kelas_name: name,
+          }).eq('id', targetClassId).eq('school_id', schoolId);
+
+          // Lepaskan penugasan rombel lain jika guru ini sebelumnya terdaftar di rombel lain
+          await admin.from('classes').update({
+            wali_kelas_teacher_id: null,
+            wali_kelas_name: null,
+          }).eq('school_id', schoolId).neq('id', targetClassId).eq('wali_kelas_teacher_id', teacherId);
+
+          const { data: otherCls } = await admin.from('classes').select('id, wali_kelas_name').eq('school_id', schoolId).neq('id', targetClassId);
+          for (const oc of otherCls || []) {
+            if (oc.wali_kelas_name && (
+              oc.wali_kelas_name.trim().toLowerCase() === name.trim().toLowerCase() ||
+              (teacher?.nama && oc.wali_kelas_name.trim().toLowerCase() === teacher.nama.trim().toLowerCase())
+            )) {
+              await admin.from('classes').update({ wali_kelas_teacher_id: null, wali_kelas_name: null }).eq('id', oc.id);
+            }
+          }
+        }
+        await admin.from('profiles').update({ class_ids: targetClassId ? [targetClassId] : [] }).eq('id', authUserId);
       }
       if (teacherId && role === 'GURU MAPEL' && (classIds.length || subjectId)) {
         const year = await getAcademicYear(schoolId);
@@ -386,16 +411,20 @@ export default async function handler(req: any, res: any) {
       if (targetErr || !target) return json(res, 404, { error: targetErr?.message || 'Profil pengguna tidak ditemukan.' });
 
       let teacherId: string | null = target.teacher_id || null;
+      let teacher: any = null;
+      if (teacherId) {
+        const { data: t } = await admin.from('teachers').select('id, nama, nip, tugas_utama').eq('id', teacherId).eq('school_id', target.school_id).maybeSingle();
+        teacher = t;
+      }
       if (role === 'GURU MAPEL' || role === 'WALI KELAS') {
         const desiredTugas = role === 'WALI KELAS' ? 'Wali Kelas' : 'Guru Mapel';
         if (teacherId) {
           await admin.from('teachers').update({ nama: name, nip: (username && !username.startsWith('guru_') && !username.startsWith('ks_')) ? username : null, tugas_utama: desiredTugas }).eq('id', teacherId).eq('school_id', target.school_id);
         } else {
-          let teacher: any = null;
           const normalizedNip = (username || '').trim();
           if (normalizedNip && normalizedNip !== '-') {
             const { data: existingTeacher } = await admin.from('teachers')
-              .select('id,tugas_utama').eq('school_id', target?.school_id).eq('nip', normalizedNip).maybeSingle();
+              .select('id,tugas_utama,nama,nip').eq('school_id', target?.school_id).eq('nip', normalizedNip).maybeSingle();
             teacher = existingTeacher;
           }
           if (!teacher && name) {
@@ -422,8 +451,50 @@ export default async function handler(req: any, res: any) {
 
       if (teacherId && role === 'WALI KELAS') {
         const year = await getAcademicYear(target.school_id);
-        const { error: assignErr } = await admin.rpc('assign_homeroom_teacher',{p_school_id:target.school_id,p_teacher_id:teacherId,p_class_id:classIds[0]||null,p_academic_year:year,p_actor_user_id:caller.user.id});
-        if (assignErr) return json(res,400,{error:assignErr.message});
+        const targetClassId = classIds[0] || null;
+        try {
+          await admin.rpc('assign_homeroom_teacher', {
+            p_school_id: target.school_id,
+            p_teacher_id: teacherId,
+            p_class_id: targetClassId,
+            p_academic_year: year,
+            p_actor_user_id: caller.user.id
+          });
+        } catch (e: any) {
+          console.warn('[admin-users] assign_homeroom_teacher update warning:', e?.message);
+        }
+
+        if (targetClassId) {
+          // Tetapkan secara eksplisit pada tabel classes
+          await admin.from('classes').update({
+            wali_kelas_teacher_id: teacherId,
+            wali_kelas_name: name,
+          }).eq('id', targetClassId).eq('school_id', target.school_id);
+
+          // Lepaskan penugasan rombel lain jika sebelumnya guru ini terdaftar di kelas lain
+          await admin.from('classes').update({
+            wali_kelas_teacher_id: null,
+            wali_kelas_name: null,
+          }).eq('school_id', target.school_id).neq('id', targetClassId).eq('wali_kelas_teacher_id', teacherId);
+
+          // Bersihkan juga nama teks jika tersisa di rombel lain
+          const { data: otherCls } = await admin.from('classes').select('id, wali_kelas_name').eq('school_id', target.school_id).neq('id', targetClassId);
+          for (const oc of otherCls || []) {
+            if (oc.wali_kelas_name && (
+              oc.wali_kelas_name.trim().toLowerCase() === name.trim().toLowerCase() ||
+              (teacher?.nama && oc.wali_kelas_name.trim().toLowerCase() === teacher.nama.trim().toLowerCase())
+            )) {
+              await admin.from('classes').update({ wali_kelas_teacher_id: null, wali_kelas_name: null }).eq('id', oc.id);
+            }
+          }
+        }
+      }
+      if (teacherId && role !== 'WALI KELAS' && target.role === 'WALI KELAS') {
+        // Jika peran berubah dari Wali Kelas menjadi non-Wali Kelas, lepaskan kelas binaan
+        await admin.from('classes').update({
+          wali_kelas_teacher_id: null,
+          wali_kelas_name: null,
+        }).eq('school_id', target.school_id).eq('wali_kelas_teacher_id', teacherId);
       }
       if (teacherId && role === 'GURU MAPEL' && classIds.length) {
         const year = await getAcademicYear(target.school_id);
@@ -450,8 +521,12 @@ export default async function handler(req: any, res: any) {
         if (unlinkTeacherErr) return json(res, 400, { error: unlinkTeacherErr.message });
         teacherId = null;
       }
+      const effectiveClassIds = role === 'WALI KELAS'
+        ? (classIds[0] ? [classIds[0]] : [])
+        : (role === 'GURU MAPEL' || role === 'SISWA' ? classIds : []);
       const { error: profileUpdateErr } = await admin.from('profiles').update({
-        name, username, email: authEmail, role, student_id: role === 'SISWA' ? studentId : null, teacher_id: teacherId
+        name, username, email: authEmail, role, student_id: role === 'SISWA' ? studentId : null, teacher_id: teacherId,
+        class_ids: effectiveClassIds,
       }).eq('id', userId);
       if (profileUpdateErr) return json(res, 400, { error: profileUpdateErr.message });
 

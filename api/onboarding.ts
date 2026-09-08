@@ -1306,56 +1306,88 @@ export default async function handler(req: any, res: any) {
           }
         }
 
-        // 5. Resolusi Kelas untuk WALI KELAS
+        // 5. Resolusi Kelas untuk WALI KELAS (Eksklusif: 1 Guru = 1 Rombel Binaan)
         if (callerProfile.role === 'WALI KELAS') {
-          // Sinkronisasi wali_kelas_teacher_id pada seluruh kelas yang cocok
-          for (const cls of allClasses) {
-            const matchesWaliName = cls.wali_kelas_name && (
-              normalize(cls.wali_kelas_name) === normalize(callerProfile.name) ||
-              (matchedTeacher && normalize(cls.wali_kelas_name) === normalize(matchedTeacher.nama))
-            );
-            const matchesProfileClass = Array.isArray(callerProfile.class_ids) && callerProfile.class_ids.includes(cls.id);
-            const matchesSchoolProfile = sp?.kelas && normalize(cls.name) === normalize(sp.kelas);
+          // Tentukan rombel binaan tunggal berdasarkan prioritas:
+          // 1. class_ids resmi dari profil akun (hasil input Admin)
+          // 2. Relasi ID guru pada tabel classes
+          // 3. Nama wali kelas pada tabel classes
+          // 4. Fallback school_profile.kelas
+          let chosenClass: any = null;
 
-            if ((matchesWaliName || matchesProfileClass || matchesSchoolProfile) && matchedTeacher) {
-              if (cls.wali_kelas_teacher_id !== matchedTeacher.id) {
-                try {
-                  await db.from('classes').update({
-                    wali_kelas_teacher_id: matchedTeacher.id,
-                    wali_kelas_name: matchedTeacher.nama || cls.wali_kelas_name || callerProfile.name,
-                  }).eq('id', cls.id);
-                  cls.wali_kelas_teacher_id = matchedTeacher.id;
-                  cls.wali_kelas_name = matchedTeacher.nama || cls.wali_kelas_name || callerProfile.name;
-                } catch (_) {}
-              }
-            }
+          if (Array.isArray(callerProfile.class_ids) && callerProfile.class_ids.length > 0) {
+            chosenClass = allClasses.find((c: any) => callerProfile.class_ids.includes(c.id));
           }
 
-          const waliClasses = allClasses.filter((c: any) => {
-            if (matchedTeacher && c.wali_kelas_teacher_id === matchedTeacher.id) return true;
-            if (callerProfile.teacher_id && c.wali_kelas_teacher_id === callerProfile.teacher_id) return true;
-            if (Array.isArray(callerProfile.class_ids) && callerProfile.class_ids.includes(c.id)) return true;
-            if (c.wali_kelas_name && callerProfile.name && normalize(c.wali_kelas_name) === normalize(callerProfile.name)) return true;
-            if (matchedTeacher && c.wali_kelas_name && normalize(c.wali_kelas_name) === normalize(matchedTeacher.nama)) return true;
-            return false;
-          });
-          resolvedClassIds = waliClasses.map((c: any) => c.id);
+          if (!chosenClass && matchedTeacher) {
+            chosenClass = allClasses.find((c: any) => c.wali_kelas_teacher_id === matchedTeacher.id);
+          }
 
-          // Fallback dari profil sekolah jika wali kelas ditugaskan di school_profile.kelas
-          if (resolvedClassIds.length === 0 && sp?.kelas) {
-            const matchedSpClass = allClasses.find((c: any) => normalize(c.name) === normalize(sp.kelas));
-            if (matchedSpClass) {
-              resolvedClassIds = [matchedSpClass.id];
-              // Auto-assign wali_kelas_teacher_id pada kelas jika belum ada
-              if (matchedTeacher && !matchedSpClass.wali_kelas_teacher_id) {
-                try {
-                  await db.from('classes').update({
-                    wali_kelas_teacher_id: matchedTeacher.id,
-                  }).eq('id', matchedSpClass.id);
-                  matchedSpClass.wali_kelas_teacher_id = matchedTeacher.id;
-                } catch (_) {}
+          if (!chosenClass) {
+            chosenClass = allClasses.find((c: any) => {
+              if (!c.wali_kelas_name) return false;
+              return (
+                normalize(c.wali_kelas_name) === normalize(callerProfile.name) ||
+                (matchedTeacher && normalize(c.wali_kelas_name) === normalize(matchedTeacher.nama))
+              );
+            });
+          }
+
+          if (!chosenClass && sp?.kelas) {
+            chosenClass = allClasses.find((c: any) => normalize(c.name) === normalize(sp.kelas));
+          }
+
+          if (chosenClass && matchedTeacher) {
+            // Update rombel yang sah menjadi milik guru ini
+            if (chosenClass.wali_kelas_teacher_id !== matchedTeacher.id || !chosenClass.wali_kelas_name) {
+              try {
+                await db.from('classes').update({
+                  wali_kelas_teacher_id: matchedTeacher.id,
+                  wali_kelas_name: matchedTeacher.nama || callerProfile.name,
+                }).eq('id', chosenClass.id);
+                chosenClass.wali_kelas_teacher_id = matchedTeacher.id;
+                chosenClass.wali_kelas_name = matchedTeacher.nama || callerProfile.name;
+              } catch (_) {}
+            }
+
+            // Lepaskan dan bersihkan rombel lain jika sebelumnya masih terkait ke guru ini
+            for (const otherCls of allClasses) {
+              if (otherCls.id !== chosenClass.id) {
+                const wasAssignedToThisTeacher =
+                  otherCls.wali_kelas_teacher_id === matchedTeacher.id ||
+                  (otherCls.wali_kelas_name && (
+                    normalize(otherCls.wali_kelas_name) === normalize(callerProfile.name) ||
+                    normalize(otherCls.wali_kelas_name) === normalize(matchedTeacher.nama)
+                  ));
+
+                if (wasAssignedToThisTeacher) {
+                  try {
+                    await db.from('classes').update({
+                      wali_kelas_teacher_id: null,
+                      wali_kelas_name: null,
+                    }).eq('id', otherCls.id);
+                    otherCls.wali_kelas_teacher_id = null;
+                    otherCls.wali_kelas_name = null;
+                  } catch (_) {}
+                }
               }
             }
+
+            resolvedClassIds = [chosenClass.id];
+
+            // Pastikan class_ids pada akun profil pengguna hanya berisi rombel tunggal ini
+            if (!Array.isArray(callerProfile.class_ids) || callerProfile.class_ids.length !== 1 || callerProfile.class_ids[0] !== chosenClass.id) {
+              try {
+                await db.from('profiles').update({
+                  class_ids: [chosenClass.id],
+                }).eq('id', callerProfile.id);
+                callerProfile.class_ids = [chosenClass.id];
+              } catch (_) {}
+            }
+          } else if (chosenClass) {
+            resolvedClassIds = [chosenClass.id];
+          } else {
+            resolvedClassIds = [];
           }
         } else if (callerProfile.role === 'GURU MAPEL') {
           // 6. Resolusi Kelas untuk GURU MAPEL

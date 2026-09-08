@@ -44,18 +44,24 @@ export async function reconcileTeacherAssignments(
     is_active: boolean;
   }> = [];
 
-  // Baris penugasan Wali Kelas
+  // Baris penugasan Wali Kelas (Eksklusif: 1 Guru = 1 Rombel per Tahun Ajaran)
+  const assignedHomeroomTeachers = new Set<string>();
   for (const c of classes || []) {
     if (c.wali_kelas_teacher_id) {
-      unifiedRows.push({
-        school_id: c.school_id,
-        teacher_id: c.wali_kelas_teacher_id,
-        role: 'WALI_KELAS',
-        class_id: c.id,
-        subject_id: null,
-        academic_year: c.academic_year || academicYear,
-        is_active: true,
-      });
+      const year = c.academic_year || academicYear;
+      const key = `${c.wali_kelas_teacher_id}_${year}`;
+      if (!assignedHomeroomTeachers.has(key)) {
+        assignedHomeroomTeachers.add(key);
+        unifiedRows.push({
+          school_id: c.school_id,
+          teacher_id: c.wali_kelas_teacher_id,
+          role: 'WALI_KELAS',
+          class_id: c.id,
+          subject_id: null,
+          academic_year: year,
+          is_active: true,
+        });
+      }
     }
   }
 

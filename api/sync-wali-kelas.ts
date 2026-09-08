@@ -106,7 +106,7 @@ export default async function handler(req: any, res: any) {
       .eq('school_id', profile.school_id);
   }
 
-  // Hubungkan kelas yang dipilih atau yang bersesuaian dengan guru wali kelas ini
+  // Hubungkan kelas yang dipilih secara eksklusif ke guru wali kelas ini (1 Guru = 1 Rombel)
   if (targetClassId) {
     await admin.from('classes')
       .update({
@@ -115,31 +115,38 @@ export default async function handler(req: any, res: any) {
       })
       .eq('id', targetClassId)
       .eq('school_id', profile.school_id);
-  }
 
-  // Cek kelas lain yang mungkin ditugaskan ke guru ini
-  const { data: allClasses } = await admin
-    .from('classes')
-    .select('id,name,wali_kelas_name,wali_kelas_teacher_id')
-    .eq('school_id', profile.school_id);
+    // Lepaskan rombel lain jika sebelumnya terhubung ke guru ini
+    const { data: otherClasses } = await admin
+      .from('classes')
+      .select('id,name,wali_kelas_name,wali_kelas_teacher_id')
+      .eq('school_id', profile.school_id)
+      .neq('id', targetClassId);
 
-  if (allClasses && allClasses.length > 0) {
-    for (const cls of allClasses) {
-      const nameMatch = cls.wali_kelas_name && (
-        cleanName(cls.wali_kelas_name) === cleanName(profile.name) ||
-        cleanName(cls.wali_kelas_name) === cleanName(teacher.nama)
-      );
-      const idMatch = Array.isArray(profile.class_ids) && profile.class_ids.includes(cls.id);
-      if ((nameMatch || idMatch) && cls.wali_kelas_teacher_id !== teacher.id) {
-        await admin.from('classes')
-          .update({
-            wali_kelas_teacher_id: teacher.id,
-            wali_kelas_name: teacher.nama || profile.name,
-          })
-          .eq('id', cls.id)
-          .eq('school_id', profile.school_id);
+    if (otherClasses && otherClasses.length > 0) {
+      for (const cls of otherClasses) {
+        const nameMatch = cls.wali_kelas_name && (
+          cleanName(cls.wali_kelas_name) === cleanName(profile.name) ||
+          cleanName(cls.wali_kelas_name) === cleanName(teacher.nama)
+        );
+        const idMatch = cls.wali_kelas_teacher_id === teacher.id;
+        if (nameMatch || idMatch) {
+          await admin.from('classes')
+            .update({
+              wali_kelas_teacher_id: null,
+              wali_kelas_name: null,
+            })
+            .eq('id', cls.id)
+            .eq('school_id', profile.school_id);
+        }
       }
     }
+
+    // Pastikan profiles.class_ids hanya memuat single class id
+    await admin.from('profiles')
+      .update({ class_ids: [targetClassId] })
+      .eq('id', userId)
+      .eq('school_id', profile.school_id);
   }
 
   return json(res, 200, {
