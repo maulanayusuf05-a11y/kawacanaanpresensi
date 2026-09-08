@@ -3289,26 +3289,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         throw new Error(apiErrorMessage);
       }
 
-      // 2. Fallback ke Supabase RPC atau direct batch insert
-      const touchedClasses = Array.from(new Set(payload.map((st) => st.class_id).filter(Boolean))) as string[];
-      const effectiveTargetClassId = targetClassId || (touchedClasses.length === 1 ? touchedClasses[0] : null);
-
-      const { error: rpcErr } = await supabase.rpc("import_students_atomic", {
-        p_school_id: schoolId,
-        p_items: payload,
-        p_replace_existing: effectiveTargetClassId ? replaceExisting : false,
-        p_target_class_id: effectiveTargetClassId || null,
-        p_actor_user_id: currentUser?.id || null,
-      });
-
-      if (rpcErr) {
-        console.warn("[importStudents] RPC gagal, mencoba fallback matching ke tabel students:", rpcErr.message);
-        const { data: existingStudentsData } = await supabase
-          .from("students")
-          .select("id, nama, nisn")
-          .eq("school_id", schoolId);
-        const existingList = existingStudentsData || [];
-        const usedIds = new Set<string>();
+      // 2. Direct fallback matching ke tabel students
+      const { data: existingStudentsData, error: fetchErr } = await supabase
+        .from("students")
+        .select("id, nama, nisn")
+        .eq("school_id", schoolId);
+      if (fetchErr) throw fetchErr;
+      const existingList = existingStudentsData || [];
+      const usedIds = new Set<string>();
 
         for (const st of payload) {
           const cleanNama = (st.nama || "").trim().toLowerCase();
@@ -3347,7 +3335,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               .select("id, nama, nisn")
               .single();
             if (insErr) {
-              throw new Error(rpcErr.message || insErr.message || "Gagal mengimpor data siswa.");
+              throw new Error(insErr.message || "Gagal mengimpor data siswa.");
             }
             if (insData) {
               existingList.push(insData);
@@ -3355,7 +3343,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           }
         }
       }
-    }
 
     await loadData(currentUser?.id);
     showToast(`Berhasil mengimpor ${items.length} data siswa.`);

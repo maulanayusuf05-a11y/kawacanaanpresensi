@@ -588,115 +588,76 @@ export default async function handler(req: any, res: any) {
       // Tentukan targetClassId tunggal jika semua item menuju kelas yang sama
       const effectiveTargetClassId = targetClassId || (touchedClassIds.size === 1 ? Array.from(touchedClassIds)[0] : null);
 
-      let atomicSucceeded = false;
-      // HANYA jalankan RPC atomik jika ada targetClassId yang jelas agar RPC tidak menghapus seluruh sekolah!
-      if (effectiveTargetClassId || !replaceExisting) {
-        try {
-          const { error: rpcErr } = await admin.rpc('import_students_atomic', {
-            p_school_id: schoolId,
-            p_items: items,
-            p_replace_existing: replaceExisting,
-            p_target_class_id: effectiveTargetClassId,
-            p_actor_user_id: caller.user.id,
-          });
-          if (!rpcErr) {
-            atomicSucceeded = true;
-          } else {
-            console.warn('[admin-users] rpc import_students_atomic warning, using direct admin batch:', rpcErr.message);
-          }
-        } catch (rpcEx: any) {
-          console.warn('[admin-users] rpc exception, using direct admin batch:', rpcEx?.message);
-        }
+      // Smart in-place synchronization:
+      // Selalu ambil seluruh data siswa sekolah untuk matching nama + nisn
+      const { data: existingStudentsData, error: fetchErr } = await admin
+        .from('students')
+        .select('id, nisn, nama, class_id, gender')
+        .eq('school_id', schoolId);
+
+      if (fetchErr) {
+        console.error('[admin-users] Error fetching existing students:', fetchErr.message);
+        return json(res, 500, { error: `Gagal membaca data siswa: ${fetchErr.message}` });
       }
 
-      if (!atomicSucceeded) {
-        // Smart in-place synchronization:
-        // Menghindari penghapusan massal antar-kelas. HANYA sentuh kelas yang diimpor.
-        let studentQuery = admin
-          .from('students')
-          .select('id, nisn, nama, class_id, gender')
-          .eq('school_id', schoolId);
+      const existingStudents = existingStudentsData || [];
 
-        if (effectiveTargetClassId) {
-          studentQuery = studentQuery.eq('class_id', effectiveTargetClassId);
-        } else if (replaceExisting && touchedClassIds.size > 0) {
-          studentQuery = studentQuery.in('class_id', Array.from(touchedClassIds));
-        }
+      // Ambil ID siswa yang sudah terhubung dengan akun profiles
+      const { data: linkedProfiles } = await admin
+        .from('profiles')
+        .select('student_id')
+        .eq('school_id', schoolId)
+        .not('student_id', 'is', null);
+      const linkedStudentIds = new Set<string>((linkedProfiles || []).map((p: any) => String(p.student_id)));
 
-        const { data: existingStudentsData } = await studentQuery;
-        const existingStudents = existingStudentsData || [];
+      const usedExistingIds = new Set<string>();
+      const toUpdate: Array<{ id: string; nama: string; nisn: string | null; gender: 'L' | 'P'; class_id: string | null }> = [];
+      const toInsert: Array<{ school_id: string; nama: string; nisn: string | null; gender: 'L' | 'P'; class_id: string | null }> = [];
 
-        // Ambil ID siswa yang sudah terhubung dengan akun profiles
-        const { data: linkedProfiles } = await admin
-          .from('profiles')
-          .select('student_id')
-          .eq('school_id', schoolId)
-          .not('student_id', 'is', null);
-        const linkedStudentIds = new Set<string>((linkedProfiles || []).map((p: any) => String(p.student_id)));
+      for (const rawItem of items) {
+        const itemNama = String(rawItem.nama || '').trim();
+        const itemNisn = rawItem.nisn && String(rawItem.nisn).trim() !== '-' ? String(rawItem.nisn).trim() : null;
+        const itemGender: 'L' | 'P' = rawItem.gender === 'P' ? 'P' : 'L';
+        const itemClassId = rawItem.classId || rawItem.class_id || effectiveTargetClassId || null;
 
-        // Index data siswa yang sudah ada
-        const existingByNisn = new Map<string, any>();
-        const existingByName = new Map<string, any[]>();
-        for (const st of existingStudents) {
-          if (st.nisn) {
-            existingByNisn.set(String(st.nisn).trim().toLowerCase(), st);
-          }
-          const cleanName = String(st.nama || '').trim().toLowerCase();
-          if (cleanName) {
-            const arr = existingByName.get(cleanName) || [];
-            arr.push(st);
-            existingByName.set(cleanName, arr);
-          }
-        }
+        let matchedExisting: any = null;
+        const cleanItemNama = itemNama.toLowerCase();
+        const cleanItemNisn = itemNisn ? itemNisn.toLowerCase() : '';
 
-        const usedExistingIds = new Set<string>();
-        const toUpdate: Array<{ id: string; nama: string; nisn: string | null; gender: 'L' | 'P'; class_id: string | null }> = [];
-        const toInsert: Array<{ school_id: string; nama: string; nisn: string | null; gender: 'L' | 'P'; class_id: string | null }> = [];
-
-        for (const rawItem of items) {
-          const itemNama = String(rawItem.nama || '').trim();
-          const itemNisn = rawItem.nisn ? String(rawItem.nisn).trim() : null;
-          const itemGender: 'L' | 'P' = rawItem.gender === 'P' ? 'P' : 'L';
-          const itemClassId = rawItem.classId || rawItem.class_id || effectiveTargetClassId || null;
-
-          let matchedExisting: any = null;
-          const cleanItemNama = itemNama.toLowerCase();
-          const cleanItemNisn = itemNisn ? itemNisn.toLowerCase() : '';
-
-          // Aturan presisi:
-          // - Jika terdapat siswa dengan nama dan NISN yang sama, otomatis gantikan data tersebut (update)
-          // - Jika hanya nama yang sama (NISN berbeda atau belum ada) atau siswa baru, sistem harus tetap menambahkan datanya (insert)
-          if (cleanItemNama && cleanItemNisn) {
-            const candidate = existingStudents.find((st: any) => {
-              if (usedExistingIds.has(st.id)) return false;
-              const stNama = String(st.nama || '').trim().toLowerCase();
-              const stNisn = String(st.nisn || '').trim().toLowerCase();
-              return stNama === cleanItemNama && stNisn === cleanItemNisn;
-            });
-            if (candidate) {
-              matchedExisting = candidate;
-            }
-          }
-
-          if (matchedExisting) {
-            usedExistingIds.add(matchedExisting.id);
-            toUpdate.push({
-              id: matchedExisting.id,
-              nama: itemNama,
-              nisn: itemNisn,
-              gender: itemGender,
-              class_id: itemClassId,
-            });
-          } else {
-            toInsert.push({
-              school_id: schoolId,
-              nama: itemNama,
-              nisn: itemNisn,
-              gender: itemGender,
-              class_id: itemClassId,
-            });
+        // Aturan presisi:
+        // - Jika terdapat siswa dengan nama dan NISN yang sama, otomatis gantikan data tersebut (update)
+        // - Jika hanya nama yang sama (NISN berbeda atau belum ada) atau siswa baru, sistem harus tetap menambahkan datanya (insert)
+        if (cleanItemNama && cleanItemNisn) {
+          const candidate = existingStudents.find((st: any) => {
+            if (usedExistingIds.has(st.id)) return false;
+            const stNama = String(st.nama || '').trim().toLowerCase();
+            const stNisn = String(st.nisn || '').trim().toLowerCase();
+            return stNama === cleanItemNama && stNisn === cleanItemNisn;
+          });
+          if (candidate) {
+            matchedExisting = candidate;
           }
         }
+
+        if (matchedExisting) {
+          usedExistingIds.add(matchedExisting.id);
+          toUpdate.push({
+            id: matchedExisting.id,
+            nama: itemNama,
+            nisn: itemNisn,
+            gender: itemGender,
+            class_id: itemClassId,
+          });
+        } else {
+          toInsert.push({
+            school_id: schoolId,
+            nama: itemNama,
+            nisn: itemNisn,
+            gender: itemGender,
+            class_id: itemClassId,
+          });
+        }
+      }
 
         // 1. Perbarui data siswa yang cocok di database (ID tidak berubah sehingga profiles aman)
         for (const upd of toUpdate) {
@@ -724,34 +685,6 @@ export default async function handler(req: any, res: any) {
             }
           }
         }
-
-        // 3. Jika mode replace: HANYA bersihkan siswa lama dalam kelas yang disentuh (touched classes)
-        // JANGAN PERNAH menghapus siswa dari kelas lain di sekolah!
-        if (replaceExisting && touchedClassIds.size > 0) {
-          const leftoverStudents = existingStudents.filter(
-            (st: any) => touchedClassIds.has(st.class_id) && !usedExistingIds.has(st.id)
-          );
-          if (leftoverStudents.length > 0) {
-            // Siswa yang TIDAK terhubung dengan profiles dapat dihapus langsung
-            const safeToDelete = leftoverStudents.filter((st: any) => !linkedStudentIds.has(st.id));
-            if (safeToDelete.length > 0) {
-              const safeIds = safeToDelete.map((st: any) => st.id);
-              await admin.from('students').delete().in('id', safeIds).eq('school_id', schoolId);
-            }
-
-            // Siswa yang terhubung dengan profiles: coba delete, jika trigger database memblokir, kosongkan class_id
-            const linkedLeftovers = leftoverStudents.filter((st: any) => linkedStudentIds.has(st.id));
-            if (linkedLeftovers.length > 0) {
-              const linkedIds = linkedLeftovers.map((st: any) => st.id);
-              const { error: delLinkedErr } = await admin.from('students').delete().in('id', linkedIds).eq('school_id', schoolId);
-              if (delLinkedErr) {
-                console.warn('[admin-users] Could not delete linked students, unassigning class instead:', delLinkedErr.message);
-                await admin.from('students').update({ class_id: null }).in('id', linkedIds).eq('school_id', schoolId);
-              }
-            }
-          }
-        }
-      }
 
       // Auto-sinkronisasi relasi profil siswa (profiles.student_id) dengan data tabel students
       try {

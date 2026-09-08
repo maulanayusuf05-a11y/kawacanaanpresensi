@@ -212,7 +212,6 @@ export const DataSiswaView: React.FC = () => {
   const [isDeletingStudent, setIsDeletingStudent] = useState(false);
 
   // Import Modal States
-  const [selectedImportClassId, setSelectedImportClassId] = useState(myAssignedClasses[0]?.id || classes[0]?.id || '');
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importTab, setImportTab] = useState<'file' | 'paste'>('file');
   const [pasteText, setPasteText] = useState('');
@@ -349,10 +348,18 @@ export const DataSiswaView: React.FC = () => {
     return classList.find((c) => c.name.toLowerCase().includes(rawClean) || rawClean.includes(c.name.toLowerCase()));
   };
 
+  // Fallback class ID jika file tidak mencantumkan kelas
+  const fallbackImportClassId =
+    (selectedClassFilter !== 'ALL' ? selectedClassFilter : '') ||
+    myAssignedClasses[0]?.id ||
+    availableClasses[0]?.id ||
+    classes[0]?.id ||
+    '';
+
   // Download Template Siswa (Excel atau CSV)
   // Format: NAMA LENGKAP, L/P, NISN, KELAS
   const handleDownloadTemplate = (format: 'xlsx' | 'csv' = 'xlsx') => {
-    const currentClass = availableClasses.find((c) => c.id === selectedImportClassId) || availableClasses[0];
+    const currentClass = availableClasses.find((c) => c.id === fallbackImportClassId) || availableClasses[0];
     const defaultClassName = currentClass ? currentClass.name : 'Kelas 1A';
     downloadStudentTemplateFile(format, defaultClassName);
     showToast(
@@ -370,7 +377,7 @@ export const DataSiswaView: React.FC = () => {
       const parsed = mapRowsToStudents(
         docResult.rows,
         availableClasses,
-        selectedImportClassId || availableClasses[0]?.id || '',
+        fallbackImportClassId,
         docResult.rawText
       );
       setParsedStudents(parsed);
@@ -416,7 +423,7 @@ export const DataSiswaView: React.FC = () => {
     const parsed = mapRowsToStudents(
       [],
       availableClasses,
-      selectedImportClassId || availableClasses[0]?.id || '',
+      fallbackImportClassId,
       text
     );
     setParsedStudents(parsed);
@@ -499,7 +506,7 @@ export const DataSiswaView: React.FC = () => {
         }
 
         if (!targetClassId) {
-          targetClassId = selectedImportClassId || availableClasses[0]?.id || classes[0]?.id || null;
+          targetClassId = fallbackImportClassId || availableClasses[0]?.id || classes[0]?.id || null;
         }
 
         payload.push({
@@ -516,7 +523,7 @@ export const DataSiswaView: React.FC = () => {
 
       const distinctClasses = Array.from(new Set(payload.map((p) => p.classId).filter(Boolean)));
       const singleTargetClassId =
-        distinctClasses.length === 1 ? (distinctClasses[0] as string) : (selectedImportClassId || undefined);
+        distinctClasses.length === 1 ? (distinctClasses[0] as string) : undefined;
 
       await importStudents(payload, false, singleTargetClassId);
 
@@ -599,7 +606,6 @@ export const DataSiswaView: React.FC = () => {
                     setParsedStudents([]);
                     setPasteText('');
                     setFileName('');
-                    setSelectedImportClassId(availableClasses[0]?.id || '');
                     setIsImportModalOpen(true);
                   }}
                   id="btn-import-siswa-modal"
@@ -900,43 +906,6 @@ export const DataSiswaView: React.FC = () => {
               </button>
             </div>
 
-            <div className="mb-3">
-              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">
-                KELAS TUJUAN IMPORT (DEFAULT JIKA FILE TIDAK MEMUAT KOLOM KELAS)
-              </label>
-              <select
-                value={selectedImportClassId || availableClasses[0]?.id || ''}
-                onChange={(e) => {
-                  const newClassId = e.target.value;
-                  setSelectedImportClassId(newClassId);
-                  const targetClass = availableClasses.find((c) => c.id === newClassId);
-                  if (parsedStudents.length > 0) {
-                    setParsedStudents((prev) =>
-                      prev.map((item) => {
-                        if (!item.classNameInput) {
-                          return {
-                            ...item,
-                            matchedClassId: newClassId,
-                            matchedClassName: targetClass?.name || item.matchedClassName,
-                          };
-                        }
-                        return item;
-                      })
-                    );
-                  }
-                }}
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:border-blue-600 outline-none"
-                required
-              >
-                {availableClasses.length > 1 && <option value="">Pilih kelas...</option>}
-                {availableClasses.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} ({getFaseByClassName(c.name, c.grade)})
-                  </option>
-                ))}
-              </select>
-            </div>
-
             {/* Modal Body (Scrollable) */}
             <div className="overflow-y-auto space-y-5 py-4 flex-1 pr-1">
               {/* Step 1: Download Template Callout */}
@@ -1154,7 +1123,7 @@ export const DataSiswaView: React.FC = () => {
                             </td>
                             <td className="p-2.5">
                               <select
-                                value={item.matchedClassId || selectedImportClassId || availableClasses[0]?.id || ''}
+                                value={item.matchedClassId || fallbackImportClassId || availableClasses[0]?.id || ''}
                                 onChange={(e) => {
                                   const val = e.target.value;
                                   const targetCls = availableClasses.find((c) => c.id === val);
