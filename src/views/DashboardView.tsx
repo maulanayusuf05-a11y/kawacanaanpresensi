@@ -161,7 +161,7 @@ export const DashboardView: React.FC = () => {
       if (accessibleClassIds.length > 0) {
         return students.filter((s) => accessibleClassIds.includes(s.classId || ''));
       }
-      return students;
+      return [];
     }
     return students;
   }, [isSchoolAdminOrKS, userScope, students, currentUser]);
@@ -190,13 +190,114 @@ export const DashboardView: React.FC = () => {
     () => ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agt', 'Sep', 'Okt', 'Nov', 'Des'],
     []
   );
+  const currentDayName = useMemo(() => dayNamesIndo[todayDate.getDay()], [dayNamesIndo, todayDate]);
+
   const todayFormattedDisplay = useMemo(() => {
-    return `${dayNamesIndo[todayDate.getDay()]}, ${todayDate.getDate()} ${
+    return `${currentDayName}, ${todayDate.getDate()} ${
       monthShortIndo[todayDate.getMonth()]
     } ${todayDate.getFullYear()}`;
-  }, [todayDate, dayNamesIndo, monthShortIndo]);
+  }, [todayDate, currentDayName, monthShortIndo]);
 
   const isCacheValidForToday = cachedSummary?.cachedDate === todayFormatted;
+
+  // Daftar kelas yang diajar Guru Mapel pada hari berjalan (today)
+  const classesTaughtToday = useMemo(() => {
+    if (!userScope.isGuruMapel) return [];
+
+    const matchedClassIds = new Set<string>();
+    const matchedClassNames = new Set<string>();
+    let hasAnyScheduleConfigured = false;
+
+    userScope.assignedSubjects.forEach((sub) => {
+      // 1. Cek classSchedules spesifik per kelas
+      if (sub.classSchedules && sub.classSchedules.length > 0) {
+        sub.classSchedules.forEach((cs) => {
+          if (cs.days && cs.days.length > 0) {
+            hasAnyScheduleConfigured = true;
+            if (cs.days.includes(currentDayName)) {
+              if (cs.classId) matchedClassIds.add(cs.classId);
+              if (cs.className) matchedClassNames.add(cs.className.trim().toLowerCase());
+            }
+          }
+        });
+      }
+
+      // 2. Cek scheduleDays umum mapel
+      if (sub.scheduleDays && sub.scheduleDays.length > 0) {
+        hasAnyScheduleConfigured = true;
+        if (sub.scheduleDays.includes(currentDayName)) {
+          (sub.targetClassIds || []).forEach((cid) => matchedClassIds.add(cid));
+          (sub.targetClassNames || []).forEach((cn) => matchedClassNames.add(cn.trim().toLowerCase()));
+          // Jika targetClassIds belum spesifik tapi accessibleClasses ada
+          if (
+            (!sub.targetClassIds || sub.targetClassIds.length === 0) &&
+            (!sub.targetClassNames || sub.targetClassNames.length === 0)
+          ) {
+            userScope.accessibleClasses.forEach((c) => matchedClassIds.add(c.id));
+          }
+        }
+      }
+    });
+
+    // 3. Fallback: jika guru mapel memiliki rombel tetapi belum diatur konfigurasi hari jadwal sama sekali
+    // Pada hari efektif Senin - Sabtu, anggap mengajar di rombel binaan mapel
+    if (!hasAnyScheduleConfigured && currentDayName !== 'Minggu') {
+      return userScope.accessibleClasses;
+    }
+
+    return userScope.accessibleClasses.filter(
+      (c) => matchedClassIds.has(c.id) || matchedClassNames.has(c.name.trim().toLowerCase())
+    );
+  }, [userScope, currentDayName]);
+
+  // Siswa dari kelas yang diajar hari ini (untuk perhitungan presensi status hari berjalan Guru Mapel)
+  const todayTaughtStudents = useMemo(() => {
+    if (!userScope.isGuruMapel) return scopedStudents;
+    const taughtClassIds = new Set(classesTaughtToday.map((c) => c.id));
+    return scopedStudents.filter((s) => taughtClassIds.has(s.classId || ''));
+  }, [userScope.isGuruMapel, classesTaughtToday, scopedStudents]);
+
+  const todayTaughtStudentIds = useMemo(
+    () => new Set(todayTaughtStudents.map((s) => s.id)),
+    [todayTaughtStudents]
+  );
+
+  const classesTaughtTodayLabel = useMemo(() => {
+    if (!userScope.isGuruMapel) return '-';
+    if (classesTaughtToday.length === 0) return 'Tidak Ada';
+    if (classesTaughtToday.length === 1) return classesTaughtToday[0].name;
+    if (classesTaughtToday.length === 2) {
+      return classesTaughtToday.map((c) => c.name.replace(/^kelas\s*/i, '')).join(', ');
+    }
+    return `${classesTaughtToday.length} Kelas`;
+  }, [userScope.isGuruMapel, classesTaughtToday]);
+
+  const classesTaughtTodaySubtext = useMemo(() => {
+    if (!userScope.isGuruMapel) return '';
+    if (classesTaughtToday.length === 0) return `Tidak ada jadwal hari ${currentDayName}`;
+    if (classesTaughtToday.length <= 2) return `Jadwal hari ${currentDayName}`;
+    return classesTaughtToday.map((c) => c.name.replace(/^kelas\s*/i, '')).join(', ');
+  }, [userScope.isGuruMapel, classesTaughtToday, currentDayName]);
+
+  const mapelDiampuLabel = useMemo(() => {
+    if (!userScope.isGuruMapel) return '-';
+    if (userScope.assignedSubjects.length === 0) {
+      return userScope.primarySubject?.name || 'Mata Pelajaran';
+    }
+    if (userScope.assignedSubjects.length === 1) {
+      return userScope.assignedSubjects[0].name;
+    }
+    return userScope.assignedSubjects.map((s) => s.code || s.name).join(', ');
+  }, [userScope.isGuruMapel, userScope.assignedSubjects, userScope.primarySubject]);
+
+  const mapelDiampuSubtext = useMemo(() => {
+    if (!userScope.isGuruMapel) return '';
+    if (userScope.assignedSubjects.length <= 1) {
+      const sub = userScope.assignedSubjects[0] || userScope.primarySubject;
+      return sub?.code ? `Kode: ${sub.code} • Guru Mapel` : 'Mata Pelajaran Diampu';
+    }
+    return `${userScope.assignedSubjects.length} Mata Pelajaran Diampu`;
+  }, [userScope.isGuruMapel, userScope.assignedSubjects, userScope.primarySubject]);
 
   // Today's attendance calculation (strictly following hari berjalan)
   // Untuk Admin Sekolah & Kepala Sekolah: mencakup akumulasi presensi semua kelas di sekolah tersebut
@@ -214,20 +315,22 @@ export const DashboardView: React.FC = () => {
         return scopedStudentIds.has(r.studentId) && r.type !== 'SUBJECT';
       }
       if (userScope.isGuruMapel) {
+        // Hanya siswa dari rombel/kelas yang diajar hari ini
+        if (!todayTaughtStudentIds.has(r.studentId)) return false;
+
         const assignedSubjectIds = new Set(userScope.assignedSubjectIds);
         if (assignedSubjectIds.size > 0) {
           return (
-            scopedStudentIds.has(r.studentId) &&
             r.type === 'SUBJECT' &&
             r.subjectId &&
             assignedSubjectIds.has(r.subjectId)
           );
         }
-        return scopedStudentIds.has(r.studentId) && r.type === 'SUBJECT';
+        return r.type === 'SUBJECT';
       }
       return r.type !== 'SUBJECT';
     });
-  }, [attendanceRecords, todayFormatted, isSchoolAdminOrKS, userScope, scopedStudentIds]);
+  }, [attendanceRecords, todayFormatted, isSchoolAdminOrKS, userScope, scopedStudentIds, todayTaughtStudentIds]);
 
   // Pemetaan status unik per siswa untuk hari berjalan (mencegah duplikasi perhitungan)
   // Prioritaskan presensi harian (DAILY) jika siswa juga memiliki record mapel (SUBJECT)
@@ -278,8 +381,8 @@ export const DashboardView: React.FC = () => {
     return count;
   }, [todayStudentStatusMap]);
 
-  // Target total siswa yang harus diinput presensinya hari ini
-  const targetTotal = (isSchoolAdminOrKS ? students.length : scopedTotal) || students.length || 0;
+  // Target total siswa yang harus diinput presensinya hari ini (untuk Guru Mapel disesuaikan dengan rombel yang diajarkan hari ini)
+  const targetTotal = (isSchoolAdminOrKS ? students.length : userScope.isGuruMapel ? todayTaughtStudents.length : scopedTotal) || 0;
 
   // Jumlah siswa yang datanya telah di-input hari ini
   const totalInputted = todayStudentStatusMap.size;
@@ -615,38 +718,71 @@ export const DashboardView: React.FC = () => {
       {/* Main Widgets: If Wali Kelas or Guru Mapel -> 4 widgets */}
       {isTeacherOrWali ? (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
-          {[
-            {
-              label: 'JUMLAH SISWA',
-              value: scopedTotal,
-              desc: userScope.isWaliKelas
-                ? `Kelas ${userScope.assignedWaliClassName || 'Binaan'}`
-                : `${userScope.primarySubject?.name || 'Mapel'} (${userScope.accessibleClasses.length} Rombel)`,
-              icon: Users,
-              tone: 'blue',
-            },
-            {
-              label: 'SISWA LAKI-LAKI',
-              value: scopedMale,
-              desc: 'Siswa putra (L)',
-              icon: UserCheck,
-              tone: 'sky',
-            },
-            {
-              label: 'SISWA PEREMPUAN',
-              value: scopedFemale,
-              desc: 'Siswa putri (P)',
-              icon: UserCheck,
-              tone: 'violet',
-            },
-            {
-              label: 'HARI EFEKTIF BELAJAR',
-              value: `${effectiveDaysThisMonth} Hari`,
-              desc: `Bulan ${currentMonthName} (Aktif)`,
-              icon: CalendarCheck,
-              tone: 'emerald',
-            },
-          ].map((item) => {
+          {(userScope.isGuruMapel
+            ? [
+                {
+                  label: 'JUMLAH SISWA',
+                  value: scopedTotal,
+                  desc:
+                    userScope.accessibleClasses.length > 0
+                      ? `${userScope.accessibleClasses.length} Kelas Diajar`
+                      : 'Belum ada kelas diajar',
+                  icon: Users,
+                  tone: 'blue',
+                },
+                {
+                  label: 'KELAS HARI INI',
+                  value: classesTaughtTodayLabel,
+                  desc: classesTaughtTodaySubtext,
+                  icon: GraduationCap,
+                  tone: 'sky',
+                },
+                {
+                  label: 'MAPEL DIAMPU',
+                  value: mapelDiampuLabel,
+                  desc: mapelDiampuSubtext,
+                  icon: BookOpen,
+                  tone: 'violet',
+                },
+                {
+                  label: 'HARI EFEKTIF BELAJAR',
+                  value: `${effectiveDaysThisMonth} Hari`,
+                  desc: `Bulan ${currentMonthName} (Aktif)`,
+                  icon: CalendarCheck,
+                  tone: 'emerald',
+                },
+              ]
+            : [
+                {
+                  label: 'JUMLAH SISWA',
+                  value: scopedTotal,
+                  desc: `Kelas ${userScope.assignedWaliClassName || 'Binaan'}`,
+                  icon: Users,
+                  tone: 'blue',
+                },
+                {
+                  label: 'SISWA LAKI-LAKI',
+                  value: scopedMale,
+                  desc: 'Siswa putra (L)',
+                  icon: UserCheck,
+                  tone: 'sky',
+                },
+                {
+                  label: 'SISWA PEREMPUAN',
+                  value: scopedFemale,
+                  desc: 'Siswa putri (P)',
+                  icon: UserCheck,
+                  tone: 'violet',
+                },
+                {
+                  label: 'HARI EFEKTIF BELAJAR',
+                  value: `${effectiveDaysThisMonth} Hari`,
+                  desc: `Bulan ${currentMonthName} (Aktif)`,
+                  icon: CalendarCheck,
+                  tone: 'emerald',
+                },
+              ]
+          ).map((item) => {
             const Icon = item.icon;
             return (
               <div
@@ -664,10 +800,10 @@ export const DashboardView: React.FC = () => {
                   <p className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">
                     {item.label}
                   </p>
-                  <p className="text-xl sm:text-2xl font-black text-slate-900 leading-tight my-0.5">
+                  <p className="text-xl sm:text-2xl font-black text-slate-900 leading-tight my-0.5 truncate" title={String(item.value)}>
                     {item.value}
                   </p>
-                  <p className="text-[11px] text-slate-500 font-semibold truncate">{item.desc}</p>
+                  <p className="text-[11px] text-slate-500 font-semibold truncate" title={item.desc}>{item.desc}</p>
                 </div>
               </div>
             );
@@ -817,7 +953,11 @@ export const DashboardView: React.FC = () => {
             <div className="flex items-center gap-1.5 min-w-0">
               <Percent size={16} className="text-blue-600 shrink-0" />
               <h2 className="font-bold text-slate-900 text-xs sm:text-sm truncate">
-                {isSchoolAdminOrKS ? 'Status Hari Ini (Semua Kelas)' : 'Status Hari Ini'}
+                {isSchoolAdminOrKS
+                  ? 'Status Hari Ini (Semua Kelas)'
+                  : userScope.isGuruMapel
+                  ? `Status Hari Ini ${classesTaughtToday.length > 0 ? `(${classesTaughtToday.length} Kelas)` : '(Tidak Mengajar)'}`
+                  : 'Status Hari Ini'}
               </h2>
             </div>
             <div className="flex items-center gap-1 shrink-0 bg-blue-50 border border-blue-200/70 px-2 py-0.5 rounded-lg text-blue-700">
@@ -858,9 +998,20 @@ export const DashboardView: React.FC = () => {
                   </div>
                 )
               ) : null
-            ) : isWaliKelas ? (
-              // Role Wali Kelas: Jika belum di-input, teks "Presensi Belum Di-input" dan "Input Sekarang →" dihilangkan
-              isAttendanceInputtedToday ? (
+            ) : userScope.isGuruMapel ? (
+              classesTaughtToday.length === 0 ? (
+                <div className="flex items-center justify-between gap-1.5 p-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-left">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <Calendar size={13} className="text-slate-500 shrink-0" />
+                    <p className="text-[11px] font-bold truncate">
+                      Tidak Ada Jadwal Mengajar Hari Ini ({currentDayName})
+                    </p>
+                  </div>
+                  <span className="text-[10px] font-extrabold text-slate-600 bg-slate-200/80 px-2 py-0.5 rounded-md shrink-0">
+                    Libur Mengajar
+                  </span>
+                </div>
+              ) : isAttendanceInputtedToday ? (
                 isAttendanceFullyInputted ? (
                   <div className="flex items-center justify-between gap-1.5 p-2 rounded-xl bg-emerald-50/80 border border-emerald-200 text-emerald-900 text-left">
                     <div className="flex items-center gap-1.5 min-w-0">
@@ -891,51 +1042,37 @@ export const DashboardView: React.FC = () => {
                   </div>
                 )
               ) : null
-            ) : !isAttendanceInputtedToday ? (
-              <div className="flex items-center justify-between gap-1.5 p-2 rounded-xl bg-amber-50/80 border border-amber-200 text-amber-900 text-left">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0 animate-pulse" />
-                  <p className="text-[11px] font-bold truncate">
-                    Presensi Belum Di-input (0/{targetTotal} Siswa)
-                  </p>
+            ) : isAttendanceInputtedToday ? (
+              isAttendanceFullyInputted ? (
+                <div className="flex items-center justify-between gap-1.5 p-2 rounded-xl bg-emerald-50/80 border border-emerald-200 text-emerald-900 text-left">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
+                    <p className="text-[11px] font-bold truncate">
+                      Presensi Lengkap ({totalInputted}/{targetTotal} Siswa - 100%)
+                    </p>
+                  </div>
+                  <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md shrink-0">
+                    Selesai
+                  </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setActiveView('absensi')}
-                  className="text-[10px] font-extrabold text-blue-700 hover:text-blue-900 shrink-0 px-2 py-0.5 rounded-md bg-white border border-blue-200 hover:bg-blue-50 transition-colors cursor-pointer"
-                >
-                  Input Sekarang →
-                </button>
-              </div>
-            ) : isAttendanceFullyInputted ? (
-              <div className="flex items-center justify-between gap-1.5 p-2 rounded-xl bg-emerald-50/80 border border-emerald-200 text-emerald-900 text-left">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
-                  <p className="text-[11px] font-bold truncate">
-                    Presensi Lengkap ({totalInputted}/{targetTotal} Siswa - 100%)
-                  </p>
+              ) : (
+                <div className="flex items-center justify-between gap-1.5 p-2 rounded-xl bg-blue-50/80 border border-blue-200 text-blue-900 text-left">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <Clock size={13} className="text-blue-600 shrink-0" />
+                    <p className="text-[11px] font-bold truncate">
+                      Sebagian Di-input: {totalInputted} dari {targetTotal} Siswa ({inputPercent}%)
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveView('absensi')}
+                    className="text-[10px] font-extrabold text-blue-700 hover:text-blue-900 underline shrink-0 cursor-pointer"
+                  >
+                    Lengkapi ({totalBelumInput} sisa) →
+                  </button>
                 </div>
-                <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md shrink-0">
-                  Selesai
-                </span>
-              </div>
-            ) : (
-              <div className="flex items-center justify-between gap-1.5 p-2 rounded-xl bg-blue-50/80 border border-blue-200 text-blue-900 text-left">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <Clock size={13} className="text-blue-600 shrink-0" />
-                  <p className="text-[11px] font-bold truncate">
-                    Sebagian Di-input: {totalInputted} dari {targetTotal} Siswa ({inputPercent}%)
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setActiveView('absensi')}
-                  className="text-[10px] font-extrabold text-blue-700 hover:text-blue-900 underline shrink-0 cursor-pointer"
-                >
-                  Lengkapi ({totalBelumInput} sisa) →
-                </button>
-              </div>
-            )}
+              )
+            ) : null}
           </div>
 
           {/* Donut Chart */}
@@ -1004,7 +1141,16 @@ export const DashboardView: React.FC = () => {
 
             {/* Center Percentage Display */}
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              {isAttendanceInputtedToday ? (
+              {userScope.isGuruMapel && classesTaughtToday.length === 0 ? (
+                <>
+                  <span className="text-xl sm:text-2xl font-black text-slate-400 tracking-tight leading-none">
+                    -
+                  </span>
+                  <span className="text-[8px] sm:text-[9px] font-bold text-slate-400 tracking-wider uppercase mt-1">
+                    TIDAK MENGAJAR
+                  </span>
+                </>
+              ) : isAttendanceInputtedToday ? (
                 <>
                   <span className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight leading-none">
                     {hadirPercent}%
@@ -1019,48 +1165,45 @@ export const DashboardView: React.FC = () => {
                     0%
                   </span>
                   <span className="text-[8px] sm:text-[9px] font-bold text-slate-400 tracking-wider uppercase mt-1">
-                    {isSchoolAdminOrKS || isWaliKelas ? 'HADIR' : 'BELUM DI-INPUT'}
+                    HADIR
                   </span>
                 </>
               )}
             </div>
           </div>
 
-          {/* Legend Pills below with Inputted vs Belum Input numbers */}
-          <div className="flex flex-wrap items-center justify-center gap-1.5 text-[10px] sm:text-[11px] font-semibold mt-1">
-            <div className="flex items-center gap-1 text-slate-700 bg-emerald-50/70 border border-emerald-200/80 px-2 py-0.5 rounded-md">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-              <span>HADIR ({hadirCount})</span>
+          {/* Legend Pills below */}
+          {userScope.isGuruMapel && classesTaughtToday.length === 0 ? (
+            <div className="w-full mt-2 p-2 rounded-xl bg-slate-50 border border-slate-200/80 text-[11px] text-slate-500 font-medium">
+              <p className="text-slate-700 font-semibold truncate">
+                {mapelDiampuLabel}
+              </p>
+              <p className="text-[10px] text-slate-400 mt-0.5 truncate">
+                {userScope.primarySubject?.scheduleDays && userScope.primarySubject.scheduleDays.length > 0
+                  ? `Jadwal resmi: ${userScope.primarySubject.scheduleDays.join(', ')}`
+                  : `Tidak ada jadwal mengajar pada hari ${currentDayName}`}
+              </p>
             </div>
-            <div className="flex items-center gap-1 text-slate-700 bg-sky-50/70 border border-sky-200/80 px-2 py-0.5 rounded-md">
-              <span className="w-2 h-2 rounded-full bg-sky-400 shrink-0" />
-              <span>SAKIT ({sakitCount})</span>
-            </div>
-            <div className="flex items-center gap-1 text-slate-700 bg-amber-50/70 border border-amber-200/80 px-2 py-0.5 rounded-md">
-              <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
-              <span>IZIN ({izinCount})</span>
-            </div>
-            <div className="flex items-center gap-1 text-slate-700 bg-rose-50/70 border border-rose-200/80 px-2 py-0.5 rounded-md">
-              <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
-              <span>ALFA ({alfaCount})</span>
-            </div>
-            {!isSchoolAdminOrKS && !isWaliKelas && (
-              <div
-                className={`flex items-center gap-1 px-2 py-0.5 rounded-md border ${
-                  totalBelumInput > 0
-                    ? 'text-amber-800 bg-amber-50 border-amber-300 font-bold'
-                    : 'text-slate-500 bg-slate-50 border-slate-200'
-                }`}
-              >
-                <span
-                  className={`w-2 h-2 rounded-full shrink-0 ${
-                    totalBelumInput > 0 ? 'bg-amber-500' : 'bg-slate-300'
-                  }`}
-                />
-                <span>BELUM INPUT ({totalBelumInput})</span>
+          ) : (
+            <div className="flex flex-wrap items-center justify-center gap-1.5 text-[10px] sm:text-[11px] font-semibold mt-1">
+              <div className="flex items-center gap-1 text-slate-700 bg-emerald-50/70 border border-emerald-200/80 px-2 py-0.5 rounded-md">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                <span>HADIR ({hadirCount})</span>
               </div>
-            )}
-          </div>
+              <div className="flex items-center gap-1 text-slate-700 bg-sky-50/70 border border-sky-200/80 px-2 py-0.5 rounded-md">
+                <span className="w-2 h-2 rounded-full bg-sky-400 shrink-0" />
+                <span>SAKIT ({sakitCount})</span>
+              </div>
+              <div className="flex items-center gap-1 text-slate-700 bg-amber-50/70 border border-amber-200/80 px-2 py-0.5 rounded-md">
+                <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+                <span>IZIN ({izinCount})</span>
+              </div>
+              <div className="flex items-center gap-1 text-slate-700 bg-rose-50/70 border border-rose-200/80 px-2 py-0.5 rounded-md">
+                <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
+                <span>ALFA ({alfaCount})</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
