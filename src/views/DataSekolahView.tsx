@@ -41,8 +41,6 @@ export const DataSekolahView: React.FC = () => {
     };
   });
   const [saving, setSaving] = useState(false);
-  const [isLookingUp, setIsLookingUp] = useState(false);
-  const [lookupSuccess, setLookupSuccess] = useState<boolean | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
   const isDirtyRef = React.useRef(false);
 
@@ -111,53 +109,6 @@ export const DataSekolahView: React.FC = () => {
       } catch (_) {}
       return next;
     });
-  };
-
-  // Otomatis tarik data dari Kemendikdasmen berdasarkan NPSN
-  const handleLookupKemendikdasmen = async (npsnInput?: string) => {
-    const targetNpsn = (npsnInput || formData.npsn || '').trim();
-    if (!targetNpsn || targetNpsn.length < 8) {
-      showToast('Masukkan 8 digit NPSN yang valid untuk mencari data.', 'error');
-      return;
-    }
-
-    setIsLookingUp(true);
-    setLookupSuccess(null);
-    try {
-      const res = await fetch(`/api/school-lookup?npsn=${encodeURIComponent(targetNpsn)}`);
-      const result = await res.json();
-
-      if (!res.ok || (!result.ok && !result.data && !result.namaSekolah)) {
-        throw new Error(result.error || 'Data sekolah tidak ditemukan di Kemendikdasmen.');
-      }
-
-      isDirtyRef.current = true;
-      const d = result.data || result;
-      setFormData((prev) => ({
-        ...prev,
-        namaSekolah: d.namaSekolah || prev.namaSekolah,
-        npsn: d.npsn || targetNpsn,
-        jenjang: 'SD/MI', // Tetap mutlak SD/MI
-        jalan: d.jalan || prev.jalan,
-        desaKelurahan: d.desaKelurahan || prev.desaKelurahan,
-        kecamatan: d.kecamatan || prev.kecamatan,
-        kabupatenKota: d.kabupatenKota || prev.kabupatenKota,
-        provinsi: d.provinsi || prev.provinsi,
-        kodePos: d.kodePos || prev.kodePos,
-        teleponFax: d.teleponFax || d.telepon || prev.teleponFax,
-        email: d.email || prev.email,
-        website: d.website || prev.website,
-        namaKepalaSekolah: d.kepalaSekolah || d.namaKepalaSekolah || prev.namaKepalaSekolah,
-      }));
-
-      setLookupSuccess(true);
-      showToast(`Data identitas & alamat ${d.namaSekolah || targetNpsn} berhasil ditarik dari Kemendikdasmen.`, 'success');
-    } catch (err: any) {
-      setLookupSuccess(false);
-      showToast(err.message || 'Gagal menyinkronkan data Kemendikdasmen.', 'error');
-    } finally {
-      setIsLookingUp(false);
-    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

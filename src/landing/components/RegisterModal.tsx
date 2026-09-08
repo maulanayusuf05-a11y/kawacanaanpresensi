@@ -30,6 +30,8 @@ import {
   Wallet,
   Zap,
   ChevronRight,
+  KeyRound,
+  PlusCircle,
 } from 'lucide-react';
 import { KawacanaanEmblem } from '../../components/KawacanaanEmblem';
 
@@ -58,16 +60,19 @@ interface RegisterModalProps {
 }
 
 interface SchoolLookupResult {
-  npsn: string;
+  schoolId?: string;
+  code?: string;
+  npsn?: string;
   namaSekolah: string;
   jenjang: string;
   status: 'Negeri' | 'Swasta';
-  jalan: string;
-  desaKelurahan: string;
-  kecamatan: string;
-  kabupatenKota: string;
-  provinsi: string;
-  kodePos: string;
+  alamat?: string;
+  jalan?: string;
+  desaKelurahan?: string;
+  kecamatan?: string;
+  kabupatenKota?: string;
+  provinsi?: string;
+  kodePos?: string;
   teleponFax?: string;
   email?: string;
 }
@@ -81,6 +86,7 @@ interface PaymentSessionData {
   billingCycle: 'monthly' | 'yearly';
   schoolId?: string;
   schoolName: string;
+  schoolCode?: string;
   npsn: string;
   contactName: string;
   contactPhone: string;
@@ -100,6 +106,15 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
   initialPlanId = 'free',
   lang = 'ID',
 }) => {
+  // Mode Pendaftaran Sekolah: Punya Kode Undangan Sekolah vs Daftar Sekolah Baru
+  const [schoolRegMode, setSchoolRegMode] = useState<'invite_code' | 'new_school'>('invite_code');
+  const [inviteCode, setInviteCode] = useState('');
+  const [isSearchingCode, setIsSearchingCode] = useState(false);
+  const [codeLookupSuccess, setCodeLookupSuccess] = useState(false);
+  const [codeLookupError, setCodeLookupError] = useState('');
+  const [linkedSchool, setLinkedSchool] = useState<SchoolLookupResult | null>(null);
+  const [copiedSchoolCode, setCopiedSchoolCode] = useState(false);
+
   // Form State
   const [npsn, setNpsn] = useState('');
   const [schoolName, setSchoolName] = useState('');
@@ -152,7 +167,8 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
   // Success State
   const [registrationSuccessData, setRegistrationSuccessData] = useState<{
     schoolName: string;
-    npsn: string;
+    schoolCode?: string;
+    npsn?: string;
     username: string;
     role: string;
     plan: string;
@@ -200,15 +216,22 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Auto generated username based on role and NPSN orientation: guru.<NPSN> / admin.<NPSN>
+  // Auto generated username based on role & invite code or user input
   const cleanNpsnDigits = npsn.replace(/\D/g, '');
+  const cleanNamePrefix = fullName.trim()
+    ? fullName.trim().toLowerCase().split(' ')[0].replace(/[^a-z0-9]/g, '')
+    : '';
+  const cleanCodePrefix = (inviteCode.trim() || cleanNpsnDigits).toLowerCase().replace(/[^a-z0-9]/g, '');
+
   const generatedUsername = isTeacherRegistration
-    ? cleanNpsnDigits
-      ? `guru.${cleanNpsnDigits}`
-      : 'guru.<NPSN>'
-    : cleanNpsnDigits
-    ? `admin.${cleanNpsnDigits}`
-    : 'admin.<NPSN>';
+    ? cleanNamePrefix
+      ? `guru.${cleanNamePrefix}`
+      : cleanCodePrefix
+      ? `guru.${cleanCodePrefix}`
+      : 'guru.kawacanaan'
+    : cleanCodePrefix
+    ? `admin.${cleanCodePrefix}`
+    : 'admin.kawacanaan';
 
   // Plan info display configuration & pricing
   const planConfig = {
@@ -257,69 +280,83 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
     }).format(num);
   };
 
-  // Auto-Lookup Data Sekolah dari Kemendikdasmen via API
-  const handleLookupNpsn = async (targetNpsn?: string) => {
-    const inputVal = (targetNpsn || cleanNpsnDigits).trim();
-    if (inputVal.length !== 8) {
-      setLookupError(lang === 'ID' ? 'Masukkan 8 digit NPSN sekolah resmi.' : 'Enter 8 digits school NPSN.');
+  // Lookup Satuan Pendidikan menggunakan Kode Undangan Sekolah
+  const handleLookupInviteCode = async (targetCode?: string) => {
+    const inputVal = (targetCode || inviteCode).trim().toUpperCase();
+    if (!inputVal) {
+      setCodeLookupError('Masukkan Kode Undangan Sekolah (contoh: 9B3366AB).');
       return;
     }
+
+    setIsSearchingCode(true);
+    setCodeLookupError('');
+    setCodeLookupSuccess(false);
+
+    try {
+      const res = await fetch(`/api/school-lookup?code=${encodeURIComponent(inputVal)}`);
+      const rawData = await res.json();
+      const item: SchoolLookupResult = rawData?.data || rawData;
+
+      if (res.ok && item && (item.namaSekolah || item.code)) {
+        setLinkedSchool(item);
+        setSchoolName(item.namaSekolah || `SD Satuan Pendidikan [${inputVal}]`);
+        setStatusSekolah(item.status || 'Negeri');
+        if (item.npsn) setNpsn(item.npsn);
+        if (item.alamat) setAlamat(item.alamat);
+        if (item.jalan) setJalan(item.jalan);
+        if (item.desaKelurahan) setDesaKelurahan(item.desaKelurahan);
+        if (item.kecamatan) setKecamatan(item.kecamatan);
+        if (item.kabupatenKota) setKabupatenKota(item.kabupatenKota);
+        if (item.provinsi) setProvinsi(item.provinsi);
+        if (item.kodePos) setKodePos(item.kodePos);
+        if (item.teleponFax && !phone) setPhone(item.teleponFax);
+        if (item.email && !email) setEmail(item.email);
+        setCodeLookupSuccess(true);
+      } else {
+        setCodeLookupError(
+          rawData?.error || 'Kode Undangan Sekolah tidak ditemukan. Periksa kembali kode undangan dari Administrator sekolah.'
+        );
+        setLinkedSchool(null);
+      }
+    } catch (err: any) {
+      setCodeLookupError('Koneksi ke server verifikasi kode tidak tersedia. Silakan periksa kembali.');
+      setLinkedSchool(null);
+    } finally {
+      setIsSearchingCode(false);
+    }
+  };
+
+  const handleInviteCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 12);
+    setInviteCode(val);
+    setCodeLookupError('');
+    setCodeLookupSuccess(false);
+    if (val.length >= 8) {
+      handleLookupInviteCode(val);
+    }
+  };
+
+  // Lookup fallback opsional bila pengguna mengisi NPSN
+  const handleLookupNpsn = async (targetNpsn?: string) => {
+    const inputVal = (targetNpsn || cleanNpsnDigits).trim();
+    if (!inputVal) return;
 
     setIsSearchingNpsn(true);
     setLookupError('');
     setLookupSuccess(false);
 
     try {
-      const res = await fetch(`/api/school-lookup?npsn=${inputVal}`);
+      const res = await fetch(`/api/school-lookup?code=${inputVal}&npsn=${inputVal}`);
       const rawData = await res.json();
       const item: SchoolLookupResult = rawData?.data || rawData;
 
       if (res.ok && item && (item.namaSekolah || item.npsn)) {
         setSchoolName(item.namaSekolah || `SD NEGERI ${inputVal}`);
         setStatusSekolah(item.status || 'Negeri');
-        setJalan(item.jalan || '');
-        setDesaKelurahan(item.desaKelurahan || '');
-        setKecamatan(item.kecamatan || '');
-        setKabupatenKota(item.kabupatenKota || '');
-        setProvinsi(item.provinsi || '');
-        setKodePos(item.kodePos || '');
-
-        const fullAlamat = [
-          item.jalan,
-          item.desaKelurahan ? `Kel. ${item.desaKelurahan}` : '',
-          item.kecamatan ? (item.kecamatan.startsWith('Kec.') ? item.kecamatan : `Kec. ${item.kecamatan}`) : '',
-          item.kabupatenKota,
-          item.provinsi,
-          item.kodePos ? `Kode Pos ${item.kodePos}` : '',
-        ]
-          .filter(Boolean)
-          .join(', ');
-
-        setAlamat(fullAlamat || item.jalan || '');
-        if (item.teleponFax && !phone) setPhone(item.teleponFax);
-        if (item.email && !email) setEmail(item.email);
-
+        if (item.alamat) setAlamat(item.alamat);
         setLookupSuccess(true);
-      } else {
-        setLookupError(
-          rawData?.error ||
-            (lang === 'ID'
-              ? 'NPSN belum terindeks otomatis di server. Anda dapat melengkapi nama sekolah di bawah.'
-              : 'NPSN not indexed in online server. You can enter school name below.')
-        );
-        if (!schoolName) {
-          setSchoolName(`SD NEGERI ${inputVal}`);
-        }
       }
-    } catch (err: any) {
-      setLookupError(
-        lang === 'ID'
-          ? 'Koneksi ke data referensi tidak tersedia. Silakan lengkapi nama sekolah secara mandiri.'
-          : 'Failed to connect to school registry. Please complete manually.'
-      );
-      if (!schoolName) {
-        setSchoolName(`SD NEGERI ${inputVal}`);
-      }
+    } catch (_) {
     } finally {
       setIsSearchingNpsn(false);
     }
@@ -328,11 +365,6 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
   const handleNpsnChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value.replace(/\D/g, '').slice(0, 8);
     setNpsn(val);
-    setLookupError('');
-    setLookupSuccess(false);
-    if (val.length === 8) {
-      handleLookupNpsn(val);
-    }
   };
 
   // Helper trigger Snap pay popup
@@ -422,10 +454,12 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
     );
 
     const durationLabel = billingCycle === 'yearly' ? '1 Tahun Aktif' : '1 Bulan Aktif';
+    const effectiveCode = session?.schoolCode || linkedSchool?.code || inviteCode || 'KWC-' + Math.floor(100000 + Math.random() * 900000);
 
     setRegistrationSuccessData({
-      schoolName: schoolName.trim(),
-      npsn: cleanNpsnDigits,
+      schoolName: schoolName.trim() || linkedSchool?.namaSekolah || 'SD Satuan Pendidikan',
+      schoolCode: effectiveCode,
+      npsn: cleanNpsnDigits || (linkedSchool?.npsn ? String(linkedSchool.npsn) : ''),
       username: session?.createdAdminUsername || generatedUsername,
       role: session?.createdAdminRole || (isTeacherRegistration ? 'WALI KELAS' : 'ADMIN'),
       plan: `${currentPlan.name} (${durationLabel}) - LUNAS Terverifikasi`,
@@ -441,13 +475,14 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
     e.preventDefault();
     setSubmitError('');
 
-    if (cleanNpsnDigits.length !== 8) {
-      setSubmitError(lang === 'ID' ? 'NPSN harus berupa 8 digit angka.' : 'NPSN must be 8 digits.');
+    // Validasi sesuai mode pendaftaran
+    if (schoolRegMode === 'invite_code' && !linkedSchool && !inviteCode.trim()) {
+      setSubmitError(lang === 'ID' ? 'Masukkan Kode Undangan Sekolah untuk menghubungkan ke satuan pendidikan Anda.' : 'Please enter School Invite Code.');
       return;
     }
 
-    if (!schoolName.trim()) {
-      setSubmitError(lang === 'ID' ? 'Nama sekolah wajib diisi.' : 'School name is required.');
+    if (schoolRegMode === 'new_school' && !schoolName.trim()) {
+      setSubmitError(lang === 'ID' ? 'Nama satuan pendidikan wajib diisi.' : 'School name is required.');
       return;
     }
 
@@ -468,24 +503,31 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
     setIsSubmitting(true);
 
     try {
+      const activeInviteCode = inviteCode.trim().toUpperCase();
+      const activeSchoolName = schoolName.trim() || (linkedSchool?.namaSekolah || 'SD Satuan Pendidikan');
+
       const payload = {
-        npsn: cleanNpsnDigits,
-        schoolName: schoolName.trim(),
+        schoolCode: activeInviteCode,
+        inviteCode: activeInviteCode,
+        code: activeInviteCode,
+        npsn: cleanNpsnDigits || (linkedSchool?.npsn ? String(linkedSchool.npsn) : ''),
+        schoolName: activeSchoolName,
         status: statusSekolah,
         plan: selectedPlan === 'free' ? 'guru_gratis' : selectedPlan === 'teacher' ? 'guru_pro' : 'sekolah_pro',
         jenjang: 'SD',
-        alamat,
-        jalan,
-        desaKelurahan,
-        kecamatan,
-        kabupatenKota,
-        provinsi,
-        kodePos,
+        alamat: alamat || linkedSchool?.alamat || '',
+        jalan: jalan || linkedSchool?.jalan || '',
+        desaKelurahan: desaKelurahan || linkedSchool?.desaKelurahan || '',
+        kecamatan: kecamatan || linkedSchool?.kecamatan || '',
+        kabupatenKota: kabupatenKota || linkedSchool?.kabupatenKota || '',
+        provinsi: provinsi || linkedSchool?.provinsi || '',
+        kodePos: kodePos || linkedSchool?.kodePos || '',
         // Akun fields
         adminName: fullName.trim(),
         adminPhone: phone.trim(),
         adminEmail: email.trim() || `${generatedUsername}@kawacanaan.sch.id`,
         adminPassword: password,
+        username: generatedUsername,
         // Guru specific fields
         teacherType,
         teacherGrade,
@@ -511,11 +553,14 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
           : `Guru Mata Pelajaran (${teacherSubject})`
         : 'Administrator & Kepala Sekolah';
 
+      const returnedSchoolCode = data.school?.code || data.school?.schoolCode || activeInviteCode || 'KWC-' + Math.floor(100000 + Math.random() * 900000);
+
       // 1. JIKA PAKET GRATIS: Langsung aktifkan dan tampilkan layar sukses!
       if (selectedPlan === 'free') {
         setRegistrationSuccessData({
-          schoolName: schoolName.trim(),
-          npsn: cleanNpsnDigits,
+          schoolName: activeSchoolName,
+          schoolCode: returnedSchoolCode,
+          npsn: cleanNpsnDigits || (linkedSchool?.npsn ? String(linkedSchool.npsn) : ''),
           username: data.admin?.username || generatedUsername,
           role: data.admin?.role || (isTeacherRegistration ? 'WALI KELAS' : 'ADMIN'),
           plan: 'Paket Mulai / Gratis (Rp0 - 1 Guru, 32 Siswa)',
@@ -534,8 +579,9 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
           plan_id: selectedPlan,
           billing_cycle: billingCycle,
           school_id: data.school?.id,
-          school_name: schoolName.trim(),
-          npsn: cleanNpsnDigits,
+          school_name: activeSchoolName,
+          school_code: returnedSchoolCode,
+          npsn: cleanNpsnDigits || (linkedSchool?.npsn ? String(linkedSchool.npsn) : ''),
           contact_name: fullName.trim(),
           contact_phone: phone.trim(),
           email: email.trim() || `${generatedUsername}@kawacanaan.sch.id`,
@@ -555,8 +601,9 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
         planTitle: midtransData.plan_title || currentPlan.name,
         billingCycle,
         schoolId: data.school?.id,
-        schoolName: schoolName.trim(),
-        npsn: cleanNpsnDigits,
+        schoolName: activeSchoolName,
+        schoolCode: returnedSchoolCode,
+        npsn: cleanNpsnDigits || (linkedSchool?.npsn ? String(linkedSchool.npsn) : ''),
         contactName: fullName.trim(),
         contactPhone: phone.trim(),
         email: email.trim(),
@@ -583,7 +630,8 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
 
   const handleCopyCredentials = () => {
     if (!registrationSuccessData) return;
-    const text = `KREDENSIAL AKUN SISTEM KAWACANAAN\nSekolah: ${registrationSuccessData.schoolName}\nNPSN: ${registrationSuccessData.npsn}\nNama: ${fullName}\nUsername: ${registrationSuccessData.username}\nPassword: ${password}\nPeran: ${registrationSuccessData.assignedClassOrSubject || registrationSuccessData.role}\nPaket: ${registrationSuccessData.plan}\nLink Login: ${window.location.origin}/?page=login`;
+    const codePart = registrationSuccessData.schoolCode ? `\nKode Undangan Sekolah: ${registrationSuccessData.schoolCode}` : '';
+    const text = `KREDENSIAL AKUN SISTEM KAWACANAAN\nSekolah: ${registrationSuccessData.schoolName}${codePart}\nNama: ${fullName}\nUsername: ${registrationSuccessData.username}\nPassword: ${password}\nPeran: ${registrationSuccessData.assignedClassOrSubject || registrationSuccessData.role}\nPaket: ${registrationSuccessData.plan}\nLink Login: ${window.location.origin}/?page=login`;
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
@@ -637,8 +685,8 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                   Sistem Kawacanaan
                 </span>
                 <span className="inline-flex items-center gap-1 text-[10px] bg-white/15 px-2 py-0.5 rounded-full font-medium text-slate-200">
-                  <ShieldCheck className="w-3 h-3 text-emerald-400" />
-                  Kemendikdasmen Terverifikasi
+                  <KeyRound className="w-3 h-3 text-amber-300" />
+                  Akses Kode Undangan Sekolah
                 </span>
               </div>
               <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
@@ -655,7 +703,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
               ? 'Kredensial login Anda telah terbit dan terdaftar di database pusat sistem Kawacanaan.'
               : paymentSession
               ? 'Selesaikan pembayaran tagihan melalui Midtrans Snap untuk mengaktifkan paket langganan Anda.'
-              : 'Daftarkan sekolah dan akun pendidik dengan pencarian otomatis data NPSN resmi.'}
+              : 'Daftarkan akun pendidik menggunakan Kode Undangan Sekolah atau daftarkan satuan pendidikan baru.'}
           </p>
         </div>
 
@@ -676,6 +724,47 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                 aktif dan siap digunakan langsung untuk rekap presensi dan administrasi sekolah.
               </p>
             </div>
+
+            {/* School Invitation Code Card */}
+            {registrationSuccessData.schoolCode && (
+              <div className="bg-gradient-to-r from-amber-500/10 via-amber-400/10 to-orange-500/10 border border-amber-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-amber-800 flex items-center gap-1.5">
+                    <KeyRound className="w-4 h-4 text-amber-600" />
+                    Kode Undangan Sekolah (School Join Code)
+                  </div>
+                  <div className="font-mono text-2xl font-black text-amber-950 mt-1 tracking-wider">
+                    {registrationSuccessData.schoolCode}
+                  </div>
+                  <p className="text-xs text-amber-800/90 mt-1">
+                    Bagikan kode undangan resmi ini kepada rekan guru lainnya untuk bergabung ke satuan pendidikan ini.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  id="btn-copy-school-code"
+                  onClick={() => {
+                    navigator.clipboard.writeText(registrationSuccessData.schoolCode || '');
+                    setCopiedSchoolCode(true);
+                    setTimeout(() => setCopiedSchoolCode(false), 2000);
+                  }}
+                  className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-amber-200/80 hover:bg-amber-300/80 text-amber-900 font-bold text-xs transition-colors shrink-0 cursor-pointer"
+                  title="Salin Kode Undangan"
+                >
+                  {copiedSchoolCode ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-700" />
+                      <span>Kode Disalin!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5 text-amber-800" />
+                      <span>Salin Kode Undangan</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
 
             {/* Credential Card */}
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-4">
@@ -1040,97 +1129,187 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
               </div>
             </div>
 
-            {/* STEP 1: PENCARIAN NPSN RESMI KEMENDIKDASMEN */}
-            <div id="step-npsn" className="space-y-4 pt-2 border-t border-slate-200">
+            {/* STEP 1: SATUAN PENDIDIKAN DENGAN KODE UNDANGAN SEKOLAH */}
+            <div id="step-school-id" className="space-y-4 pt-2 border-t border-slate-200">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                   <School className="w-4 h-4 text-indigo-600" />
-                  1. Data Sekolah (NPSN Kemendikdasmen)
+                  1. Satuan Pendidikan
                 </label>
-                <span className="text-[11px] text-slate-400">8 Digit Angka</span>
+                <span className="text-[11px] text-slate-500 font-medium">Sistem Kode Undangan</span>
               </div>
 
-              <div className="relative">
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <input
-                      id="input-npsn"
-                      type="text"
-                      maxLength={8}
-                      value={npsn}
-                      onChange={handleNpsnChange}
-                      placeholder="Contoh: 20100123"
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm font-mono tracking-wider font-semibold text-slate-800 uppercase"
-                    />
-                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                  </div>
+              {/* Pilihan Metode: Punya Kode Undangan vs Daftarkan Sekolah Baru */}
+              <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl border border-slate-200">
+                <button
+                  type="button"
+                  id="tab-mode-invite-code"
+                  onClick={() => {
+                    setSchoolRegMode('invite_code');
+                    setSubmitError('');
+                  }}
+                  className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    schoolRegMode === 'invite_code'
+                      ? 'bg-white text-indigo-700 shadow-sm border border-slate-200/80'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <KeyRound className="w-3.5 h-3.5" />
+                  <span>Punya Kode Undangan</span>
+                </button>
 
-                  <button
-                    id="btn-lookup-npsn"
-                    type="button"
-                    onClick={() => handleLookupNpsn()}
-                    disabled={isSearchingNpsn || cleanNpsnDigits.length !== 8}
-                    className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:bg-slate-200 text-white disabled:text-slate-400 font-semibold text-xs inline-flex items-center gap-2 transition-colors"
-                  >
-                    {isSearchingNpsn ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <span>Cari NPSN</span>
-                    )}
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  id="tab-mode-new-school"
+                  onClick={() => {
+                    setSchoolRegMode('new_school');
+                    setSubmitError('');
+                  }}
+                  className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    schoolRegMode === 'new_school'
+                      ? 'bg-white text-indigo-700 shadow-sm border border-slate-200/80'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <PlusCircle className="w-3.5 h-3.5" />
+                  <span>Daftar Sekolah Baru</span>
+                </button>
+              </div>
 
-                {lookupSuccess && (
-                  <div className="mt-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                    <div>
-                      <span className="font-bold">Data Sekolah Ditemukan:</span>{' '}
-                      {schoolName} ({statusSekolah})
-                      {alamat && <span className="block text-[11px] text-emerald-700 mt-0.5">{alamat}</span>}
+              {schoolRegMode === 'invite_code' ? (
+                /* MODE A: INPUT & VERIFIKASI KODE UNDANGAN SEKOLAH */
+                <div className="space-y-3">
+                  <div className="relative">
+                    <label className="text-xs font-semibold text-slate-600 block mb-1">
+                      Kode Undangan Sekolah (School Invite Code)
+                    </label>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          id="input-invite-code"
+                          type="text"
+                          maxLength={12}
+                          value={inviteCode}
+                          onChange={handleInviteCodeChange}
+                          placeholder="Contoh: 9B3366AB"
+                          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm font-mono tracking-wider font-bold text-indigo-950 uppercase placeholder:font-sans placeholder:font-normal"
+                        />
+                        <KeyRound className="w-4 h-4 text-indigo-500 absolute left-3.5 top-3" />
+                      </div>
+
+                      <button
+                        id="btn-lookup-invite-code"
+                        type="button"
+                        onClick={() => handleLookupInviteCode()}
+                        disabled={isSearchingCode || !inviteCode.trim()}
+                        className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white disabled:text-slate-400 font-semibold text-xs inline-flex items-center gap-2 transition-colors cursor-pointer"
+                      >
+                        {isSearchingCode ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <span>Verifikasi Kode</span>
+                        )}
+                      </button>
                     </div>
                   </div>
-                )}
 
-                {lookupError && (
-                  <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-start gap-2">
-                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                    <span>{lookupError}</span>
+                  {codeLookupSuccess && linkedSchool && (
+                    <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-start gap-2.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <div className="font-bold text-emerald-950 text-sm">
+                          {linkedSchool.namaSekolah}
+                        </div>
+                        <div className="text-emerald-800 font-medium mt-0.5">
+                          Status: {linkedSchool.status || statusSekolah} &bull; Kode Terhubung:{' '}
+                          <span className="font-mono font-bold">{linkedSchool.code || inviteCode}</span>
+                        </div>
+                        {linkedSchool.alamat && (
+                          <div className="text-[11px] text-emerald-700 mt-1">
+                            {linkedSchool.alamat}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {codeLookupError && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <span>{codeLookupError}</span>
+                        <div className="mt-1 text-[11px] text-slate-500">
+                          Belum memiliki kode undangan? Pilih tab{' '}
+                          <button
+                            type="button"
+                            onClick={() => setSchoolRegMode('new_school')}
+                            className="font-bold text-indigo-600 underline"
+                          >
+                            Daftar Sekolah Baru
+                          </button>{' '}
+                          untuk membuat kode baru sekolah Anda.
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* MODE B: DAFTAR SATUAN PENDIDIKAN BARU */
+                <div className="space-y-3">
+                  <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-blue-600 shrink-0" />
+                    <span>
+                      Sistem Kawacanaan akan otomatis menerbitkan <strong>Kode Undangan Sekolah resmi</strong> setelah pendaftaran berhasil.
+                    </span>
                   </div>
-                )}
-              </div>
 
-              {/* Detail Sekolah Manual / Hasil Lookup */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                <div>
-                  <label className="text-xs font-semibold text-slate-600 block mb-1">
-                    Nama Sekolah Resmi
-                  </label>
-                  <input
-                    id="input-school-name"
-                    type="text"
-                    value={schoolName}
-                    onChange={(e) => setSchoolName(e.target.value)}
-                    placeholder="SD NEGERI 01..."
-                    required
-                    className="w-full px-3.5 py-2 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800"
-                  />
-                </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="sm:col-span-2">
+                      <label className="text-xs font-semibold text-slate-600 block mb-1">
+                        Nama Satuan Pendidikan Resmi <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        id="input-school-name"
+                        type="text"
+                        value={schoolName}
+                        onChange={(e) => setSchoolName(e.target.value)}
+                        placeholder="Contoh: SD Negeri 01 Pagi / SD Islam..."
+                        required
+                        className="w-full px-3.5 py-2 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800"
+                      />
+                    </div>
 
-                <div>
-                  <label className="text-xs font-semibold text-slate-600 block mb-1">
-                    Status Sekolah
-                  </label>
-                  <select
-                    id="select-school-status"
-                    value={statusSekolah}
-                    onChange={(e: any) => setStatusSekolah(e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800 bg-white"
-                  >
-                    <option value="Negeri">Negeri</option>
-                    <option value="Swasta">Swasta</option>
-                  </select>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-600 block mb-1">
+                        Status Sekolah
+                      </label>
+                      <select
+                        id="select-school-status"
+                        value={statusSekolah}
+                        onChange={(e: any) => setStatusSekolah(e.target.value)}
+                        className="w-full px-3.5 py-2 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800 bg-white"
+                      >
+                        <option value="Negeri">Negeri</option>
+                        <option value="Swasta">Swasta</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 block mb-1">
+                      Alamat / Wilayah (Opsional)
+                    </label>
+                    <input
+                      id="input-school-address"
+                      type="text"
+                      value={alamat}
+                      onChange={(e) => setAlamat(e.target.value)}
+                      placeholder="Jalan, Desa/Kelurahan, Kecamatan, Kota/Kabupaten"
+                      className="w-full px-3.5 py-2 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800"
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* STEP 2: DATA AKUN GURU / PENANGGUNG JAWAB */}

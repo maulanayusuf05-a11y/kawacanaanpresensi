@@ -80,22 +80,30 @@ export default async function handler(req: any, res: any) {
     jenjang,
   };
 
-  // Validasi Dasar
-  if (!npsn || npsn.length !== 8) {
-    return json(res, 400, { error: 'NPSN harus terdiri dari 8 digit angka resmi Kemendikdasmen.' });
+  const rawCustomCode = body.schoolCode || body.inviteCode || body.code
+    ? String(body.schoolCode || body.inviteCode || body.code).trim().toUpperCase().replace(/^SCH-?/i, '').replace(/[^A-Z0-9]/g, '')
+    : '';
+  const schoolCode = rawCustomCode || generateSchoolInviteCode();
+
+  // Acuan identitas menggunakan Kode Undangan Sekolah (School Invitation Code)
+  let effectiveNpsn = npsn;
+  if (!effectiveNpsn || effectiveNpsn.length < 8) {
+    // Generate 8 digit identifier jika NPSN tidak diisi
+    effectiveNpsn = `${Math.floor(10000000 + Math.random() * 90000000)}`;
   }
 
   if (!schoolName) {
-    return json(res, 400, { error: 'Nama sekolah wajib diisi atau diverifikasi melalui NPSN.' });
+    return json(res, 400, { error: 'Nama satuan pendidikan wajib diisi.' });
   }
 
   if (!adminPassword || adminPassword.length < 8) {
-    return json(res, 400, { error: 'Kata sandi Administrator minimal 8 karakter demi keamanan data sekolah.' });
+    return json(res, 400, { error: 'Kata sandi minimal 8 karakter demi keamanan akun Anda.' });
   }
 
-  // Pola username otomatis sesuai orientasi NPSN: admin.<NPSN>
-  const adminUsername = `admin.${npsn}`.toLowerCase();
-  const authEmail = adminEmail || `${adminUsername}@login.edushift.local`;
+  // Pola username otomatis berbasis Kode Sekolah atau input pengguna
+  const customUsername = String(body.username || '').trim().toLowerCase().replace(/[^a-z0-9_.]/g, '');
+  const adminUsername = customUsername || `admin.${schoolCode.toLowerCase()}`;
+  const authEmail = adminEmail || `${adminUsername}@login.kawacanaan.local`;
 
   const url = process.env.SUPABASE_URL || '';
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || '';
@@ -105,11 +113,13 @@ export default async function handler(req: any, res: any) {
     return json(res, 200, {
       ok: true,
       demoMode: true,
-      message: `Pendaftaran sekolah ${schoolName} berhasil disimulasikan!`,
+      message: `Pendaftaran satuan pendidikan ${schoolName} berhasil disimulasikan!`,
       school: {
-        id: `mock-${npsn}`,
+        id: `mock-${schoolCode}`,
         name: schoolName,
-        npsn,
+        npsn: effectiveNpsn,
+        code: schoolCode,
+        schoolCode,
         plan,
         status: 'active',
       },
@@ -129,24 +139,24 @@ export default async function handler(req: any, res: any) {
   const getAcademicYear = async (schoolId: string) => { const { data } = await admin.from('school_profile').select('tahun_pelajaran').eq('school_id',schoolId).maybeSingle(); return String(data?.tahun_pelajaran || '2026/2027').trim() || '2026/2027'; };
 
   try {
-    // 1. Cek apakah NPSN sudah terdaftar di sistem
+    // 1. Cek apakah Kode Sekolah sudah terdaftar di sistem
     const { data: existingSchool } = await admin
       .from('schools')
-      .select('id, name, npsn, plan, status')
-      .eq('npsn', npsn)
+      .select('id, name, npsn, code, plan, status')
+      .or(`code.eq.${schoolCode},npsn.eq.${effectiveNpsn}`)
       .maybeSingle();
 
     // Deteksi khusus Paket Mulai/Gratis: 1 guru dari 1 sekolah saja
     if (plan === 'free' && existingSchool) {
       return json(res, 409, {
-        error: `Pendaftaran Ditolak: Sekolah dengan NPSN ${npsn} (${existingSchool.name}) sudah terdaftar dalam sistem. Paket Mulai/Gratis dibatasi khusus untuk 1 guru per sekolah. Silakan pilih Paket Guru (Rp31.000/bln) atau Paket Sekolah (Rp270.000/bln) untuk mendaftar.`,
+        error: `Pendaftaran Ditolak: Sekolah dengan Kode/NPSN (${existingSchool.name}) sudah terdaftar dalam sistem. Paket Mulai/Gratis dibatasi khusus untuk 1 ruang kerja per sekolah. Silakan pilih Paket Guru Mandiri atau Paket Sekolah untuk mendaftar.`,
       });
     }
 
-    // Deteksi Paket Sekolah: Hanya 1 institusi per NPSN
+    // Deteksi Paket Sekolah: Hanya 1 institusi per kode
     if (plan === 'school' && existingSchool && existingSchool.plan === 'school') {
       return json(res, 409, {
-        error: `Sekolah dengan NPSN ${npsn} (${existingSchool.name}) sudah terdaftar dengan Paket Sekolah. Silakan masuk menggunakan kredensial Administrator sekolah (${adminUsername}) atau hubungi bantuan.`,
+        error: `Satuan pendidikan (${existingSchool.name}) sudah terdaftar dengan Paket Sekolah. Silakan masuk menggunakan kredensial Administrator sekolah (${adminUsername}) atau gunakan Kode Undangan Sekolah untuk bergabung.`,
       });
     }
 
@@ -160,9 +170,9 @@ export default async function handler(req: any, res: any) {
     let effectiveUsername = adminUsername;
     if (isTeacherPlan) {
       const classSuffix = teacherType === 'WALI_KELAS' ? `k${teacherGrade}` : 'mapel';
-      effectiveUsername = `guru.${npsn}`;
+      effectiveUsername = customUsername || `guru.${schoolCode.toLowerCase()}`;
       if (existingSchool) {
-        effectiveUsername = `guru.${npsn}.${classSuffix}`;
+        effectiveUsername = `${effectiveUsername}.${classSuffix}`;
       }
     }
 
@@ -176,10 +186,10 @@ export default async function handler(req: any, res: any) {
     if (existingUser) {
       if (plan === 'free') {
         return json(res, 409, {
-          error: `Pengguna untuk NPSN ${npsn} (${effectiveUsername}) sudah terdaftar dengan Paket Mulai/Gratis. Sistem membatasi 1 pengguna gratis per sekolah. Silakan pilih Paket Guru jika ingin mendaftar mandiri.`,
+          error: `Pengguna untuk akun (${effectiveUsername}) sudah terdaftar. Silakan gunakan username lain atau login dengan akun Anda.`,
         });
       } else {
-        effectiveUsername = `guru.${npsn}.${Math.floor(1000 + Math.random() * 9000)}`;
+        effectiveUsername = `${effectiveUsername}.${Math.floor(1000 + Math.random() * 9000)}`;
       }
     }
 
@@ -193,16 +203,13 @@ export default async function handler(req: any, res: any) {
       expiryDateStr = expiryDate.toISOString().slice(0, 10);
     }
 
-    const rawCustomCode = body.code ? String(body.code).trim().toUpperCase().replace(/^SCH-?/i, '').replace(/[^A-Z0-9]/g, '') : '';
-    const schoolCode = rawCustomCode || generateSchoolInviteCode();
-
     // 4. Buat Tenant Sekolah / Guru (Sekolah formal = Ruang Kerja Sekolah, Guru Mandiri = Ruang Kerja Individu)
     const workspaceType = isTeacherPlan ? 'personal' : 'school';
     const { data: school, error: schoolErr } = await admin
       .from('schools')
       .insert({
         name: isTeacherPlan ? `${schoolName} (Guru Mandiri)` : schoolName,
-        npsn,
+        npsn: effectiveNpsn,
         code: schoolCode,
         plan,
         workspace_type: workspaceType,
@@ -397,7 +404,9 @@ export default async function handler(req: any, res: any) {
       school: {
         id: school.id,
         name: schoolName,
-        npsn,
+        npsn: effectiveNpsn,
+        code: schoolCode,
+        schoolCode,
         plan,
         status: 'active',
         subscription_expires_at: expiryDateStr,

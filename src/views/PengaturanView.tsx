@@ -51,7 +51,7 @@ const generateSampleKopSurat = (
       <text x="615" y="70" font-size="21" font-weight="bold" fill="#0F172A" letter-spacing="1.5">DINAS PENDIDIKAN</text>
       <text x="615" y="108" font-size="28" font-weight="900" fill="#0284C7" letter-spacing="1.2">${(namaSekolah || 'SD NEGERI 01 CONTOH').toUpperCase()}</text>
       <text x="615" y="136" font-size="14" font-weight="500" fill="#475569">${alamat || 'Jl. Pendidikan No. 123, Kel. Merdeka, Kec. Nusantara, Kota Administrasi Jakarta Pusat'}</text>
-      <text x="615" y="158" font-size="13" font-weight="500" fill="#64748B">Telp: (021) 12345678 | Email: sekolah.contoh@kemdikbud.go.id | NPSN: 20104501</text>
+      <text x="615" y="158" font-size="13" font-weight="500" fill="#64748B">Telp: (021) 12345678 | Email: info@sekolah.sch.id | NPSN: 20104501</text>
     </g>
 
     <!-- Right Emblem / City Emblem Placeholder -->
