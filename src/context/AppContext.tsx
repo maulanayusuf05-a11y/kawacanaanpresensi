@@ -1563,8 +1563,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         : loadedSchool,
     );
     const cfg = config.data ? dbConfig(config.data) : INITIAL_SYSTEM_CONFIG;
+    let resolvedActiveDays = cfg.activeStudyDays || [1, 2, 3, 4, 5];
+    if (schoolId) {
+      try {
+        const cachedActiveDaysStr = localStorage.getItem(
+          `kawacanaan_active_study_days_${schoolId}`,
+        );
+        if (cachedActiveDaysStr) {
+          const parsed = JSON.parse(cachedActiveDaysStr);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            resolvedActiveDays = parsed;
+          }
+        }
+      } catch (_) {}
+    }
+    cfg.activeStudyDays = resolvedActiveDays;
     setSystemConfig(cfg);
-    setActiveStudyDays(cfg.activeStudyDays || [1, 2, 3, 4, 5]);
+    setActiveStudyDays(resolvedActiveDays);
 
     const finalEvents =
       events.data && events.data.length > 0
@@ -2721,7 +2736,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     showToast("Identitas Sekolah berhasil disimpan");
   };
   const updateSystemConfig = async (c: SystemConfig) => {
-    const schoolId = currentUser?.schoolId || null;
+    const schoolId = activeWorkspace?.workspaceId || currentUser?.schoolId || null;
     let savedSuccessfully = false;
 
     // 1. Simpan melalui API Onboarding (menggunakan service role Supabase agar bebas hambatan RLS)
@@ -2766,7 +2781,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             default_check_out_time: c.defaultCheckOutTime,
             report_place: c.reportPlace,
             report_date: c.reportDate,
-            active_study_days: c.activeStudyDays || activeStudyDays,
+            active_study_days:
+              Array.isArray(c.activeStudyDays) && c.activeStudyDays.length > 0
+                ? c.activeStudyDays
+                : activeStudyDays,
             student_self_attendance_enabled: c.studentSelfAttendanceEnabled,
             check_in_start_time: c.checkInStartTime,
             check_in_deadline_time: c.checkInDeadlineTime,
@@ -5517,7 +5535,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     if (isSchoolWs) {
       if (currentUser.role !== 'ADMIN' && currentUser.role !== 'SUPER_ADMIN') {
         showToast(
-          'Akses Ditolak: Di ruang kerja sekolah, kalender akademik berstatus Read-Only dan hanya Admin Sekolah yang dapat mengelolanya.',
+          'Akses Ditolak: Di ruang kerja sekolah, kalender akademik berstatus Read-Only dan hanya Admin Sekolah yang dapat mengelolanya. Untuk mengatur hari efektif belajar mandiri, silakan beralih ke Ruang Kerja Individu.',
           'error'
         );
         return false;
@@ -5527,6 +5545,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   };
   const addAcademicEvent = async (e: Omit<AcademicEvent, "id">) => {
     if (!checkCalendarAdminAuth()) return;
+    const targetSchoolId =
+      activeWorkspace?.workspaceId || currentUser?.schoolId || null;
     try {
       const { data, error } = await supabase
         .from("academic_events")
@@ -5536,7 +5556,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           title: e.title,
           is_effective: e.isEffective,
           notes: e.notes || "",
-          school_id: currentUser?.schoolId || null,
+          school_id: targetSchoolId,
         })
         .select()
         .single();
@@ -5578,20 +5598,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   };
   const updateActiveStudyDays = async (days: number[]) => {
     if (!checkCalendarAdminAuth()) return;
-    const c = { ...systemConfig, activeStudyDays: days };
+    if (!Array.isArray(days) || days.length === 0) {
+      showToast("Pilih minimal 1 hari belajar aktif dalam seminggu.", "error");
+      return;
+    }
+    const targetWsId =
+      activeWorkspace?.workspaceId ||
+      currentUser?.schoolId ||
+      currentUser?.id ||
+      "default";
+    try {
+      localStorage.setItem(
+        `kawacanaan_active_study_days_${targetWsId}`,
+        JSON.stringify(days),
+      );
+    } catch (_) {}
+
+    // Urutkan hari Senin (1) .. Sabtu (6), Minggu (0)
+    const sortedDays = [...days].sort((a, b) => {
+      const orderA = a === 0 ? 7 : a;
+      const orderB = b === 0 ? 7 : b;
+      return orderA - orderB;
+    });
+
+    setActiveStudyDays(sortedDays);
+    const c = { ...systemConfig, activeStudyDays: sortedDays };
+    setSystemConfig(c);
     await updateSystemConfig(c);
+    showToast(`Hari belajar efektif berhasil diatur ke ${sortedDays.length} hari/minggu`);
   };
   const updateEffectiveDays = async (monthKey: string, days: number) => {
     if (!checkCalendarAdminAuth()) return;
+    const targetSchoolId =
+      activeWorkspace?.workspaceId || currentUser?.schoolId || null;
     const { error } = await supabase
       .from("effective_days")
       .upsert(
-        { school_id: currentUser?.schoolId || null, month_key: monthKey, days },
+        { school_id: targetSchoolId, month_key: monthKey, days },
         { onConflict: "school_id,month_key" },
       );
     if (error) return showToast(error.message, "error");
     setEffectiveDaysConfig((p) => ({ ...p, [monthKey]: days }));
-    showToast("Hari belajar efektif diperbarui");
+    showToast(`Hari belajar efektif bulan ${monthKey} diperbarui (${days} hari)`);
   };
   const getBaseStudyDaysForMonth = (year: number, month: number) => {
     let c = 0,

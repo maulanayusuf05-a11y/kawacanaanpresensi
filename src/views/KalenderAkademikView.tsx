@@ -16,6 +16,13 @@ import {
   ExternalLink,
   Lock,
   ShieldCheck,
+  Sliders,
+  Check,
+  ArrowRight,
+  User,
+  Clock,
+  Sparkles,
+  Loader2,
 } from 'lucide-react';
 
 /**
@@ -46,9 +53,13 @@ export const KalenderAkademikView: React.FC = () => {
     addAcademicEvent,
     deleteAcademicEvent,
     activeStudyDays,
+    updateActiveStudyDays,
     effectiveDaysConfig,
     getBaseStudyDaysForMonth,
     setActiveView,
+    switchToPersonalWorkspace,
+    switchToSchoolWorkspace,
+    showToast,
   } = useApp();
 
   const isSchoolWorkspace =
@@ -117,6 +128,108 @@ export const KalenderAkademikView: React.FC = () => {
   const [eventTitle, setEventTitle] = useState('');
   const [isEffective, setIsEffective] = useState(false); // false means holiday / reduces effective day
   const [eventNotes, setEventNotes] = useState('');
+
+  // Active study days configuration modal state
+  const [isConfigStudyDaysModalOpen, setIsConfigStudyDaysModalOpen] = useState(false);
+  const [modalStudyDays, setModalStudyDays] = useState<number[]>(activeStudyDays);
+  const [isSavingDays, setIsSavingDays] = useState(false);
+
+  useEffect(() => {
+    setModalStudyDays(activeStudyDays);
+  }, [activeStudyDays]);
+
+  const activeStudyDaysText = useMemo(() => {
+    const dayNames: { [key: number]: string } = {
+      1: 'Senin',
+      2: 'Selasa',
+      3: 'Rabu',
+      4: 'Kamis',
+      5: 'Jumat',
+      6: 'Sabtu',
+      0: 'Minggu',
+    };
+    const list = activeStudyDays.map((d) => dayNames[d]).filter(Boolean);
+    if (list.length === 5 && list[0] === 'Senin' && list[4] === 'Jumat') {
+      return 'Senin s.d. Jumat (5 Hari Belajar)';
+    }
+    if (list.length === 6 && list[0] === 'Senin' && list[5] === 'Sabtu') {
+      return 'Senin s.d. Sabtu (6 Hari Belajar)';
+    }
+    return list.length > 0 ? list.join(', ') : 'Belum diatur';
+  }, [activeStudyDays]);
+
+  const is5DaysPreset =
+    activeStudyDays.length === 5 &&
+    [1, 2, 3, 4, 5].every((d) => activeStudyDays.includes(d));
+  const is6DaysPreset =
+    activeStudyDays.length === 6 &&
+    [1, 2, 3, 4, 5, 6].every((d) => activeStudyDays.includes(d));
+
+  const handleToggleDay = async (dayNumber: number) => {
+    if (!canManageCalendar) return;
+    let nextDays: number[];
+    if (activeStudyDays.includes(dayNumber)) {
+      if (activeStudyDays.length <= 1) {
+        showToast('Minimal harus ada 1 hari belajar aktif dalam seminggu.', 'error');
+        return;
+      }
+      nextDays = activeStudyDays.filter((d) => d !== dayNumber);
+    } else {
+      nextDays = [...activeStudyDays, dayNumber];
+    }
+    try {
+      setIsSavingDays(true);
+      await updateActiveStudyDays(nextDays);
+    } finally {
+      setIsSavingDays(false);
+    }
+  };
+
+  const handleApplyPreset = async (preset: 5 | 6) => {
+    if (!canManageCalendar) return;
+    const targetDays = preset === 5 ? [1, 2, 3, 4, 5] : [1, 2, 3, 4, 5, 6];
+    try {
+      setIsSavingDays(true);
+      await updateActiveStudyDays(targetDays);
+    } finally {
+      setIsSavingDays(false);
+    }
+  };
+
+  const handleOpenConfigModal = () => {
+    setModalStudyDays([...activeStudyDays]);
+    setIsConfigStudyDaysModalOpen(true);
+  };
+
+  const handleModalToggleDay = (dayNumber: number) => {
+    if (modalStudyDays.includes(dayNumber)) {
+      if (modalStudyDays.length <= 1) {
+        showToast('Minimal harus ada 1 hari belajar aktif dalam seminggu.', 'error');
+        return;
+      }
+      setModalStudyDays(modalStudyDays.filter((d) => d !== dayNumber));
+    } else {
+      setModalStudyDays([...modalStudyDays, dayNumber]);
+    }
+  };
+
+  const handleModalApplyPreset = (preset: 5 | 6) => {
+    setModalStudyDays(preset === 5 ? [1, 2, 3, 4, 5] : [1, 2, 3, 4, 5, 6]);
+  };
+
+  const handleSaveModalDays = async () => {
+    if (modalStudyDays.length === 0) {
+      showToast('Pilih minimal 1 hari belajar aktif dalam seminggu.', 'error');
+      return;
+    }
+    try {
+      setIsSavingDays(true);
+      await updateActiveStudyDays(modalStudyDays);
+      setIsConfigStudyDaysModalOpen(false);
+    } finally {
+      setIsSavingDays(false);
+    }
+  };
 
   const monthKey = `${selectedYear}-${selectedMonth}`;
   const baseHariBelajar = effectiveDaysConfig[monthKey] !== undefined
@@ -345,21 +458,64 @@ export const KalenderAkademikView: React.FC = () => {
 
       {/* Read-Only Notice for non-admin in school workspace */}
       {isReadOnly && (
-        <div className="flex items-start sm:items-center gap-3 p-3.5 sm:p-4 rounded-2xl bg-amber-50/90 border border-amber-200 text-amber-950 shadow-xs">
-          <div className="w-8 h-8 rounded-xl bg-amber-100 border border-amber-300 text-amber-800 flex items-center justify-center shrink-0">
-            <Lock size={16} />
-          </div>
-          <div className="space-y-0.5">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-bold text-xs sm:text-sm">Mode Akses: Lihat Saja (Read-Only)</span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-200/80 text-amber-900 border border-amber-300">
-                {currentUser?.role === 'WALI KELAS' ? 'WALI KELAS' : currentUser?.role === 'GURU MAPEL' ? 'GURU MAPEL' : currentUser?.role || 'READ ONLY'}
-              </span>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 sm:p-4 rounded-2xl bg-amber-50/90 border border-amber-200 text-amber-950 shadow-xs">
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-amber-100 border border-amber-300 text-amber-800 flex items-center justify-center shrink-0">
+              <Lock size={16} />
             </div>
-            <p className="text-[11px] sm:text-xs text-amber-800 leading-relaxed">
-              Di ruang kerja sekolah, hanya Admin Sekolah yang berhak menambah, mengubah, atau menghapus agenda kalender akademik. Pendidik dapat melihat agenda dan rincian Hari Efektif Belajar (HEB).
-            </p>
+            <div className="space-y-0.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-bold text-xs sm:text-sm">Mode Ruang Kerja Sekolah: Lihat Saja (Read-Only)</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-200/80 text-amber-900 border border-amber-300">
+                  {currentUser?.role === 'WALI KELAS' ? 'WALI KELAS' : currentUser?.role === 'GURU MAPEL' ? 'GURU MAPEL' : currentUser?.role || 'READ ONLY'}
+                </span>
+              </div>
+              <p className="text-[11px] sm:text-xs text-amber-800 leading-relaxed">
+                Di ruang kerja sekolah, jadwal hari efektif belajar ({activeStudyDays.length} hari: <b>{activeStudyDaysText}</b>) dan agenda dikelola oleh <b>Admin Sekolah</b>. Untuk mengatur hari belajar efektif mandiri, silakan beralih ke Ruang Kerja Individu.
+              </p>
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={switchToPersonalWorkspace}
+            id="btn-switch-to-personal-ws-from-calendar"
+            className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-extrabold text-xs shadow-xs transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+          >
+            <User size={13} />
+            <span>Beralih ke Ruang Kerja Individu</span>
+            <ArrowRight size={13} />
+          </button>
+        </div>
+      )}
+
+      {/* Individual Workspace banner for teachers */}
+      {!isSchoolWorkspace && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 sm:p-4 rounded-2xl bg-blue-50/90 border border-blue-200 text-blue-950 shadow-xs">
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-blue-100 border border-blue-300 text-blue-800 flex items-center justify-center shrink-0">
+              <User size={16} />
+            </div>
+            <div className="space-y-0.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-bold text-xs sm:text-sm">Ruang Kerja Individu: Pengaturan Mandiri Pendidik</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-200/80 text-blue-900 border border-blue-300">
+                  {currentUser?.role === 'WALI KELAS' ? 'WALI KELAS' : currentUser?.role === 'GURU MAPEL' ? 'GURU MAPEL' : currentUser?.role || 'PENDIDIK'}
+                </span>
+              </div>
+              <p className="text-[11px] sm:text-xs text-blue-800 leading-relaxed">
+                Anda memiliki akses penuh untuk mengatur hari efektif belajar selama seminggu (5 hari, 6 hari, atau kustom) sesuai jadwal mengajar atau binaan Anda. Hari belajar aktif saat ini: <b>{activeStudyDaysText}</b> ({activeStudyDays.length} hari/minggu).
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleOpenConfigModal}
+            id="btn-modal-atur-hari-individu"
+            className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold text-xs shadow-xs transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+          >
+            <Sliders size={13} />
+            <span>Atur Hari Belajar ({activeStudyDays.length} Hari)</span>
+          </button>
         </div>
       )}
 
@@ -435,14 +591,27 @@ export const KalenderAkademikView: React.FC = () => {
             </div>
 
             {canManageCalendar ? (
-              <button
-                onClick={openAddModalForMonth}
-                id="btn-tambah-agenda"
-                className="w-full sm:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 min-h-[40px] shrink-0 cursor-pointer"
-              >
-                <Plus size={15} />
-                <span>+ Agenda</span>
-              </button>
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleOpenConfigModal}
+                  id="btn-atur-hari-belajar"
+                  className="w-full sm:w-auto px-3.5 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-extrabold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 min-h-[40px] shrink-0 cursor-pointer"
+                  title="Atur jumlah hari efektif belajar dalam seminggu (5 hari, 6 hari, atau kustom)"
+                >
+                  <Sliders size={14} className="text-blue-600" />
+                  <span>Atur Hari Belajar ({activeStudyDays.length} Hari)</span>
+                </button>
+
+                <button
+                  onClick={openAddModalForMonth}
+                  id="btn-tambah-agenda"
+                  className="w-full sm:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 min-h-[40px] shrink-0 cursor-pointer"
+                >
+                  <Plus size={15} />
+                  <span>+ Agenda</span>
+                </button>
+              </div>
             ) : (
               <div
                 className="w-full sm:w-auto px-3.5 py-2 bg-slate-100 border border-slate-200 text-slate-500 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 min-h-[40px] shrink-0 cursor-default"
@@ -530,31 +699,140 @@ export const KalenderAkademikView: React.FC = () => {
             </div>
 
             <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
-              {/* Active Weekdays Chip preview */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Hari Belajar Aktif</span>
-                  <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+              {/* Active Study Days Configuration Widget */}
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Sliders size={14} className="text-blue-600" />
+                    <span className="text-[11px] font-extrabold text-slate-800 uppercase tracking-wider">
+                      Hari Belajar Seminggu
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-bold text-blue-700 bg-blue-100/70 px-2 py-0.5 rounded-md border border-blue-200">
                     {activeStudyDays.length} Hari/Minggu
                   </span>
                 </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {weekdaysList.map((w) => {
-                    const isActive = activeStudyDays.includes(w.dayNumber);
-                    return (
-                      <span
-                        key={w.dayNumber}
-                        className={`px-2 py-1 rounded-lg text-[11px] font-bold border transition-colors ${
-                          isActive
-                            ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
-                            : 'bg-slate-100 text-slate-400 border-slate-200 line-through'
+
+                {canManageCalendar ? (
+                  <>
+                    {/* Quick Presets: 5 Hari vs 6 Hari */}
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleApplyPreset(5)}
+                        id="btn-quick-preset-5-hari"
+                        disabled={isSavingDays}
+                        className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                          is5DaysPreset
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100 hover:border-slate-300'
                         }`}
+                        title="Terapkan jadwal 5 Hari Belajar (Senin - Jumat)"
                       >
-                        {w.short}
-                      </span>
-                    );
-                  })}
-                </div>
+                        {is5DaysPreset && <Check size={13} className="shrink-0" />}
+                        <span>5 Hari (Sen–Jum)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleApplyPreset(6)}
+                        id="btn-quick-preset-6-hari"
+                        disabled={isSavingDays}
+                        className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                          is6DaysPreset
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100 hover:border-slate-300'
+                        }`}
+                        title="Terapkan jadwal 6 Hari Belajar (Senin - Sabtu)"
+                      >
+                        {is6DaysPreset && <Check size={13} className="shrink-0" />}
+                        <span>6 Hari (Sen–Sab)</span>
+                      </button>
+                    </div>
+
+                    {/* Interactive Day Pills */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[10px] font-semibold text-slate-500">
+                          Toggle Hari Aktif:
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleOpenConfigModal}
+                          className="text-[10px] font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                        >
+                          Buka Dialog Lengkap
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-7 gap-1">
+                        {weekdaysList.map((w) => {
+                          const isActive = activeStudyDays.includes(w.dayNumber);
+                          return (
+                            <button
+                              key={w.dayNumber}
+                              type="button"
+                              onClick={() => handleToggleDay(w.dayNumber)}
+                              disabled={isSavingDays}
+                              id={`toggle-day-${w.dayNumber}`}
+                              title={`Klik untuk ${isActive ? 'nonaktifkan' : 'aktifkan'} ${w.label}`}
+                              className={`py-1.5 px-0.5 rounded-lg text-center text-[11px] font-black border transition-all cursor-pointer ${
+                                isActive
+                                  ? 'bg-blue-600 text-white border-blue-600 shadow-xs hover:bg-blue-700'
+                                  : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-100 hover:text-slate-700 line-through'
+                              }`}
+                            >
+                              {w.short}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Active description & scope */}
+                    <div className="text-[11px] text-slate-600 leading-snug pt-0.5">
+                      Jadwal aktif: <strong className="text-slate-900">{activeStudyDaysText}</strong>.
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        {isSchoolWorkspace
+                          ? '• Berlaku untuk seluruh rombel & presensi sekolah.'
+                          : '• Berlaku khusus untuk ruang kerja individu Anda.'}
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  /* Read-Only display for non-admin in school workspace */
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap gap-1.5">
+                      {weekdaysList.map((w) => {
+                        const isActive = activeStudyDays.includes(w.dayNumber);
+                        return (
+                          <span
+                            key={w.dayNumber}
+                            className={`px-2 py-1 rounded-lg text-[11px] font-bold border ${
+                              isActive
+                                ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                                : 'bg-slate-100 text-slate-400 border-slate-200 line-through'
+                            }`}
+                          >
+                            {w.short}
+                          </span>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[11px] text-slate-600 leading-relaxed">
+                      Jadwal sekolah: <b>{activeStudyDaysText}</b> (diatur oleh Admin Sekolah).
+                    </p>
+                    <button
+                      type="button"
+                      onClick={switchToPersonalWorkspace}
+                      id="btn-switch-ws-from-card"
+                      className="w-full mt-1 px-3 py-1.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <User size={12} />
+                      <span>Atur Mandiri di Ruang Kerja Individu</span>
+                      <ArrowRight size={12} />
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Calculations breakdown */}
@@ -926,6 +1204,208 @@ export const KalenderAkademikView: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Modal Atur Hari Efektif Belajar Seminggu */}
+      {isConfigStudyDaysModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]">
+            {/* Modal Header */}
+            <div className="px-5 py-4 bg-gradient-to-r from-blue-700 to-indigo-800 text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-white/10 backdrop-blur-xs border border-white/20 flex items-center justify-center text-white">
+                  <Sliders size={20} />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base sm:text-lg leading-snug">
+                    Atur Hari Efektif Belajar Seminggu
+                  </h3>
+                  <p className="text-[11px] text-blue-100 font-medium">
+                    {isSchoolWorkspace
+                      ? 'Ruang Kerja Sekolah (Admin Sekolah)'
+                      : 'Ruang Kerja Individu (Pendidik Mandiri)'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsConfigStudyDaysModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
+                title="Tutup dialog"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 sm:p-6 overflow-y-auto space-y-5 text-slate-800">
+              {/* Context Explanation */}
+              <div className="p-3.5 rounded-2xl bg-blue-50/70 border border-blue-200 text-blue-900 text-xs leading-relaxed space-y-1">
+                <div className="font-bold flex items-center gap-1.5">
+                  <Sparkles size={14} className="text-blue-600" />
+                  <span>
+                    {isSchoolWorkspace
+                      ? 'Pengaturan Hari Belajar Tingkat Sekolah'
+                      : 'Pengaturan Hari Belajar Ruang Kerja Individu'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-blue-800">
+                  {isSchoolWorkspace
+                    ? 'Hari belajar yang Anda tentukan akan otomatis menjadi dasar perhitungan Hari Belajar Rutin di kalender akademik, jadwal absensi kelas, dan rekapitulasi kehadiran seluruh rombel sekolah.'
+                    : 'Sebagai Wali Kelas / Guru Mapel di Ruang Kerja Individu, Anda dapat menyesuaikan hari belajar efektif mandiri sesuai jadwal pembelajaran rombel atau mata pelajaran Anda.'}
+                </p>
+              </div>
+
+              {/* Presets Selection */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">
+                  PILIHAN CEPAT (PRESET STANDAR)
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => handleModalApplyPreset(5)}
+                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer relative ${
+                      modalStudyDays.length === 5 && [1, 2, 3, 4, 5].every((d) => modalStudyDays.includes(d))
+                        ? 'bg-blue-50/80 border-blue-600 ring-2 ring-blue-500/20 shadow-xs'
+                        : 'bg-slate-50 hover:bg-slate-100/70 border-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-black text-xs text-slate-900">5 Hari Belajar</span>
+                      {modalStudyDays.length === 5 && [1, 2, 3, 4, 5].every((d) => modalStudyDays.includes(d)) && (
+                        <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center">
+                          <Check size={12} />
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-500">Senin s.d. Jumat</p>
+                    <span className="inline-block mt-2 text-[10px] font-bold px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-600">
+                      Sabtu & Minggu Libur
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleModalApplyPreset(6)}
+                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer relative ${
+                      modalStudyDays.length === 6 && [1, 2, 3, 4, 5, 6].every((d) => modalStudyDays.includes(d))
+                        ? 'bg-blue-50/80 border-blue-600 ring-2 ring-blue-500/20 shadow-xs'
+                        : 'bg-slate-50 hover:bg-slate-100/70 border-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-black text-xs text-slate-900">6 Hari Belajar</span>
+                      {modalStudyDays.length === 6 && [1, 2, 3, 4, 5, 6].every((d) => modalStudyDays.includes(d)) && (
+                        <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center">
+                          <Check size={12} />
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-500">Senin s.d. Sabtu</p>
+                    <span className="inline-block mt-2 text-[10px] font-bold px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-600">
+                      Minggu Libur
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Day-by-day Checkboxes */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">
+                  RINCIAN SETIAP HARI (KLIK UNTUK MENGUBAH)
+                </label>
+                <div className="space-y-1.5">
+                  {weekdaysList.map((w) => {
+                    const isChecked = modalStudyDays.includes(w.dayNumber);
+                    return (
+                      <div
+                        key={w.dayNumber}
+                        onClick={() => handleModalToggleDay(w.dayNumber)}
+                        className={`flex items-center justify-between p-2.5 sm:p-3 rounded-xl border transition-all cursor-pointer select-none ${
+                          isChecked
+                            ? 'bg-blue-50/50 border-blue-300 text-slate-900'
+                            : 'bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`w-5 h-5 rounded-md flex items-center justify-center border transition-colors ${
+                              isChecked
+                                ? 'bg-blue-600 border-blue-600 text-white'
+                                : 'bg-white border-slate-300 text-transparent'
+                            }`}
+                          >
+                            <Check size={13} strokeWidth={3} />
+                          </div>
+                          <div>
+                            <span className={`text-xs font-black ${isChecked ? 'text-slate-900' : 'text-slate-500'}`}>
+                              Hari {w.label}
+                            </span>
+                            <span className="text-[11px] text-slate-400 ml-2">
+                              ({w.short})
+                            </span>
+                          </div>
+                        </div>
+
+                        <span
+                          className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md ${
+                            isChecked
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-slate-200 text-slate-600'
+                          }`}
+                        >
+                          {isChecked ? 'HARI BELAJAR' : 'LIBUR MINGGUAN'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Preview Box */}
+              <div className="p-3.5 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-between text-xs">
+                <div>
+                  <span className="font-bold text-slate-700 block">Total Hari Belajar Aktif:</span>
+                  <span className="text-[11px] text-slate-500">
+                    {modalStudyDays.length} hari per minggu (libur mingguan: {7 - modalStudyDays.length} hari)
+                  </span>
+                </div>
+                <div className="px-3 py-1 bg-white border border-slate-300 rounded-xl font-black text-blue-700 text-sm">
+                  {modalStudyDays.length} Hari / Minggu
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsConfigStudyDaysModalOpen(false)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer min-h-[38px]"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveModalDays}
+                disabled={isSavingDays || modalStudyDays.length === 0}
+                className="px-5 py-2 text-xs font-black text-white bg-blue-600 hover:bg-blue-700 active:scale-95 rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 min-h-[38px]"
+              >
+                {isSavingDays ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    <span>Menyimpan...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check size={14} />
+                    <span>Simpan Hari Belajar</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

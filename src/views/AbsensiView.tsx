@@ -32,6 +32,7 @@ export const AbsensiView: React.FC = () => {
     teachers,
     currentUser,
     systemConfig,
+    activeStudyDays,
     schoolProfile,
     currentAttendanceDate,
     setCurrentAttendanceDate,
@@ -101,7 +102,11 @@ export const AbsensiView: React.FC = () => {
       6: 'Sabtu',
       0: 'Minggu',
     };
-    const list = (systemConfig.activeStudyDays || [1, 2, 3, 4, 5])
+    const effectiveDays =
+      Array.isArray(activeStudyDays) && activeStudyDays.length > 0
+        ? activeStudyDays
+        : systemConfig.activeStudyDays || [1, 2, 3, 4, 5];
+    const list = effectiveDays
       .map((d) => dayNames[d])
       .filter(Boolean);
     if (list.length === 5 && list[0] === 'Senin' && list[4] === 'Jumat') {
@@ -111,7 +116,7 @@ export const AbsensiView: React.FC = () => {
       return 'Senin s.d. Sabtu (6 Hari Sekolah)';
     }
     return list.join(', ');
-  }, [systemConfig.activeStudyDays]);
+  }, [activeStudyDays, systemConfig.activeStudyDays]);
 
   // Available subjects for current user
   const selectableSubjects = useMemo(() => {
