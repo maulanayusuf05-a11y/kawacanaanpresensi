@@ -12,6 +12,7 @@ import { FaqSection } from '../landing/components/FaqSection';
 import { ContactSection } from '../landing/components/ContactSection';
 import { Footer } from '../landing/components/Footer';
 import { RegisterModal } from '../landing/components/RegisterModal';
+import { FreeStartModal } from '../landing/components/FreeStartModal';
 import { TermsAndLegalModal, LegalTabType } from '../landing/components/TermsAndLegalModal';
 
 interface LandingPageViewProps {
@@ -20,7 +21,8 @@ interface LandingPageViewProps {
 
 export const LandingPageView: React.FC<LandingPageViewProps> = ({ onEnterSystem }) => {
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
-  const [selectedPlanId, setSelectedPlanId] = useState<'free' | 'teacher' | 'school'>('free');
+  const [isFreeStartOpen, setIsFreeStartOpen] = useState(false);
+  const [selectedPlanId, setSelectedPlanId] = useState<'free' | 'teacher' | 'school'>('school');
   const [isLegalOpen, setIsLegalOpen] = useState(false);
   const [legalTab, setLegalTab] = useState<LegalTabType>('terms');
   const [lang, setLang] = useState<'ID' | 'EN'>('ID');
@@ -36,6 +38,12 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({ onEnterSystem 
       window.open(`https://wa.me/${phone}?text=${text}`, '_blank');
       return;
     }
+
+    if (planId === 'free') {
+      setIsFreeStartOpen(true);
+      return;
+    }
+
     setSelectedPlanId(planId);
     setIsRegisterOpen(true);
   };
@@ -79,6 +87,16 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({ onEnterSystem 
 
       <Footer lang={lang} onOpenLegal={handleOpenLegal} />
 
+      {/* Modal Mulai Gratis: Pemilihan Peran (tanpa Siswa), Tanpa Pilihan Ruang Kerja, Otomatis Ruang Kerja Personal */}
+      <FreeStartModal
+        isOpen={isFreeStartOpen}
+        onClose={() => setIsFreeStartOpen(false)}
+        onOpenLogin={handleOpenLogin}
+        onEnterSystem={onEnterSystem}
+        lang={lang}
+      />
+
+      {/* Modal Pendaftaran Sekolah / Berbayar */}
       <RegisterModal
         isOpen={isRegisterOpen}
         onClose={() => setIsRegisterOpen(false)}

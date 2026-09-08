@@ -1607,15 +1607,24 @@ export default async function handler(req: any, res: any) {
           tugasUtama: role === 'WALI KELAS' ? 'Wali Kelas' : String(body.subjectName || 'Guru Mapel'),
         });
 
-        if (mode !== 'personal' && role === 'WALI KELAS') {
+        if (role === 'WALI KELAS') {
           const requestedClassId = body.classId && body.classId !== '__NEW_CLASS__' ? String(body.classId) : null;
           let targetClassId = requestedClassId;
           if (!targetClassId) {
-            const clsName = String(body.className || 'Kelas 5').trim();
-            const clsGrade = Number(body.grade || 5);
-            const { data: newCls, error: clsErr } = await db.from('classes').insert({ school_id: finalSchoolId, name: clsName, grade: clsGrade, academic_year: await getAcademicYear(finalSchoolId), wali_kelas_teacher_id: createdTeacher.id }).select('id').single();
-            if (clsErr) throw clsErr;
-            targetClassId = newCls.id;
+            const clsName = String(body.className || (body.grade ? `Kelas ${body.grade}` : 'Kelas 1')).trim();
+            const clsGrade = Number(body.grade || 1);
+            const { data: newCls, error: clsErr } = await db.from('classes').insert({
+              school_id: finalSchoolId,
+              name: clsName,
+              grade: clsGrade,
+              academic_year: await getAcademicYear(finalSchoolId),
+              wali_kelas_teacher_id: createdTeacher.id
+            }).select('id').single();
+            if (clsErr) {
+              console.warn('[register_and_onboard] Warning: Failed to create class:', clsErr.message);
+            } else {
+              targetClassId = newCls?.id;
+            }
           } else {
             const { data: cls, error: clsErr } = await db.from('classes').select('id').eq('id', targetClassId).eq('school_id', finalSchoolId).maybeSingle();
             if (clsErr) throw clsErr;
@@ -1624,20 +1633,44 @@ export default async function handler(req: any, res: any) {
           }
         }
 
-        if (mode !== 'personal' && role === 'GURU MAPEL') {
-          const classIds: string[] = Array.from(new Set<string>((Array.isArray(body.classIds) ? body.classIds : []).map((v: any) => String(v)).filter(Boolean)));
-          const { data: validClasses, error: classErr } = await db.from('classes').select('id').eq('school_id', finalSchoolId).in('id', classIds);
-          if (classErr) throw classErr;
-          if ((validClasses || []).length !== classIds.length) throw new Error('Ada kelas Guru Mapel yang tidak berasal dari sekolah yang dipilih.');
+        if (role === 'GURU MAPEL') {
           const subjectLabel = String(body.subjectName || 'Guru Mapel').trim();
           const { data: existingSub } = await db.from('subjects').select('id').eq('school_id', finalSchoolId).ilike('name', subjectLabel).maybeSingle();
           let subjectRow = existingSub;
           if (!subjectRow) {
-            const { data: createdSub, error: subjectErr } = await db.from('subjects').insert({ school_id: finalSchoolId, name: subjectLabel, code: subjectLabel.slice(0, 4).toUpperCase(), is_specialized: true }).select('id').single();
-            if (subjectErr) throw subjectErr;
-            subjectRow = createdSub;
+            const { data: createdSub, error: subjectErr } = await db.from('subjects').insert({
+              school_id: finalSchoolId,
+              name: subjectLabel,
+              code: subjectLabel.slice(0, 4).toUpperCase(),
+              is_specialized: true
+            }).select('id').single();
+            if (subjectErr) {
+              console.warn('[register_and_onboard] Warning: Failed to create subject:', subjectErr.message);
+            } else {
+              subjectRow = createdSub;
+            }
           }
-          await assignSubject(finalSchoolId, subjectRow.id, createdTeacher.id, classIds, newUserId);
+
+          if (mode === 'personal') {
+            const { data: personalCls } = await db.from('classes').insert({
+              school_id: finalSchoolId,
+              name: 'Kelas 1',
+              grade: 1,
+              academic_year: await getAcademicYear(finalSchoolId),
+            }).select('id').single();
+
+            if (personalCls && subjectRow) {
+              await assignSubject(finalSchoolId, subjectRow.id, createdTeacher.id, [personalCls.id], newUserId);
+            }
+          } else {
+            const classIds: string[] = Array.from(new Set<string>((Array.isArray(body.classIds) ? body.classIds : []).map((v: any) => String(v)).filter(Boolean)));
+            const { data: validClasses, error: classErr } = await db.from('classes').select('id').eq('school_id', finalSchoolId).in('id', classIds);
+            if (classErr) throw classErr;
+            if ((validClasses || []).length !== classIds.length) throw new Error('Ada kelas Guru Mapel yang tidak berasal dari sekolah yang dipilih.');
+            if (subjectRow) {
+              await assignSubject(finalSchoolId, subjectRow.id, createdTeacher.id, classIds, newUserId);
+            }
+          }
         }
       }
 
