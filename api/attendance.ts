@@ -35,14 +35,56 @@ export default async function handler(req: any, res: any) {
   const body = req.body || {};
   const action = body.action || 'save_daily';
   const targetSchoolId = body.schoolId || profile.school_id;
+  const userRole = String(profile.role || '').toUpperCase().trim();
 
-  if (profile.role !== 'SUPER_ADMIN' && targetSchoolId && profile.school_id && profile.school_id !== targetSchoolId) {
+  // Verifikasi otorisasi sekolah: izinkan jika super admin, jika school_id cocok, atau jika sekolah milik user (ruang kerja individu/personal)
+  let isAuthorizedForSchool = userRole === 'SUPER_ADMIN' || !targetSchoolId || profile.school_id === targetSchoolId;
+
+  if (!isAuthorizedForSchool && targetSchoolId) {
+    try {
+      const { data: targetSchool } = await admin
+        .from('schools')
+        .select('id, owner_id, workspace_type, is_personal')
+        .eq('id', targetSchoolId)
+        .maybeSingle();
+
+      if (
+        targetSchool &&
+        (targetSchool.owner_id === userId ||
+          targetSchool.workspace_type === 'personal' ||
+          targetSchool.workspace_type === 'individu' ||
+          targetSchool.is_personal === true)
+      ) {
+        isAuthorizedForSchool = true;
+      } else {
+        // Cek apakah guru terdaftar di sekolah target
+        const { data: teacherRow } = await admin
+          .from('teachers')
+          .select('id')
+          .eq('school_id', targetSchoolId)
+          .eq('id', profile.teacher_id || '')
+          .maybeSingle();
+        if (teacherRow) {
+          isAuthorizedForSchool = true;
+        }
+      }
+
+      // Sinkronkan school_id pada profil jika terverifikasi memiliki akses
+      if (isAuthorizedForSchool && profile.school_id !== targetSchoolId) {
+        await admin.from('profiles').update({ school_id: targetSchoolId }).eq('id', userId);
+      }
+    } catch (authCheckErr: any) {
+      console.warn('[attendance API] auth check warning:', authCheckErr?.message);
+    }
+  }
+
+  if (!isAuthorizedForSchool) {
     return json(res, 403, { error: 'Akses ke data sekolah tidak diizinkan.' });
   }
 
   try {
     if (action === 'save_daily') {
-      if (!ALLOWED_ROLES.includes(profile.role)) {
+      if (!ALLOWED_ROLES.includes(userRole)) {
         return json(res, 403, { error: 'Role pengguna Anda tidak memiliki hak akses mencatat absensi.' });
       }
 
@@ -73,8 +115,17 @@ export default async function handler(req: any, res: any) {
       // 2. Simpan record absensi baru
       if (Array.isArray(payload) && payload.length > 0) {
         const normalizedPayload = payload.map((r: any) => ({
-          ...r,
           school_id: targetSchoolId || r.school_id || profile.school_id,
+          date: r.date || date,
+          student_id: r.student_id || r.studentId,
+          class_id: r.class_id || r.classId || null,
+          type: r.type || type || 'DAILY',
+          subject_id: r.subject_id || r.subjectId || (type === 'SUBJECT' ? subjectId : null),
+          teacher_id: r.teacher_id || r.teacherId || profile.teacher_id || null,
+          status: r.status,
+          check_in_time: r.check_in_time || r.checkInTime || null,
+          check_out_time: r.check_out_time || r.checkOutTime || null,
+          notes: r.notes || null,
           updated_by: userId,
         }));
 

@@ -21,6 +21,7 @@ import {
   Check,
   Lock,
   ShieldCheck,
+  Loader2,
 } from 'lucide-react';
 
 export const AbsensiView: React.FC = () => {
@@ -39,6 +40,7 @@ export const AbsensiView: React.FC = () => {
     getDateStatus,
     setActiveView,
     showToast,
+    attendanceRecords,
   } = useApp();
 
   const userScope = useMemo(
@@ -71,6 +73,17 @@ export const AbsensiView: React.FC = () => {
   });
 
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isDirty, setIsDirty] = useState<boolean>(false);
+  const isDirtyRef = React.useRef<boolean>(false);
+  const prevContextKeyRef = React.useRef<string>('');
+
+  const draftStorageKey = useMemo(() => {
+    const schoolKey = currentUser?.schoolId || 'default';
+    return `kawacanaan_att_draft_${schoolKey}_${selectedClassId}_${date}_${attendanceMode}_${selectedSubjectId || 'none'}`;
+  }, [currentUser?.schoolId, selectedClassId, date, attendanceMode, selectedSubjectId]);
+
+  const currentContextKey = `${selectedClassId}_${date}_${attendanceMode}_${selectedSubjectId}`;
 
   const dateStatus = getDateStatus(date);
   const isHoliday = !!dateStatus.isHoliday;
@@ -212,16 +225,65 @@ export const AbsensiView: React.FC = () => {
   // Combined Lock Status (Locked if Holiday, Non-Effective Day, or Non-Teaching Day for Guru Mapel)
   const isDateLocked = isNonEffectiveDay || isLockedForGuruMapel;
 
-  // Load records for the chosen date, mode, and subject
+  // Load records for the chosen date, mode, and subject with dirty-protection and draft restore
   useEffect(() => {
-    const loaded = getAttendanceForDate(date, {
-      type: attendanceMode,
-      subjectId: attendanceMode === 'SUBJECT' ? selectedSubjectId : null,
-      classId: selectedClassId || null,
-    });
-    const sorted = [...loaded].sort((a, b) => a.studentName.localeCompare(b.studentName, 'id'));
-    setRecords(sorted);
-  }, [date, attendanceMode, selectedSubjectId, selectedClassId, students, systemConfig]);
+    const isContextSwitch = prevContextKeyRef.current !== currentContextKey;
+    prevContextKeyRef.current = currentContextKey;
+
+    if (isContextSwitch) {
+      // 1. Cek apakah ada draft yang belum tersimpan di session storage
+      let restoredDraft: AttendanceRecord[] | null = null;
+      try {
+        const draftRaw = sessionStorage.getItem(draftStorageKey);
+        if (draftRaw) {
+          restoredDraft = JSON.parse(draftRaw);
+        }
+      } catch (_) {}
+
+      if (restoredDraft && Array.isArray(restoredDraft) && restoredDraft.length > 0) {
+        setRecords(restoredDraft);
+        setIsDirty(true);
+        isDirtyRef.current = true;
+        return;
+      }
+
+      // 2. Jika tidak ada draft, ambil data absensi resmi dari store
+      const loaded = getAttendanceForDate(date, {
+        type: attendanceMode,
+        subjectId: attendanceMode === 'SUBJECT' ? selectedSubjectId : null,
+        classId: selectedClassId || null,
+      });
+      const sorted = [...loaded].sort((a, b) => a.studentName.localeCompare(b.studentName, 'id'));
+      setRecords(sorted);
+      setIsDirty(false);
+      isDirtyRef.current = false;
+    } else {
+      // Context sama (misal background sync data siswa atau sinkronisasi data master)
+      const loaded = getAttendanceForDate(date, {
+        type: attendanceMode,
+        subjectId: attendanceMode === 'SUBJECT' ? selectedSubjectId : null,
+        classId: selectedClassId || null,
+      });
+
+      if (isDirtyRef.current) {
+        // Jangan timpa input yang sedang diedit oleh pengguna!
+        setRecords((prev) => {
+          const mapPrev = new Map<string, AttendanceRecord>(prev.map((r) => [r.studentId, r]));
+          const merged = loaded.map((fresh) => {
+            const existing = mapPrev.get(fresh.studentId);
+            if (existing && existing.status) {
+              return { ...fresh, ...existing };
+            }
+            return fresh;
+          });
+          return [...merged].sort((a, b) => a.studentName.localeCompare(b.studentName, 'id'));
+        });
+      } else {
+        const sorted = [...loaded].sort((a, b) => a.studentName.localeCompare(b.studentName, 'id'));
+        setRecords(sorted);
+      }
+    }
+  }, [currentContextKey, draftStorageKey, students, systemConfig, attendanceRecords]);
 
   const handleDateChange = (newDate: string) => {
     setDate(newDate);
@@ -237,9 +299,15 @@ export const AbsensiView: React.FC = () => {
       showToast('Presensi terkunci karena bukan jadwal mengajar mata pelajaran ini', 'error');
       return;
     }
-    setRecords((prev) =>
-      prev.map((r) => (r.studentId === studentId ? { ...r, ...updates } : r))
-    );
+    setIsDirty(true);
+    isDirtyRef.current = true;
+    setRecords((prev) => {
+      const updated = prev.map((r) => (r.studentId === studentId ? { ...r, ...updates } : r));
+      try {
+        sessionStorage.setItem(draftStorageKey, JSON.stringify(updated));
+      } catch (_) {}
+      return updated;
+    });
   };
 
   // Bulk Actions
@@ -252,14 +320,20 @@ export const AbsensiView: React.FC = () => {
       showToast('Presensi terkunci karena bukan hari jadwal mengajar', 'error');
       return;
     }
-    setRecords((prev) =>
-      prev.map((r) => ({
+    setIsDirty(true);
+    isDirtyRef.current = true;
+    setRecords((prev) => {
+      const updated = prev.map((r) => ({
         ...r,
         status: 'Hadir',
         checkInTime: systemConfig.defaultCheckInTime,
         checkOutTime: r.checkOutTime || '',
-      }))
-    );
+      }));
+      try {
+        sessionStorage.setItem(draftStorageKey, JSON.stringify(updated));
+      } catch (_) {}
+      return updated;
+    });
     showToast('Semua siswa diatur ke status Hadir');
   };
 
@@ -272,16 +346,22 @@ export const AbsensiView: React.FC = () => {
       showToast('Presensi terkunci karena bukan hari jadwal mengajar', 'error');
       return;
     }
-    setRecords((prev) =>
-      prev.map((r) => ({
+    setIsDirty(true);
+    isDirtyRef.current = true;
+    setRecords((prev) => {
+      const updated = prev.map((r) => ({
         ...r,
         checkOutTime: systemConfig.defaultCheckOutTime,
-      }))
-    );
+      }));
+      try {
+        sessionStorage.setItem(draftStorageKey, JSON.stringify(updated));
+      } catch (_) {}
+      return updated;
+    });
     showToast(`Jam pulang masal (${systemConfig.defaultCheckOutTime}) diterapkan`);
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
     if (isNonEffectiveDay) {
       showToast(`Presensi siswa terkunci: ${dateStatus.label}`, 'error');
       return;
@@ -309,7 +389,13 @@ export const AbsensiView: React.FC = () => {
     }));
 
     setRecords(resetRecords);
-    saveDailyAttendance(date, resetRecords, {
+    setIsDirty(false);
+    isDirtyRef.current = false;
+    try {
+      sessionStorage.removeItem(draftStorageKey);
+    } catch (_) {}
+
+    await saveDailyAttendance(date, resetRecords, {
       type: attendanceMode,
       subjectId: attendanceMode === 'SUBJECT' ? selectedSubjectId : null,
       subjectName: activeSubject?.name || null,
@@ -317,7 +403,8 @@ export const AbsensiView: React.FC = () => {
     });
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (isSaving) return;
     if (isNonEffectiveDay) {
       showToast(`Presensi siswa terkunci: ${dateStatus.label}`, 'error');
       return;
@@ -326,12 +413,24 @@ export const AbsensiView: React.FC = () => {
       showToast('Presensi terkunci karena bukan hari jadwal mengajar', 'error');
       return;
     }
-    saveDailyAttendance(date, records, {
-      type: attendanceMode,
-      subjectId: attendanceMode === 'SUBJECT' ? selectedSubjectId : null,
-      subjectName: activeSubject?.name || null,
-      classId: selectedClassId || null,
-    });
+    setIsSaving(true);
+    try {
+      const res = await saveDailyAttendance(date, records, {
+        type: attendanceMode,
+        subjectId: attendanceMode === 'SUBJECT' ? selectedSubjectId : null,
+        subjectName: activeSubject?.name || null,
+        classId: selectedClassId || null,
+      });
+      if (res?.success) {
+        setIsDirty(false);
+        isDirtyRef.current = false;
+        try {
+          sessionStorage.removeItem(draftStorageKey);
+        } catch (_) {}
+      }
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Status counts
@@ -686,15 +785,34 @@ export const AbsensiView: React.FC = () => {
         </div>
       )}
 
+      {/* Unsaved Changes Alert Banner */}
+      {isDirty && !isDateLocked && (
+        <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 text-xs font-semibold animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping" />
+            <span>Ada perubahan absensi yang belum disimpan. Klik <strong>Simpan Presensi</strong> untuk menyimpan permanen.</span>
+          </div>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={isSaving}
+            className="px-3 py-1.5 bg-blue-600 text-white rounded-lg font-bold text-xs hover:bg-blue-700 active:scale-95 transition-all cursor-pointer inline-flex items-center gap-1.5 shrink-0"
+          >
+            {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+            <span>{isSaving ? 'Menyimpan...' : 'Simpan Sekarang'}</span>
+          </button>
+        </div>
+      )}
+
       {/* Bulk Action Buttons */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
+      <div className={`grid grid-cols-1 ${attendanceMode === 'DAILY' ? 'sm:grid-cols-4' : 'sm:grid-cols-3'} gap-2.5 sm:gap-3`}>
         <button
           type="button"
           onClick={handleHadirSemua}
-          disabled={isDateLocked}
+          disabled={isDateLocked || isSaving}
           id="btn-hadir-semua"
           className={`py-3 px-4 rounded-xl border font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-xs min-h-[44px] ${
-            isDateLocked
+            isDateLocked || isSaving
               ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
               : 'border-emerald-300 bg-emerald-50 hover:bg-emerald-100 active:scale-98 text-emerald-700 cursor-pointer'
           }`}
@@ -703,14 +821,14 @@ export const AbsensiView: React.FC = () => {
           <span>Hadir Semua</span>
         </button>
 
-        {attendanceMode === 'DAILY' ? (
+        {attendanceMode === 'DAILY' && (
           <button
             type="button"
             onClick={handlePulangMasal}
-            disabled={isDateLocked}
+            disabled={isDateLocked || isSaving}
             id="btn-pulang-masal"
             className={`py-3 px-4 rounded-xl border font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-xs min-h-[44px] ${
-              isDateLocked
+              isDateLocked || isSaving
                 ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
                 : 'border-blue-300 bg-blue-50 hover:bg-blue-100 active:scale-98 text-blue-700 cursor-pointer'
             }`}
@@ -718,29 +836,38 @@ export const AbsensiView: React.FC = () => {
             {isDateLocked ? <Lock size={16} /> : <LogOut size={16} />}
             <span>Pulang Masal</span>
           </button>
-        ) : (
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={isDateLocked}
-            className={`py-3 px-4 rounded-xl border font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-xs min-h-[44px] ${
-              isDateLocked
-                ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
-                : 'border-blue-300 bg-blue-50 hover:bg-blue-100 active:scale-98 text-blue-700 cursor-pointer'
-            }`}
-          >
-            {isDateLocked ? <Lock size={16} /> : <Save size={16} />}
-            <span>Simpan Presensi Mapel</span>
-          </button>
         )}
 
         <button
           type="button"
+          onClick={handleSave}
+          disabled={isDateLocked || isSaving}
+          id="btn-simpan-top"
+          className={`py-3 px-4 rounded-xl border font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-xs min-h-[44px] ${
+            isDateLocked || isSaving
+              ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+              : isDirty
+              ? 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700 active:scale-98 cursor-pointer shadow-md'
+              : 'border-blue-300 bg-blue-50 hover:bg-blue-100 active:scale-98 text-blue-700 cursor-pointer'
+          }`}
+        >
+          {isSaving ? (
+            <Loader2 size={16} className="animate-spin" />
+          ) : isDateLocked ? (
+            <Lock size={16} />
+          ) : (
+            <Save size={16} />
+          )}
+          <span>{isSaving ? 'Menyimpan...' : 'Simpan Presensi'}</span>
+        </button>
+
+        <button
+          type="button"
           onClick={handleReset}
-          disabled={isDateLocked}
+          disabled={isDateLocked || isSaving}
           id="btn-reset-absensi"
           className={`py-3 px-4 rounded-xl border font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-xs min-h-[44px] ${
-            isDateLocked
+            isDateLocked || isSaving
               ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
               : 'border-rose-300 bg-rose-50 hover:bg-rose-100 active:scale-98 text-rose-700 cursor-pointer'
           }`}
@@ -968,21 +1095,37 @@ export const AbsensiView: React.FC = () => {
       </div>
 
       {/* Bottom Save Action Button */}
-      <div className="flex justify-end pt-2">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+        <div className="text-xs text-slate-500 font-medium">
+          {isDirty && !isDateLocked && (
+            <span className="text-amber-600 font-bold flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-amber-500 inline-block animate-pulse" />
+              Perubahan belum disimpan ke server database.
+            </span>
+          )}
+        </div>
         <button
           type="button"
           onClick={handleSave}
-          disabled={isDateLocked}
+          disabled={isDateLocked || isSaving}
           id="btn-simpan-absensi"
           className={`w-full sm:w-auto px-6 py-3.5 font-extrabold text-xs sm:text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2 min-h-[44px] ${
-            isDateLocked
+            isDateLocked || isSaving
               ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
               : 'bg-blue-600 hover:bg-blue-700 active:scale-95 text-white hover:shadow-lg cursor-pointer'
           }`}
         >
-          {isDateLocked ? <Lock size={18} /> : <Save size={18} />}
+          {isSaving ? (
+            <Loader2 size={18} className="animate-spin" />
+          ) : isDateLocked ? (
+            <Lock size={18} />
+          ) : (
+            <Save size={18} />
+          )}
           <span>
-            {isNonEffectiveDay
+            {isSaving
+              ? 'MEMPROSES PENYIMPANAN DATA...'
+              : isNonEffectiveDay
               ? `PRESENSI TERKUNCI (${isHoliday ? 'HARI LIBUR' : 'BUKAN HARI EFEKTIF BELAJAR'})`
               : isLockedForGuruMapel
               ? 'PRESENSI TERKUNCI (BUKAN HARI MENGAJAR)'
