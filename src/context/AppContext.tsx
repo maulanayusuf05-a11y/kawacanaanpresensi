@@ -3089,14 +3089,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           const resJson = await res.json().catch(() => ({}));
           if (res.ok && resJson.ok) {
             apiDone = true;
+          } else if (resJson.error) {
+            throw new Error(resJson.error);
           }
         }
-      } catch (_) {}
+      } catch (apiErr: any) {
+        if (apiErr.message && !apiErr.message.includes("fetch")) {
+          throw apiErr;
+        }
+      }
 
       if (!apiDone) {
         // Fallback: lepaskan penugasan siswa terlebih dahulu
         try {
           await supabase.from("students").update({ class_id: null }).eq("class_id", id).eq("school_id", schoolId);
+          await supabase.from("attendance_records").delete().eq("class_id", id).eq("school_id", schoolId);
+          await supabase.from("user_class_assignments").delete().eq("class_id", id);
+          await supabase.from("subject_class_assignments").delete().eq("class_id", id).eq("school_id", schoolId);
         } catch (_) {}
         const { error } = await supabase
           .from("classes")
@@ -3106,8 +3115,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         if (error) throw error;
       }
 
-      await loadData(currentUser?.id);
-      showToast("Kelas berhasil dihapus.", "success");
+      setClasses((p) => p.filter((c) => c.id !== id));
+      if (currentUser) {
+        await loadDataForSchool(schoolId, currentUser, currentUser.role);
+      } else {
+        await loadData(currentUser?.id);
+      }
+      showToast("Kelas beserta seluruh data terkait berhasil dihapus.", "success");
     } catch (e: any) {
       showToast(e.message || "Gagal menghapus kelas.", "error");
       throw e;
@@ -3409,12 +3423,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           const resJson = await res.json().catch(() => ({}));
           if (res.ok && resJson.ok) {
             apiDone = true;
+          } else if (resJson.error) {
+            throw new Error(resJson.error);
           }
         }
-      } catch (_) {}
+      } catch (apiErr: any) {
+        if (apiErr.message && !apiErr.message.includes("fetch")) {
+          throw apiErr;
+        }
+      }
 
       if (!apiDone) {
-        // Fallback langsung ke Supabase RPC atau tabel students
+        // Fallback: bersihkan relasi terlebih dahulu sebelum hapus siswa
+        try {
+          await supabase.from("attendance_records").delete().eq("student_id", id).eq("school_id", schoolId);
+          await supabase.from("profiles").update({ student_id: null }).eq("student_id", id);
+        } catch (_) {}
+
         const { error } = await supabase.rpc("delete_student_by_id", {
           p_student_id: id,
         });
@@ -3424,8 +3449,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         }
       }
 
-      await loadData(currentUser?.id);
-      showToast("Data siswa berhasil dihapus.", "success");
+      setStudents((p) => p.filter((s) => s.id !== id));
+      if (currentUser) {
+        await loadDataForSchool(schoolId, currentUser, currentUser.role);
+      } else {
+        await loadData(currentUser?.id);
+      }
+      showToast("Data siswa berhasil dihapus permanen.", "success");
     } catch (e: any) {
       showToast(e?.message || "Gagal menghapus siswa.", "error");
       throw e;
@@ -3455,11 +3485,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         const resJson = await res.json().catch(() => ({}));
         if (res.ok && resJson.ok) {
           apiDone = true;
+        } else if (resJson.error) {
+          throw new Error(resJson.error);
         }
       }
-    } catch (_) {}
+    } catch (apiErr: any) {
+      if (apiErr.message && !apiErr.message.includes("fetch")) {
+        throw apiErr;
+      }
+    }
 
     if (!apiDone) {
+      try {
+        await supabase.from("attendance_records").delete().eq("class_id", classId).eq("school_id", schoolId);
+      } catch (_) {}
       const { error } = await supabase
         .from("students")
         .delete()
@@ -3468,7 +3507,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       if (error) throw error;
     }
 
-    setStudents((p) => p.filter((x) => x.classId !== classId));
+    setStudents((p) => p.filter((s) => s.classId !== classId));
+    if (currentUser) {
+      await loadDataForSchool(schoolId, currentUser, currentUser.role);
+    } else {
+      await loadData(currentUser?.id);
+    }
+    showToast("Seluruh data siswa dalam kelas berhasil dihapus.", "success");
   };
   const importStudents = async (
     items: Omit<Student, "id">[],
@@ -3582,12 +3627,65 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const deleteTeacher = async (id: string) => {
     try {
       if (!id) throw new Error("ID guru tidak valid.");
-      const { error } = await supabase.rpc("delete_teacher", {
-        p_teacher_id: id,
-      });
-      if (error) throw error;
-      await loadData(currentUser?.id);
-      showToast("Data guru berhasil dihapus.", "success");
+      const schoolId = currentUser?.schoolId || activeWorkspace?.workspaceId;
+      if (!schoolId) throw new Error("Sekolah aktif tidak ditemukan.");
+
+      let apiDone = false;
+      const { data: authSession } = await supabase.auth.getSession();
+      const token = authSession.session?.access_token;
+      if (token) {
+        try {
+          const res = await fetch("/api/admin-users", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              action: "delete_teacher",
+              teacherId: id,
+              schoolId,
+            }),
+          });
+          const resJson = await res.json().catch(() => ({}));
+          if (res.ok && resJson.ok) {
+            apiDone = true;
+          } else if (resJson.error) {
+            throw new Error(resJson.error);
+          }
+        } catch (apiErr: any) {
+          if (apiErr.message && !apiErr.message.includes("fetch")) {
+            throw apiErr;
+          }
+        }
+      }
+
+      if (!apiDone) {
+        // Fallback: bersihkan relasi langsung via client jika API tidak merespons
+        try {
+          await supabase.from("classes").update({ wali_kelas_teacher_id: null }).eq("wali_kelas_teacher_id", id).eq("school_id", schoolId);
+          await supabase.from("subject_teacher_assignments").delete().eq("teacher_id", id).eq("school_id", schoolId);
+          await supabase.from("teacher_assignments").delete().eq("teacher_id", id).eq("school_id", schoolId);
+          await supabase.from("teacher_class_assignments").delete().eq("teacher_id", id).eq("school_id", schoolId);
+        } catch (_) {}
+
+        const { error: rpcErr } = await supabase.rpc("delete_teacher", {
+          p_teacher_id: id,
+        });
+        if (rpcErr) {
+          const { error: directErr } = await supabase.from("teachers").delete().eq("id", id).eq("school_id", schoolId);
+          if (directErr) throw directErr;
+        }
+      }
+
+      setTeachers((p) => p.filter((t) => t.id !== id));
+      setUsers((p) => p.filter((u) => u.teacherId !== id));
+      if (currentUser) {
+        await loadDataForSchool(schoolId, currentUser, currentUser.role);
+      } else {
+        await loadData(currentUser?.id);
+      }
+      showToast("Data guru beserta akun login dan seluruh penugasan berhasil dihapus permanen.", "success");
     } catch (e: any) {
       showToast(e?.message || "Gagal menghapus guru.", "error");
       throw e;
@@ -4182,10 +4280,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   };
   const deleteUser = async (id: string) => {
     try {
-      await apiUser("delete", { userId: id });
+      const targetUser = users.find((u) => u.id === id);
+      const res = await apiUser("delete", { userId: id, deleteTeacherMaster: true, deleteStudentMaster: true });
       setUsers((p) => p.filter((x) => x.id !== id));
+      if (targetUser?.teacherId) {
+        setTeachers((p) => p.filter((t) => t.id !== targetUser.teacherId));
+      }
       if (currentUser?.id === id) await supabase.auth.signOut();
-      showToast("Akun pengguna berhasil dihapus", "info");
+      if (currentUser) {
+        await loadDataForSchool(currentUser.schoolId, currentUser, currentUser.role);
+      } else {
+        await loadData(currentUser?.id);
+      }
+      showToast(res?.message || "Akun pengguna dan seluruh data terkait berhasil dihapus permanen dari database.", "info");
     } catch (e: any) {
       showToast(e.message, "error");
       throw e;

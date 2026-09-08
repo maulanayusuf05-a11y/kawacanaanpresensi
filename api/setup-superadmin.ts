@@ -8,7 +8,7 @@ const USERNAME_RE = /^[a-z0-9][a-z0-9._-]{2,63}$/i;
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed.' });
 
-  const url = process.env.SUPABASE_URL || '';
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || '';
   const setupSecret = process.env.SUPERADMIN_SETUP_SECRET || '';
   if (!url || !serviceKey || !setupSecret) return json(res, 500, { error: 'SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, dan SUPERADMIN_SETUP_SECRET wajib dikonfigurasi di server.' });

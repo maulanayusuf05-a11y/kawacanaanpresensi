@@ -44,7 +44,7 @@ export default async function handler(req: any, res: any) {
   const strippedCode = rawCode.toUpperCase().replace(/^SCH-?/i, '').replace(/^KWC-?/i, '').trim();
   const cleanCode = strippedCode.replace(/[^A-Z0-9]/g, '');
 
-  const url = process.env.SUPABASE_URL || '';
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || '';
 
   // 1. Cek dari Database Supabase jika kredensial tersedia

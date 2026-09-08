@@ -66,14 +66,8 @@ export default async function handler(req: any, res: any) {
     return json(res, 405, { error: 'Method not allowed' });
   }
 
-  const url = process.env.SUPABASE_URL || '';
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || '';
-  if (!url || !key) {
-    return json(res, 500, { error: 'Supabase server configuration is missing.' });
-  }
-
-  const db = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
-  const midtrans = await getMidtransConfig(db);
 
   const b = req.body || {};
   const q = req.query || {};
@@ -84,16 +78,38 @@ export default async function handler(req: any, res: any) {
   // Aman dipanggil frontend karena Server Key TIDAK dibagikan.
   // --------------------------------------------------------------------------
   if (action === 'get_client_config' || (req.method === 'GET' && !b.order_id && !q.order_id)) {
-    const isConfigured = Boolean(midtrans.client_key && midtrans.server_key);
+    let clientKey = process.env.MIDTRANS_CLIENT_KEY?.trim() || '';
+    let serverKey = process.env.MIDTRANS_SERVER_KEY?.trim() || '';
+    let isConfigured = Boolean(clientKey && serverKey);
+    let enabled = isConfigured;
+
+    if (url && key) {
+      try {
+        const db = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+        const midtrans = await getMidtransConfig(db);
+        clientKey = midtrans.client_key || clientKey;
+        serverKey = midtrans.server_key || serverKey;
+        isConfigured = Boolean(clientKey && serverKey);
+        enabled = midtrans.enabled && isConfigured;
+      } catch (_) {}
+    }
+
     return json(res, 200, {
       ok: true,
-      client_key: midtrans.client_key || '',
+      client_key: clientKey,
       is_production: false, // Selalu false untuk Sandbox
-      enabled: midtrans.enabled && isConfigured,
+      enabled,
       is_configured: isConfigured,
       snap_url: 'https://app.sandbox.midtrans.com/snap/snap.js',
     });
   }
+
+  if (!url || !key) {
+    return json(res, 500, { error: 'Supabase server configuration is missing.' });
+  }
+
+  const db = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  const midtrans = await getMidtransConfig(db);
 
   // --------------------------------------------------------------------------
   // 2. MIDTRANS WEBHOOK NOTIFICATION HANDLER

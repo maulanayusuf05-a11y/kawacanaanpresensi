@@ -54,8 +54,13 @@ function apiDevMiddleware(): Plugin {
               return next();
             }
             const absPath = path.resolve(__dirname, targetModule);
-            const handlerModule = await import(pathToFileURL(absPath).href);
-            const handler = handlerModule.default;
+            let handlerModule: any;
+            try {
+              handlerModule = await server.ssrLoadModule(absPath);
+            } catch {
+              handlerModule = await import(pathToFileURL(absPath).href);
+            }
+            const handler = handlerModule?.default || handlerModule;
 
             const processRequest = async (bodyStr: string) => {
               try {

@@ -28,7 +28,7 @@ const limits = (plan: string) => {
 
 export default async function handler(req:any,res:any){
   if(req.method!=='POST') return json(res,405,{error:'Method not allowed'});
-  const url=process.env.SUPABASE_URL||'';
+  const url=process.env.SUPABASE_URL||process.env.VITE_SUPABASE_URL||'';
   const key=process.env.SUPABASE_SERVICE_ROLE_KEY||process.env.SUPABASE_SECRET_KEY||'';
   if(!url||!key) return json(res,500,{error:'SUPABASE_URL dan SUPABASE_SERVICE_ROLE_KEY wajib tersedia di Vercel.'});
   const token=(req.headers.authorization||'').replace(/^Bearer\s+/i,'').trim();
@@ -630,6 +630,7 @@ export default async function handler(req:any,res:any){
       } catch (_) {}
 
       // Urutan mengikuti dependensi FK.
+      await deleteTenantRows('user_class_assignments');
       await deleteTenantRows('teacher_assignments');
       await deleteTenantRows('teacher_class_assignments');
       await deleteTenantRows('teacher_class_assignments_legacy_archive');
@@ -694,37 +695,99 @@ export default async function handler(req:any,res:any){
       const id=req.body.user_id||req.body.userId||req.body.id;
       if(!id) return json(res,400,{error:'User ID wajib disertakan.'});
 
-      const { data: targetProfile } = await admin.from('profiles').select('id, name, username, role, school_id, teacher_id').eq('id', id).maybeSingle();
+      let { data: targetProfile } = await admin.from('profiles').select('id, name, username, role, school_id, teacher_id, student_id').eq('id', id).maybeSingle();
       if(!targetProfile) {
-        return json(res,404,{error:'Pengguna tidak ditemukan di database profil.'});
+        const { data: byUsername } = await admin.from('profiles').select('id, name, username, role, school_id, teacher_id, student_id').eq('username', String(id).toLowerCase()).maybeSingle();
+        targetProfile = byUsername;
       }
 
-      // Hapus AKUN tanpa menghapus master GURU. Guru tetap dapat ada tanpa akun.
-      // Penugasan kelas juga tetap milik master guru.
-      const { error: unlinkError } = await admin.from('profiles').update({ teacher_id: null }).eq('id', id);
-      if (unlinkError) throw unlinkError;
-      
-      // Hapus profil
-      const { error: pErr } = await admin.from('profiles').delete().eq('id', id);
-      if(pErr) throw pErr;
+      const effectiveUserId = targetProfile?.id || id;
+      const targetSchoolId = targetProfile?.school_id;
 
-      // Hapus akun di Supabase Auth
+      // 1. Bersihkan penugasan kelas pengguna di user_class_assignments
       try {
-        await admin.auth.admin.deleteUser(id);
-      } catch (authErr) {
-        console.warn('Supabase Auth user delete warning:', authErr);
+        await admin.from('user_class_assignments').delete().eq('user_id', effectiveUserId);
+      } catch (_) {}
+
+      // 2. Jika akun terhubung ke guru master atau terdapat guru dengan NIP/nama sama di sekolah ini
+      if (targetProfile?.teacher_id) {
+        try {
+          await admin.from('classes').update({ wali_kelas_teacher_id: null }).eq('wali_kelas_teacher_id', targetProfile.teacher_id);
+          await admin.from('subject_teacher_assignments').delete().eq('teacher_id', targetProfile.teacher_id);
+          await admin.from('teacher_assignments').delete().eq('teacher_id', targetProfile.teacher_id);
+          await admin.from('teacher_class_assignments').delete().eq('teacher_id', targetProfile.teacher_id);
+          if (req.body.preserveMaster !== true) {
+            await admin.from('teachers').delete().eq('id', targetProfile.teacher_id);
+          }
+        } catch (_) {}
+      } else if (targetProfile?.username && targetSchoolId && req.body.preserveMaster !== true) {
+        try {
+          const { data: matchedTeachers } = await admin.from('teachers')
+            .select('id')
+            .eq('school_id', targetSchoolId)
+            .or(`nip.eq.${targetProfile.username},nama.ilike.${targetProfile.name}`);
+          for (const mt of matchedTeachers || []) {
+            await admin.from('classes').update({ wali_kelas_teacher_id: null }).eq('wali_kelas_teacher_id', mt.id);
+            await admin.from('subject_teacher_assignments').delete().eq('teacher_id', mt.id);
+            await admin.from('teacher_assignments').delete().eq('teacher_id', mt.id);
+            await admin.from('teacher_class_assignments').delete().eq('teacher_id', mt.id);
+            await admin.from('teachers').delete().eq('id', mt.id);
+          }
+        } catch (_) {}
       }
 
-      // Catat di audit log
-      await admin.from('audit_logs').insert({
-        actor_id: caller.user.id,
-        actor_name: profile.name,
-        actor_role: 'SUPER_ADMIN',
-        action: 'DELETE_USER',
-        details: { userId: id, name: targetProfile.name, username: targetProfile.username, role: targetProfile.role, schoolId: targetProfile.school_id }
-      });
+      // 3. Jika akun terhubung ke siswa master
+      if (targetProfile?.student_id && req.body.deleteStudentMaster === true) {
+        try {
+          await admin.from('attendance_records').delete().eq('student_id', targetProfile.student_id);
+          await admin.from('students').delete().eq('id', targetProfile.student_id);
+        } catch (_) {}
+      }
 
-      return json(res,200,{ ok: true, message: `Pengguna ${targetProfile.name} (${targetProfile.username}) berhasil dihapus.` });
+      // 4. Netralkan foreign key rujukan pemilik sekolah dan log audit
+      try {
+        await admin.from('schools').update({ owner_id: null }).eq('owner_id', effectiveUserId);
+      } catch (_) {}
+      try {
+        await admin.from('audit_logs').update({ actor_id: null }).eq('actor_id', effectiveUserId);
+      } catch (_) {}
+
+      // 5. Lepaskan kaitan teacher_id dan student_id pada profiles
+      try {
+        await admin.from('profiles').update({ teacher_id: null, student_id: null }).eq('id', effectiveUserId);
+      } catch (_) {}
+      
+      // 6. Hapus baris dari tabel profiles
+      const { error: pErr } = await admin.from('profiles').delete().eq('id', effectiveUserId);
+      if(pErr && !pErr.message.toLowerCase().includes('not found')) {
+        console.error('[superadmin] delete profile error:', pErr);
+      }
+
+      // 7. Hapus user dari Supabase Auth
+      try {
+        await admin.auth.admin.deleteUser(effectiveUserId);
+      } catch (authErr: any) {
+        console.warn('[superadmin] Auth deleteUser notice:', authErr?.message);
+      }
+
+      // 8. Catat di audit log
+      try {
+        await admin.from('audit_logs').insert({
+          actor_id: caller.user.id,
+          actor_name: profile.name,
+          actor_role: 'SUPER_ADMIN',
+          action: 'DELETE_USER',
+          details: {
+            userId: effectiveUserId,
+            name: targetProfile?.name,
+            username: targetProfile?.username,
+            role: targetProfile?.role,
+            schoolId: targetSchoolId,
+          },
+        });
+      } catch (_) {}
+
+      return json(res,200,{ ok: true, message: `Pengguna ${targetProfile?.name || effectiveUserId} berhasil dihapus permanen dari database.` });
     }
 
     if(action==='create_admin'){

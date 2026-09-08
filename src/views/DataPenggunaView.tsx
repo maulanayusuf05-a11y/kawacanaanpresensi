@@ -1968,7 +1968,7 @@ export const DataPenggunaView: React.FC = () => {
               <h3 className="font-bold text-slate-900 text-sm">Hapus Akun Pengguna?</h3>
             </div>
             <p className="text-xs text-slate-500 leading-relaxed">
-              Apakah Anda yakin ingin menghapus akun <strong>{userToDelete.name}</strong> (@{userToDelete.username})? Tindakan ini tidak dapat dibatalkan.
+              Apakah Anda yakin ingin menghapus akun <strong>{userToDelete.name}</strong> (@{userToDelete.username})? Tindakan ini akan menghapus akun login, profil, dan seluruh relasi penugasan terkait secara permanen dari database.
             </p>
             <div className="flex justify-end gap-2 mt-5 pt-3 border-t border-slate-100">
               <button

@@ -105,7 +105,7 @@ export default async function handler(req: any, res: any) {
   const adminUsername = customUsername || `admin.${schoolCode.toLowerCase()}`;
   const authEmail = adminEmail || `${adminUsername}@login.kawacanaan.local`;
 
-  const url = process.env.SUPABASE_URL || '';
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || '';
 
   // Mode Fallback jika Supabase belum dikonfigurasi (untuk preview / offline mode)

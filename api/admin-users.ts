@@ -97,7 +97,7 @@ async function reconcileTeacherAssignments(
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return json(res, 405, { error: 'Metode permintaan tidak diizinkan.' });
 
-  const url = process.env.SUPABASE_URL || '';
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || '';
   if (!url || !serviceKey) return json(res, 500, { error: 'SUPABASE_URL dan SUPABASE_SERVICE_ROLE_KEY wajib tersedia di Vercel.' });
 
@@ -552,7 +552,15 @@ export default async function handler(req: any, res: any) {
       if (userId === caller.user.id) return json(res, 400, { error: 'Akun yang sedang digunakan tidak dapat dihapus.' });
       if (!(await ensureSameSchool(userId))) return json(res, 403, { error: 'Akun tersebut bukan bagian dari sekolah Anda.' });
 
-      const { data: target } = await admin.from('profiles').select('*').eq('id', userId).maybeSingle();
+      // Cari profil target berdasarkan ID atau username
+      let { data: target } = await admin.from('profiles').select('*').eq('id', userId).maybeSingle();
+      if (!target) {
+        const { data: byUsername } = await admin.from('profiles').select('*').eq('username', String(userId).toLowerCase()).maybeSingle();
+        target = byUsername;
+      }
+
+      const effectiveUserId = target?.id || userId;
+      const targetSchoolId = target?.school_id || callerSchoolId;
 
       if (target) {
         if (target.role === 'ADMIN' && callerRole !== 'SUPER_ADMIN') {
@@ -566,20 +574,75 @@ export default async function handler(req: any, res: any) {
             return json(res, 400, { error: 'Admin terakhir di sekolah tidak boleh dihapus.' });
           }
         }
-
-        // 1. Lepas asosiasi teacher_id dan student_id pada profiles agar data master Guru dan Siswa tetap utuh
-        await admin.from('profiles').update({ teacher_id: null, student_id: null }).eq('id', userId);
-
-        // 2. Hapus baris dari tabel profiles
-        const { error: delProfileError } = await admin.from('profiles').delete().eq('id', userId);
-        if (delProfileError) {
-          console.error('[admin-users] Gagal menghapus profil pengguna:', delProfileError);
-          return json(res, 400, { error: `Gagal menghapus profil: ${delProfileError.message}` });
-        }
       }
 
-      // 3. Hapus user dari Supabase Auth
-      const { error: delAuthError } = await admin.auth.admin.deleteUser(userId);
+      // 1. Bersihkan penugasan kelas pengguna di user_class_assignments
+      try {
+        await admin.from('user_class_assignments').delete().eq('user_id', effectiveUserId);
+      } catch (e: any) {
+        console.warn('[admin-users] user_class_assignments delete warning:', e?.message);
+      }
+
+      // 2. Jika akun terhubung ke guru master atau data guru dengan NIP/Nama sama
+      const teacherId = target?.teacher_id;
+      if (teacherId) {
+        try {
+          await admin.from('classes').update({ wali_kelas_teacher_id: null }).eq('wali_kelas_teacher_id', teacherId);
+          await admin.from('subject_teacher_assignments').delete().eq('teacher_id', teacherId);
+          await admin.from('teacher_assignments').delete().eq('teacher_id', teacherId);
+          await admin.from('teacher_class_assignments').delete().eq('teacher_id', teacherId);
+          if (body.preserveMaster !== true) {
+            await admin.from('teachers').delete().eq('id', teacherId);
+          }
+        } catch (e: any) {
+          console.warn('[admin-users] teacher relations cleanup warning:', e?.message);
+        }
+      } else if (target?.username && targetSchoolId && body.preserveMaster !== true) {
+        try {
+          const { data: matchedTeachers } = await admin.from('teachers')
+            .select('id')
+            .eq('school_id', targetSchoolId)
+            .or(`nip.eq.${target.username},nama.ilike.${target.name}`);
+          for (const mt of matchedTeachers || []) {
+            await admin.from('classes').update({ wali_kelas_teacher_id: null }).eq('wali_kelas_teacher_id', mt.id);
+            await admin.from('subject_teacher_assignments').delete().eq('teacher_id', mt.id);
+            await admin.from('teacher_assignments').delete().eq('teacher_id', mt.id);
+            await admin.from('teacher_class_assignments').delete().eq('teacher_id', mt.id);
+            await admin.from('teachers').delete().eq('id', mt.id);
+          }
+        } catch (_) {}
+      }
+
+      // 3. Jika akun terhubung ke siswa master
+      if (target?.student_id && body.deleteStudentMaster === true) {
+        try {
+          await admin.from('attendance_records').delete().eq('student_id', target.student_id);
+          await admin.from('students').delete().eq('id', target.student_id);
+        } catch (_) {}
+      }
+
+      // 4. Netralkan foreign key pemilik sekolah dan audit logs
+      try {
+        await admin.from('schools').update({ owner_id: null }).eq('owner_id', effectiveUserId);
+      } catch (_) {}
+      try {
+        await admin.from('audit_logs').update({ actor_id: null }).eq('actor_id', effectiveUserId);
+      } catch (_) {}
+
+      // 5. Lepaskan asosiasi teacher_id dan student_id pada profiles
+      try {
+        await admin.from('profiles').update({ teacher_id: null, student_id: null }).eq('id', effectiveUserId);
+      } catch (_) {}
+
+      // 6. Hapus baris dari tabel profiles
+      const { error: delProfileError } = await admin.from('profiles').delete().eq('id', effectiveUserId);
+      if (delProfileError) {
+        console.error('[admin-users] Gagal menghapus profil pengguna:', delProfileError);
+        return json(res, 400, { error: `Gagal menghapus profil dari database: ${delProfileError.message}` });
+      }
+
+      // 7. Hapus user dari Supabase Auth
+      const { error: delAuthError } = await admin.auth.admin.deleteUser(effectiveUserId);
       if (delAuthError) {
         console.warn('[admin-users] Auth deleteUser warning:', delAuthError.message);
         if (!delAuthError.message.toLowerCase().includes('not found') && !target) {
@@ -587,16 +650,24 @@ export default async function handler(req: any, res: any) {
         }
       }
 
-      // 4. Catat aktivitas ke audit_logs
+      // 8. Sinkronisasi ulang penugasan jika ada sekolah
+      if (targetSchoolId) {
+        try {
+          const year = await getAcademicYear(targetSchoolId);
+          await reconcileTeacherAssignments(admin, targetSchoolId, year);
+        } catch (_) {}
+      }
+
+      // 9. Catat aktivitas ke audit_logs
       try {
         await admin.from('audit_logs').insert({
           actor_id: caller.user.id,
           actor_name: caller.user.user_metadata?.name || profile?.name || 'Admin',
           actor_role: callerRole,
           action: 'DELETE_USER',
-          school_id: target?.school_id || callerSchoolId || null,
+          school_id: targetSchoolId || null,
           details: {
-            userId,
+            userId: effectiveUserId,
             deleted_username: target?.username,
             deleted_name: target?.name,
             deleted_role: target?.role,
@@ -606,7 +677,103 @@ export default async function handler(req: any, res: any) {
         console.warn('[admin-users] Audit log warning:', auditErr?.message);
       }
 
-      return json(res, 200, { ok: true, success: true, message: 'Akun pengguna berhasil dihapus.' });
+      return json(res, 200, { ok: true, success: true, message: `Akun pengguna ${target?.name || ''} berhasil dihapus permanen dari database.` });
+    }
+
+    if (action === 'delete_teacher') {
+      if (!['ADMIN', 'SUPER_ADMIN', 'KEPALA SEKOLAH'].includes(callerRole)) {
+        return json(res, 403, { error: 'Hanya Admin atau Kepala Sekolah yang berwenang menghapus data guru.' });
+      }
+      const teacherId = body.teacherId || body.teacher_id;
+      if (!teacherId) return json(res, 400, { error: 'ID guru wajib disertakan.' });
+
+      const targetSchoolId = schoolId || callerSchoolId;
+      if (!targetSchoolId) return json(res, 400, { error: 'ID sekolah tidak valid.' });
+
+      const { data: targetTeacher } = await admin.from('teachers')
+        .select('*')
+        .eq('id', teacherId)
+        .eq('school_id', targetSchoolId)
+        .maybeSingle();
+
+      if (!targetTeacher) {
+        return json(res, 404, { error: 'Data guru tidak ditemukan di database.' });
+      }
+
+      // 1. Lepaskan wali kelas di tabel classes
+      try {
+        await admin.from('classes').update({ wali_kelas_teacher_id: null }).eq('wali_kelas_teacher_id', teacherId).eq('school_id', targetSchoolId);
+      } catch (e: any) {
+        console.warn('[admin-users] classes wali_kelas unset warning:', e?.message);
+      }
+
+      // 2. Bersihkan penugasan guru di seluruh tabel relasi
+      try {
+        await admin.from('subject_teacher_assignments').delete().eq('teacher_id', teacherId).eq('school_id', targetSchoolId);
+        await admin.from('teacher_assignments').delete().eq('teacher_id', teacherId).eq('school_id', targetSchoolId);
+        await admin.from('teacher_class_assignments').delete().eq('teacher_id', teacherId).eq('school_id', targetSchoolId);
+      } catch (e: any) {
+        console.warn('[admin-users] teacher assignments cleanup warning:', e?.message);
+      }
+
+      // 3. Hapus akun pengguna (profiles + auth.users) yang terhubung dengan guru ini
+      try {
+        const { data: linkedProfiles } = await admin.from('profiles')
+          .select('id, username, name')
+          .eq('school_id', targetSchoolId)
+          .or(`teacher_id.eq.${teacherId},username.eq.${targetTeacher.nip || '___none___'}`);
+
+        for (const lp of linkedProfiles || []) {
+          try {
+            await admin.from('user_class_assignments').delete().eq('user_id', lp.id);
+            await admin.from('profiles').delete().eq('id', lp.id);
+            await admin.auth.admin.deleteUser(lp.id);
+          } catch (lpErr: any) {
+            console.warn(`[admin-users] Error purging linked user ${lp.username}:`, lpErr?.message);
+          }
+        }
+      } catch (pErr: any) {
+        console.warn('[admin-users] linked profiles cleanup warning:', pErr?.message);
+      }
+
+      // 4. Hapus data guru dari tabel teachers
+      const { error: delTeacherError } = await admin.from('teachers')
+        .delete()
+        .eq('id', teacherId)
+        .eq('school_id', targetSchoolId);
+
+      if (delTeacherError) {
+        console.error('[admin-users] Gagal menghapus guru:', delTeacherError);
+        return json(res, 500, { error: `Gagal menghapus data guru dari database: ${delTeacherError.message}` });
+      }
+
+      // 5. Rekonsiliasi penugasan
+      try {
+        const year = await getAcademicYear(targetSchoolId);
+        await reconcileTeacherAssignments(admin, targetSchoolId, year);
+      } catch (_) {}
+
+      // 6. Catat di audit log
+      try {
+        await admin.from('audit_logs').insert({
+          actor_id: caller.user.id,
+          actor_name: caller.user.user_metadata?.name || profile?.name || 'Admin',
+          actor_role: callerRole,
+          action: 'DELETE_TEACHER',
+          school_id: targetSchoolId,
+          details: {
+            teacherId,
+            teacherName: targetTeacher.nama,
+            nip: targetTeacher.nip,
+          },
+        });
+      } catch (_) {}
+
+      return json(res, 200, {
+        ok: true,
+        success: true,
+        message: `Data guru ${targetTeacher.nama} beserta akun login dan seluruh penugasan berhasil dihapus permanen dari database.`,
+      });
     }
 
     if (action === 'import_students') {
@@ -795,18 +962,43 @@ export default async function handler(req: any, res: any) {
       }
       const studentId = body.studentId || body.student_id;
       if (!studentId) return json(res, 400, { error: 'ID siswa wajib disertakan.' });
+      const targetSchoolId = schoolId || callerSchoolId;
 
+      // 1. Hapus akun pengguna yang tertaut ke siswa ini
+      try {
+        const { data: linkedProfiles } = await admin.from('profiles')
+          .select('id, username')
+          .eq('school_id', targetSchoolId)
+          .eq('student_id', studentId);
+
+        for (const lp of linkedProfiles || []) {
+          try {
+            await admin.from('user_class_assignments').delete().eq('user_id', lp.id);
+            await admin.from('profiles').delete().eq('id', lp.id);
+            await admin.auth.admin.deleteUser(lp.id);
+          } catch (_) {}
+        }
+      } catch (_) {}
+
+      // 2. Hapus catatan presensi siswa
+      try {
+        await admin.from('attendance_records').delete().eq('student_id', studentId).eq('school_id', targetSchoolId);
+      } catch (e: any) {
+        console.warn('[admin-users] attendance_records student cleanup warning:', e?.message);
+      }
+
+      // 3. Lepas rujukan student_id pada profiles yang tersisa
       try {
         await admin.from('profiles').update({ student_id: null }).eq('student_id', studentId);
       } catch (_) {}
 
-      const { error: delErr } = await admin.from('students').delete().eq('id', studentId).eq('school_id', schoolId);
+      // 4. Hapus baris siswa dari tabel students
+      const { error: delErr } = await admin.from('students').delete().eq('id', studentId).eq('school_id', targetSchoolId);
       if (delErr) {
-        // Jika tertahan oleh trigger database profiles, lepaskan kelas siswa
-        await admin.from('students').update({ class_id: null }).eq('id', studentId).eq('school_id', schoolId);
+        return json(res, 500, { error: `Gagal menghapus siswa dari database: ${delErr.message}` });
       }
 
-      return json(res, 200, { ok: true, success: true });
+      return json(res, 200, { ok: true, success: true, message: 'Data siswa berhasil dihapus permanen dari database.' });
     }
 
     if (action === 'delete_students_by_class') {
@@ -815,26 +1007,50 @@ export default async function handler(req: any, res: any) {
       }
       const classId = body.classId || body.class_id;
       if (!classId) return json(res, 400, { error: 'ID kelas wajib disertakan.' });
+      const targetSchoolId = schoolId || callerSchoolId;
 
       const { data: targetStudents } = await admin
         .from('students')
         .select('id')
         .eq('class_id', classId)
-        .eq('school_id', schoolId);
+        .eq('school_id', targetSchoolId);
 
       const sIds = (targetStudents || []).map((s: any) => s.id);
       if (sIds.length > 0) {
+        // 1. Hapus akun pengguna terkait
         try {
-          await admin.from('profiles').update({ student_id: null }).eq('school_id', schoolId).in('student_id', sIds);
+          const { data: linkedProfiles } = await admin.from('profiles')
+            .select('id')
+            .eq('school_id', targetSchoolId)
+            .in('student_id', sIds);
+
+          for (const lp of linkedProfiles || []) {
+            try {
+              await admin.from('user_class_assignments').delete().eq('user_id', lp.id);
+              await admin.from('profiles').delete().eq('id', lp.id);
+              await admin.auth.admin.deleteUser(lp.id);
+            } catch (_) {}
+          }
         } catch (_) {}
 
-        const { error: delErr } = await admin.from('students').delete().eq('class_id', classId).eq('school_id', schoolId);
+        // 2. Hapus catatan presensi
+        try {
+          await admin.from('attendance_records').delete().in('student_id', sIds).eq('school_id', targetSchoolId);
+        } catch (_) {}
+
+        // 3. Lepas rujukan student_id pada profiles
+        try {
+          await admin.from('profiles').update({ student_id: null }).eq('school_id', targetSchoolId).in('student_id', sIds);
+        } catch (_) {}
+
+        // 4. Hapus data siswa
+        const { error: delErr } = await admin.from('students').delete().eq('class_id', classId).eq('school_id', targetSchoolId);
         if (delErr) {
-          await admin.from('students').update({ class_id: null }).eq('class_id', classId).eq('school_id', schoolId);
+          return json(res, 500, { error: `Gagal menghapus siswa kelas dari database: ${delErr.message}` });
         }
       }
 
-      return json(res, 200, { ok: true, success: true });
+      return json(res, 200, { ok: true, success: true, message: 'Seluruh data siswa dalam kelas berhasil dihapus permanen.' });
     }
 
     if (action === 'delete_class') {
@@ -843,23 +1059,32 @@ export default async function handler(req: any, res: any) {
       }
       const classId = body.classId || body.class_id;
       if (!classId) return json(res, 400, { error: 'ID kelas wajib disertakan.' });
+      const targetSchoolId = schoolId || callerSchoolId;
 
       // 1. Lepas penugasan kelas pada siswa agar tidak ada foreign key violation
-      await admin.from('students').update({ class_id: null }).eq('class_id', classId).eq('school_id', schoolId);
+      await admin.from('students').update({ class_id: null }).eq('class_id', classId).eq('school_id', targetSchoolId);
 
-      // 2. Bersihkan penugasan kelas mapel & user_class_assignments
+      // 2. Bersihkan catatan presensi kelas
       try {
-        await admin.from('subject_class_assignments').delete().eq('class_id', classId).eq('school_id', schoolId);
-        await admin.from('user_class_assignments').delete().eq('class_id', classId);
+        await admin.from('attendance_records').delete().eq('class_id', classId).eq('school_id', targetSchoolId);
       } catch (_) {}
 
-      // 3. Hapus kelas
-      const { error: delErr } = await admin.from('classes').delete().eq('id', classId).eq('school_id', schoolId);
+      // 3. Bersihkan penugasan kelas mapel, jadwal & user_class_assignments
+      try {
+        await admin.from('subject_schedule_days').delete().eq('class_id', classId);
+        await admin.from('subject_class_assignments').delete().eq('class_id', classId).eq('school_id', targetSchoolId);
+        await admin.from('user_class_assignments').delete().eq('class_id', classId);
+        await admin.from('teacher_assignments').delete().eq('class_id', classId).eq('school_id', targetSchoolId);
+        await admin.from('teacher_class_assignments').delete().eq('class_id', classId).eq('school_id', targetSchoolId);
+      } catch (_) {}
+
+      // 4. Hapus kelas
+      const { error: delErr } = await admin.from('classes').delete().eq('id', classId).eq('school_id', targetSchoolId);
       if (delErr) {
-        return json(res, 500, { error: `Gagal menghapus kelas: ${delErr.message}` });
+        return json(res, 500, { error: `Gagal menghapus kelas dari database: ${delErr.message}` });
       }
 
-      return json(res, 200, { ok: true, success: true });
+      return json(res, 200, { ok: true, success: true, message: 'Kelas beserta seluruh relasi berhasil dihapus permanen.' });
     }
 
     if (action === 'import_classes') {
