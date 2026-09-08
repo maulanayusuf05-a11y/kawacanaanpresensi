@@ -132,9 +132,11 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 
           </div>
 
-          {/* Right Column: Device Mockup Display */}
-          <div className="hidden lg:flex lg:col-span-5 justify-center lg:justify-end relative">
-            <DeviceMockup lang={lang} />
+          {/* Device Mockup Display: Responsive across mobile, tablet, laptop, and desktop */}
+          <div className="lg:col-span-5 flex justify-center lg:justify-end relative w-full pt-2 sm:pt-4 lg:pt-0">
+            <div className="w-full max-w-sm sm:max-w-lg lg:max-w-none">
+              <DeviceMockup lang={lang} />
+            </div>
           </div>
 
         </div>

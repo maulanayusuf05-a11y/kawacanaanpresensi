@@ -661,12 +661,12 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
     >
       <div
         id="register-school-card"
-        className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden my-auto"
+        className="relative w-full max-w-2xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-200 overflow-hidden my-auto flex flex-col max-h-[calc(100dvh-1.5rem)] sm:max-h-[92vh]"
       >
         {/* Header Section */}
         <div
           id="modal-header"
-          className="relative bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-900 text-white p-5 sm:p-6 border-b border-indigo-800/40"
+          className="relative bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-900 text-white p-4 sm:p-6 border-b border-indigo-800/40 shrink-0"
         >
           <button
             id="btn-close-register-modal"
@@ -711,7 +711,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
         {/* VIEW 1: LAYAR SUKSES PENDAFTARAN & KREDENSIAL */}
         {/* ------------------------------------------------------------- */}
         {registrationSuccessData ? (
-          <div id="registration-success-view" className="p-6 sm:p-8 space-y-6">
+          <div id="registration-success-view" className="p-4 sm:p-6 md:p-8 space-y-6 overflow-y-auto flex-1">
             <div className="text-center space-y-3">
               <div className="inline-flex items-center justify-center p-3 bg-emerald-100 text-emerald-700 rounded-full">
                 <CheckCircle2 className="w-10 h-10" />
@@ -848,7 +848,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
           /* ------------------------------------------------------------- */
           /* VIEW 2: TAHAP PEMBAYARAN MIDTRANS GATEWAY */
           /* ------------------------------------------------------------- */
-          <div id="payment-gateway-view" className="p-6 sm:p-8 space-y-6">
+          <div id="payment-gateway-view" className="p-4 sm:p-6 md:p-8 space-y-6 overflow-y-auto flex-1">
             <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 p-4 bg-amber-50/80 border border-amber-200 rounded-xl">
               <div className="p-3 bg-amber-500 text-white rounded-xl shadow-sm shrink-0">
                 <Clock className="w-7 h-7" />
@@ -986,7 +986,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
           <form
             id="register-school-form"
             onSubmit={handleSubmit}
-            className="p-5 sm:p-7 space-y-6 max-h-[75vh] overflow-y-auto"
+            className="p-4 sm:p-6 md:p-7 space-y-5 sm:space-y-6 overflow-y-auto flex-1"
           >
             {submitError && (
               <div

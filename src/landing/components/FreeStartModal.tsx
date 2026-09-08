@@ -213,26 +213,26 @@ export const FreeStartModal: React.FC<FreeStartModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/70 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-200">
-      <div className="relative w-full max-w-xl bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden my-auto animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 md:p-6 bg-slate-900/70 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-200">
+      <div className="relative w-full max-w-xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-100 overflow-hidden my-auto animate-in zoom-in-95 duration-200 flex flex-col max-h-[calc(100dvh-1.5rem)] sm:max-h-[90vh]">
         
         {/* Header Modal */}
-        <div className="relative bg-gradient-to-r from-blue-700 via-blue-800 to-indigo-900 px-6 sm:px-8 py-6 text-white">
+        <div className="relative bg-gradient-to-r from-blue-700 via-blue-800 to-indigo-900 px-4 sm:px-7 md:px-8 py-4 sm:py-6 text-white shrink-0">
           <button
             type="button"
             onClick={onClose}
-            className="absolute top-5 right-5 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
+            className="absolute top-3.5 sm:top-5 right-3.5 sm:right-5 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
             aria-label="Tutup Modal"
           >
             <X size={18} />
           </button>
 
-          <div className="flex items-center gap-2 text-blue-200 text-xs font-bold uppercase tracking-wider mb-1.5">
-            <Sparkles size={14} className="text-yellow-300" />
+          <div className="flex items-center gap-2 text-blue-200 text-xs font-bold uppercase tracking-wider mb-1">
+            <Sparkles size={14} className="text-yellow-300 shrink-0" />
             <span>{step === 1 ? 'Langkah 1 dari 2' : 'Langkah 2 dari 2'}</span>
           </div>
 
-          <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white">
+          <h2 className="text-lg sm:text-2xl font-black tracking-tight text-white pr-8 sm:pr-0">
             {step === 1
               ? (lang === 'ID' ? 'Pilih Peran Anda' : 'Select Your Role')
               : (lang === 'ID' ? 'Pendaftaran Akun Pendidik' : 'Educator Account Registration')}
@@ -249,28 +249,28 @@ export const FreeStartModal: React.FC<FreeStartModalProps> = ({
         </div>
 
         {/* Isi Modal */}
-        <div className="p-6 sm:p-8 max-h-[75vh] overflow-y-auto">
+        <div className="p-4 sm:p-6 md:p-8 overflow-y-auto space-y-4 flex-1">
           
           {/* ========================================================================= */}
           {/* LANGKAH 1: PILIH PERAN (HANYA WALI KELAS & GURU MAPEL — TANPA SISWA)      */}
           {/* ========================================================================= */}
           {step === 1 && (
             <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 
                 {/* KARTU 1: WALI KELAS */}
                 <button
                   type="button"
                   onClick={() => handleSelectRole('homeroom')}
-                  className="group relative bg-white border-2 border-slate-200 hover:border-blue-600 hover:shadow-lg rounded-2xl p-5 sm:p-6 text-left transition-all duration-200 flex flex-col justify-between cursor-pointer active:scale-98 focus:outline-none focus:ring-4 focus:ring-blue-100"
+                  className="group relative bg-white border-2 border-slate-200 hover:border-blue-600 hover:shadow-lg rounded-2xl p-4 sm:p-5 md:p-6 text-left transition-all duration-200 flex flex-col justify-between cursor-pointer active:scale-98 focus:outline-none focus:ring-4 focus:ring-blue-100 min-h-[160px]"
                   id="btn-free-role-homeroom"
                 >
-                  <div className="space-y-3.5">
-                    <div className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                      <GraduationCap size={24} />
+                  <div className="space-y-2.5 sm:space-y-3.5">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors shrink-0">
+                      <GraduationCap className="w-5 h-5 sm:w-6 sm:h-6" />
                     </div>
                     <div>
-                      <h3 className="text-base font-black uppercase tracking-tight text-slate-900 group-hover:text-blue-600 transition-colors">
+                      <h3 className="text-sm sm:text-base font-black uppercase tracking-tight text-slate-900 group-hover:text-blue-600 transition-colors">
                         1. WALI KELAS
                       </h3>
                       <p className="mt-1 text-xs text-slate-600 leading-relaxed font-normal">
@@ -281,7 +281,7 @@ export const FreeStartModal: React.FC<FreeStartModalProps> = ({
                     </div>
                   </div>
 
-                  <div className="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-blue-600">
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-blue-600">
                     <span>{lang === 'ID' ? 'Pilih Wali Kelas' : 'Select Homeroom'}</span>
                     <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />
                   </div>
@@ -291,15 +291,15 @@ export const FreeStartModal: React.FC<FreeStartModalProps> = ({
                 <button
                   type="button"
                   onClick={() => handleSelectRole('subject')}
-                  className="group relative bg-white border-2 border-slate-200 hover:border-emerald-600 hover:shadow-lg rounded-2xl p-5 sm:p-6 text-left transition-all duration-200 flex flex-col justify-between cursor-pointer active:scale-98 focus:outline-none focus:ring-4 focus:ring-emerald-100"
+                  className="group relative bg-white border-2 border-slate-200 hover:border-emerald-600 hover:shadow-lg rounded-2xl p-4 sm:p-5 md:p-6 text-left transition-all duration-200 flex flex-col justify-between cursor-pointer active:scale-98 focus:outline-none focus:ring-4 focus:ring-emerald-100 min-h-[160px]"
                   id="btn-free-role-subject"
                 >
-                  <div className="space-y-3.5">
-                    <div className="w-12 h-12 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-colors">
-                      <BookOpen size={24} />
+                  <div className="space-y-2.5 sm:space-y-3.5">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-colors shrink-0">
+                      <BookOpen className="w-5 h-5 sm:w-6 sm:h-6" />
                     </div>
                     <div>
-                      <h3 className="text-base font-black uppercase tracking-tight text-slate-900 group-hover:text-emerald-600 transition-colors">
+                      <h3 className="text-sm sm:text-base font-black uppercase tracking-tight text-slate-900 group-hover:text-emerald-600 transition-colors">
                         2. GURU MATA PELAJARAN
                       </h3>
                       <p className="mt-1 text-xs text-slate-600 leading-relaxed font-normal">
@@ -310,7 +310,7 @@ export const FreeStartModal: React.FC<FreeStartModalProps> = ({
                     </div>
                   </div>
 
-                  <div className="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-emerald-600">
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-emerald-600">
                     <span>{lang === 'ID' ? 'Pilih Guru Mapel' : 'Select Subject Teacher'}</span>
                     <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />
                   </div>
@@ -318,7 +318,7 @@ export const FreeStartModal: React.FC<FreeStartModalProps> = ({
               </div>
 
               {/* Footer Langkah 1 */}
-              <div className="pt-3 flex items-center justify-center text-xs text-slate-500">
+              <div className="pt-2 flex flex-wrap items-center justify-center gap-1 text-xs text-slate-500 text-center">
                 <span>{lang === 'ID' ? 'Sudah memiliki akun?' : 'Already have an account?'}</span>
                 <button
                   type="button"
@@ -326,7 +326,7 @@ export const FreeStartModal: React.FC<FreeStartModalProps> = ({
                     onClose();
                     onOpenLogin();
                   }}
-                  className="ml-1.5 font-bold text-blue-700 hover:underline cursor-pointer"
+                  className="font-bold text-blue-700 hover:underline cursor-pointer"
                 >
                   {lang === 'ID' ? 'Masuk Sekarang' : 'Sign In Now'}
                 </button>
@@ -338,24 +338,24 @@ export const FreeStartModal: React.FC<FreeStartModalProps> = ({
           {/* LANGKAH 2: FORMULIR IDENTITAS & AKUN SAJA (TANPA DATA PENUGASAN/SEKOLAH)  */}
           {/* ========================================================================= */}
           {step === 2 && (
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
               
               {/* Baris Navigasi Balik & Label Peran */}
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
                 <button
                   type="button"
                   onClick={() => {
                     setStep(1);
                     setFormError('');
                   }}
-                  className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 transition-colors cursor-pointer py-1"
                   id="btn-back-to-step1"
                 >
                   <ArrowLeft size={16} />
                   <span>{lang === 'ID' ? 'Ganti Pilihan Peran' : 'Change Role'}</span>
                 </button>
 
-                <span className={`px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider ${
+                <span className={`px-2.5 sm:px-3 py-1 rounded-full text-[10px] sm:text-[11px] font-black uppercase tracking-wider ${
                   selectedRole === 'homeroom'
                     ? 'bg-blue-50 text-blue-700 border border-blue-200'
                     : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
@@ -375,7 +375,7 @@ export const FreeStartModal: React.FC<FreeStartModalProps> = ({
               )}
 
               {/* Formulir Akun & Masuk */}
-              <div className="p-4 sm:p-5 rounded-2xl bg-blue-50/40 border border-blue-100/80 space-y-3.5">
+              <div className="p-3.5 sm:p-5 rounded-2xl bg-blue-50/40 border border-blue-100/80 space-y-3.5">
                 <div className="flex items-center gap-2 text-blue-900 pb-2 border-b border-blue-100">
                   <ShieldCheck size={18} className="text-blue-600 shrink-0" />
                   <div>
@@ -402,7 +402,7 @@ export const FreeStartModal: React.FC<FreeStartModalProps> = ({
                         value={fullName}
                         onChange={(e) => handleFullNameChange(e.target.value)}
                         placeholder="Contoh: Dra. Hj. Siti Rahmawati, M.Pd."
-                        className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-900 bg-white focus:border-blue-600 outline-none"
+                        className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-900 bg-white focus:border-blue-600 outline-none min-h-[44px]"
                         id="input-free-fullname"
                       />
                     </div>
@@ -422,7 +422,7 @@ export const FreeStartModal: React.FC<FreeStartModalProps> = ({
                         setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ''));
                       }}
                       placeholder="Contoh: sitirahmawati"
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-900 bg-white focus:border-blue-600 outline-none"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-900 bg-white focus:border-blue-600 outline-none min-h-[44px]"
                       id="input-free-username"
                     />
                     <p className="text-[10px] text-slate-500 mt-1">
@@ -442,7 +442,7 @@ export const FreeStartModal: React.FC<FreeStartModalProps> = ({
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder="email@pribadi.com"
-                        className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-900 bg-white focus:border-blue-600 outline-none"
+                        className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-900 bg-white focus:border-blue-600 outline-none min-h-[44px]"
                         id="input-free-email"
                       />
                     </div>
@@ -464,13 +464,14 @@ export const FreeStartModal: React.FC<FreeStartModalProps> = ({
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="Minimal 6 karakter..."
-                        className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-900 bg-white focus:border-blue-600 outline-none"
+                        className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-900 bg-white focus:border-blue-600 outline-none min-h-[44px]"
                         id="input-free-password"
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                        className="absolute right-1 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 w-9 h-9 flex items-center justify-center cursor-pointer"
+                        aria-label="Tampilkan sandi"
                       >
                         {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                       </button>
@@ -490,7 +491,7 @@ export const FreeStartModal: React.FC<FreeStartModalProps> = ({
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
                         placeholder="Ketik ulang kata sandi..."
-                        className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-900 bg-white focus:border-blue-600 outline-none"
+                        className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-slate-900 bg-white focus:border-blue-600 outline-none min-h-[44px]"
                         id="input-free-confirm-password"
                       />
                     </div>
@@ -503,7 +504,7 @@ export const FreeStartModal: React.FC<FreeStartModalProps> = ({
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full py-3.5 sm:py-4 rounded-2xl bg-blue-700 hover:bg-blue-800 active:scale-98 text-white font-black text-sm uppercase tracking-wider transition-all shadow-md shadow-blue-700/20 flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                  className="w-full py-3.5 sm:py-4 rounded-2xl bg-blue-700 hover:bg-blue-800 active:scale-98 text-white font-black text-xs sm:text-sm uppercase tracking-wider transition-all shadow-md shadow-blue-700/20 flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer min-h-[48px]"
                   id="btn-submit-free-registration"
                 >
                   {isSubmitting ? (

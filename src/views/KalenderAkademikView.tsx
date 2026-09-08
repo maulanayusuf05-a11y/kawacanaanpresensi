@@ -523,8 +523,9 @@ export const KalenderAkademikView: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
         {/* Left Column: Agenda Table & Controls */}
         <div className="lg:col-span-8 bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6 space-y-4 sm:space-y-5">
-          {/* Filters & Add Button */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          {/* Controls Toolbar: Period Selectors, Search, and Action Buttons */}
+          <div className="flex flex-col gap-3">
+            {/* Row 1: Month, Quick Jump & Year */}
             <div className="flex flex-wrap items-center gap-2">
               {/* Month Selector */}
               <select
@@ -539,23 +540,6 @@ export const KalenderAkademikView: React.FC = () => {
                   </option>
                 ))}
               </select>
-
-              {/* Quick Jump to Bulan Berjalan Button if different month selected */}
-              {selectedMonth !== currentRunningMonth && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedMonth(currentRunningMonth);
-                    const isSemester1 = ['07', '08', '09', '10', '11', '12'].includes(currentRunningMonth);
-                    setSelectedYear(String(isSemester1 ? startYear : endYear));
-                  }}
-                  className="px-2.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 shrink-0 min-h-[40px]"
-                  title="Kembali ke Bulan Berjalan"
-                >
-                  <CalendarCheck2 size={14} className="text-emerald-600" />
-                  <span>Bulan Berjalan ({monthNames[currentRunningMonth]})</span>
-                </button>
-              )}
 
               {/* Integrated Year Selector based on Tahun Pelajaran */}
               <select
@@ -576,60 +560,156 @@ export const KalenderAkademikView: React.FC = () => {
                 )}
               </select>
 
+              {/* Quick Jump to Bulan Berjalan Button if different month selected */}
+              {selectedMonth !== currentRunningMonth && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedMonth(currentRunningMonth);
+                    const isSemester1 = ['07', '08', '09', '10', '11', '12'].includes(currentRunningMonth);
+                    setSelectedYear(String(isSemester1 ? startYear : endYear));
+                  }}
+                  className="w-full sm:w-auto px-2.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-1.5 shrink-0 min-h-[40px]"
+                  title="Kembali ke Bulan Berjalan"
+                >
+                  <CalendarCheck2 size={14} className="text-emerald-600" />
+                  <span>Bulan Berjalan ({monthNames[currentRunningMonth]})</span>
+                </button>
+              )}
+            </div>
+
+            {/* Row 2: Search Bar & Actions */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
               {/* Search Bar */}
-              <div className="relative w-full sm:w-40 md:w-48">
+              <div className="relative flex-1 sm:max-w-xs">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
                   value={searchAgenda}
                   onChange={(e) => setSearchAgenda(e.target.value)}
-                  placeholder="Cari agenda..."
-                  className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-600 min-h-[40px]"
+                  placeholder="Cari agenda kegiatan..."
+                  className="w-full pl-8 pr-7 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-600 min-h-[40px]"
                   id="input-cari-agenda"
                 />
+                {searchAgenda && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchAgenda('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                    aria-label="Bersihkan pencarian"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
               </div>
+
+              {/* Action Buttons */}
+              {canManageCalendar ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleOpenConfigModal}
+                    id="btn-atur-hari-belajar"
+                    className="flex-1 sm:flex-initial px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-extrabold text-xs rounded-xl shadow-2xs transition-all flex items-center justify-center gap-1.5 min-h-[40px] shrink-0 cursor-pointer"
+                    title="Atur jumlah hari efektif belajar dalam seminggu (5 hari, 6 hari, atau kustom)"
+                  >
+                    <Sliders size={14} className="text-blue-600" />
+                    <span>Atur Hari Belajar ({activeStudyDays.length} Hari)</span>
+                  </button>
+
+                  <button
+                    onClick={openAddModalForMonth}
+                    id="btn-tambah-agenda"
+                    className="flex-1 sm:flex-initial px-3.5 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 min-h-[40px] shrink-0 cursor-pointer"
+                  >
+                    <Plus size={15} />
+                    <span>+ Agenda</span>
+                  </button>
+                </div>
+              ) : (
+                <div
+                  className="w-full sm:w-auto px-3.5 py-2 bg-slate-100 border border-slate-200 text-slate-500 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 min-h-[40px] shrink-0 cursor-default"
+                  title="Akses Read-Only: Hanya Admin Sekolah yang dapat menambah agenda"
+                >
+                  <Lock size={13} className="text-slate-400" />
+                  <span>Lihat Saja (Read Only)</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Mobile Agenda Card List (HP View) */}
+          <div className="block sm:hidden space-y-2.5">
+            <div className="flex items-center justify-between px-1 text-xs font-bold text-slate-700">
+              <span>Daftar Agenda ({filteredEvents.length})</span>
+              <span className="text-[10px] font-semibold text-slate-400">
+                {monthNames[selectedMonth]} {selectedYear}
+              </span>
             </div>
 
-            {canManageCalendar ? (
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleOpenConfigModal}
-                  id="btn-atur-hari-belajar"
-                  className="w-full sm:w-auto px-3.5 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-extrabold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 min-h-[40px] shrink-0 cursor-pointer"
-                  title="Atur jumlah hari efektif belajar dalam seminggu (5 hari, 6 hari, atau kustom)"
-                >
-                  <Sliders size={14} className="text-blue-600" />
-                  <span>Atur Hari Belajar ({activeStudyDays.length} Hari)</span>
-                </button>
+            {filteredEvents.length > 0 ? (
+              <div className="space-y-2">
+                {filteredEvents.map((ev) => (
+                  <div
+                    key={ev.id}
+                    className="p-3.5 rounded-xl border border-slate-200 bg-white hover:border-blue-200 transition-colors shadow-2xs space-y-2"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="space-y-1">
+                        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 text-[11px] font-bold text-slate-800">
+                          <Calendar size={12} className="text-blue-600" />
+                          <span>{ev.dateDisplay}</span>
+                        </div>
+                        <h4 className="font-bold text-xs text-slate-900 leading-snug">
+                          {ev.title}
+                        </h4>
+                        {ev.notes && (
+                          <p className="text-[11px] text-slate-500 leading-relaxed">
+                            {ev.notes}
+                          </p>
+                        )}
+                      </div>
 
-                <button
-                  onClick={openAddModalForMonth}
-                  id="btn-tambah-agenda"
-                  className="w-full sm:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 min-h-[40px] shrink-0 cursor-pointer"
-                >
-                  <Plus size={15} />
-                  <span>+ Agenda</span>
-                </button>
+                      {canManageCalendar && (
+                        <button
+                          type="button"
+                          onClick={() => deleteAcademicEvent(ev.id)}
+                          className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center shrink-0 cursor-pointer"
+                          title="Hapus Agenda"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="pt-1 flex items-center justify-between border-t border-slate-100">
+                      <span
+                        className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${
+                          ev.isEffective
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-rose-50 text-rose-700 border-rose-200'
+                        }`}
+                      >
+                        {ev.isEffective ? 'Hari Efektif Belajar' : 'Hari Libur / Non-Efektif'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : (
-              <div
-                className="w-full sm:w-auto px-3.5 py-2 bg-slate-100 border border-slate-200 text-slate-500 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 min-h-[40px] shrink-0 cursor-default"
-                title="Akses Read-Only: Hanya Admin Sekolah yang dapat menambah agenda"
-              >
-                <Lock size={13} className="text-slate-400" />
-                <span>Lihat Saja (Read Only)</span>
+              <div className="text-center py-8 px-4 rounded-xl border border-dashed border-slate-200 text-slate-400 font-medium text-xs bg-slate-50">
+                Belum ada agenda kegiatan untuk bulan {monthNames[selectedMonth]} {selectedYear}.
               </div>
             )}
           </div>
 
-          {/* Agenda Table */}
-          <div className="border border-slate-100 rounded-xl overflow-hidden">
-            <div className="p-2 sm:p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+          {/* Desktop & Tablet Table (Hidden on Mobile HP) */}
+          <div className="hidden sm:block border border-slate-100 rounded-xl overflow-hidden">
+            <div className="p-2.5 sm:p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
               <span className="text-xs font-bold text-slate-700">
                 Daftar Agenda {monthNames[selectedMonth]} {selectedYear} ({filteredEvents.length})
               </span>
-              <span className="text-[10px] text-slate-400 block sm:hidden">← Geser tabel →</span>
+              <span className="text-[10px] text-slate-400 hidden sm:inline-block md:hidden">← Geser tabel jika diperlukan →</span>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse min-w-[460px]">
@@ -893,7 +973,223 @@ export const KalenderAkademikView: React.FC = () => {
           </div>
         </div>
 
-        <div className="border border-slate-200 rounded-xl overflow-hidden">
+        {/* Mobile Cards (HP / Small Tablet View) */}
+        <div className="block md:hidden space-y-4">
+          {/* SEMESTER 1 (GANJIL) */}
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                Semester 1 (Ganjil) - Tahun {startYear}
+              </span>
+              <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                Subtotal: {semester1Summary.heb} HEB
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {academicMonthsList.slice(0, 6).map((row) => {
+                const mNum = Number(row.m);
+                const totalDaysInMonth = new Date(row.y, mNum, 0).getDate();
+                const baseDays = getBaseStudyDaysForMonth(row.y, mNum);
+                const mKey = `${row.y}-${row.m}`;
+                const liburAgenda = academicEvents.filter((e) => {
+                  if (!e.date.startsWith(mKey) || e.isEffective) return false;
+                  try {
+                    const [ey, em, ed] = e.date.split('-').map(Number);
+                    const dayOfWeek = new Date(ey, em - 1, ed).getDay();
+                    return activeStudyDays.includes(dayOfWeek);
+                  } catch {
+                    return false;
+                  }
+                }).length;
+                const heb = Math.max(0, baseDays - liburAgenda);
+                const isCurrentSelected = row.m === selectedMonth && String(row.y) === selectedYear;
+                const isBulanBerjalan = row.m === currentRunningMonth && (row.y === currentRunningYear || !academicMonthsList.some(r => r.m === currentRunningMonth && r.y === currentRunningYear));
+
+                return (
+                  <div
+                    key={mKey}
+                    className={`p-3.5 rounded-xl border transition-all ${
+                      isCurrentSelected
+                        ? 'border-blue-500 bg-blue-50/50 shadow-xs'
+                        : 'border-slate-200 bg-white hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-1.5 pb-2 border-b border-slate-100">
+                      <div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <h4 className="font-bold text-xs text-slate-900">{row.name} {row.y}</h4>
+                          {isBulanBerjalan && (
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              Bulan Berjalan
+                            </span>
+                          )}
+                          {isCurrentSelected && (
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-blue-600 text-white">
+                              Terpilih
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-slate-400">{row.semesterLabel}</span>
+                      </div>
+
+                      <button
+                        onClick={() => handleSelectMonthFromTable(row.m, row.y)}
+                        className="px-2 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-[10px] font-bold text-blue-700 transition-colors shrink-0 cursor-pointer min-h-[30px]"
+                      >
+                        Lihat Agenda
+                      </button>
+                    </div>
+
+                    <div className="pt-2 flex items-center justify-between">
+                      <div className="grid grid-cols-3 gap-2 text-[10px] text-slate-500">
+                        <div>
+                          <div className="text-[9px] uppercase tracking-wider text-slate-400">Kalender</div>
+                          <div className="font-bold text-slate-700">{totalDaysInMonth} hr</div>
+                        </div>
+                        <div>
+                          <div className="text-[9px] uppercase tracking-wider text-slate-400">Rutin</div>
+                          <div className="font-bold text-slate-700">{baseDays} hr</div>
+                        </div>
+                        <div>
+                          <div className="text-[9px] uppercase tracking-wider text-slate-400">Libur</div>
+                          <div className="font-bold text-rose-600">{liburAgenda > 0 ? `-${liburAgenda}` : '0'} hr</div>
+                        </div>
+                      </div>
+
+                      <div className="text-right pl-2 border-l border-slate-100">
+                        <div className="text-[9px] uppercase font-bold text-slate-400 tracking-wider">HEB</div>
+                        <div className="text-base font-black text-blue-700 leading-none">{heb} hr</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* SEMESTER 2 (GENAP) */}
+          <div className="space-y-2.5 pt-2">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                Semester 2 (Genap) - Tahun {endYear}
+              </span>
+              <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                Subtotal: {semester2Summary.heb} HEB
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {academicMonthsList.slice(6, 12).map((row) => {
+                const mNum = Number(row.m);
+                const totalDaysInMonth = new Date(row.y, mNum, 0).getDate();
+                const baseDays = getBaseStudyDaysForMonth(row.y, mNum);
+                const mKey = `${row.y}-${row.m}`;
+                const liburAgenda = academicEvents.filter((e) => {
+                  if (!e.date.startsWith(mKey) || e.isEffective) return false;
+                  try {
+                    const [ey, em, ed] = e.date.split('-').map(Number);
+                    const dayOfWeek = new Date(ey, em - 1, ed).getDay();
+                    return activeStudyDays.includes(dayOfWeek);
+                  } catch {
+                    return false;
+                  }
+                }).length;
+                const heb = Math.max(0, baseDays - liburAgenda);
+                const isCurrentSelected = row.m === selectedMonth && String(row.y) === selectedYear;
+                const isBulanBerjalan = row.m === currentRunningMonth && (row.y === currentRunningYear || !academicMonthsList.some(r => r.m === currentRunningMonth && r.y === currentRunningYear));
+
+                return (
+                  <div
+                    key={mKey}
+                    className={`p-3.5 rounded-xl border transition-all ${
+                      isCurrentSelected
+                        ? 'border-blue-500 bg-blue-50/50 shadow-xs'
+                        : 'border-slate-200 bg-white hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-1.5 pb-2 border-b border-slate-100">
+                      <div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <h4 className="font-bold text-xs text-slate-900">{row.name} {row.y}</h4>
+                          {isBulanBerjalan && (
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              Bulan Berjalan
+                            </span>
+                          )}
+                          {isCurrentSelected && (
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-blue-600 text-white">
+                              Terpilih
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-slate-400">{row.semesterLabel}</span>
+                      </div>
+
+                      <button
+                        onClick={() => handleSelectMonthFromTable(row.m, row.y)}
+                        className="px-2 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-[10px] font-bold text-blue-700 transition-colors shrink-0 cursor-pointer min-h-[30px]"
+                      >
+                        Lihat Agenda
+                      </button>
+                    </div>
+
+                    <div className="pt-2 flex items-center justify-between">
+                      <div className="grid grid-cols-3 gap-2 text-[10px] text-slate-500">
+                        <div>
+                          <div className="text-[9px] uppercase tracking-wider text-slate-400">Kalender</div>
+                          <div className="font-bold text-slate-700">{totalDaysInMonth} hr</div>
+                        </div>
+                        <div>
+                          <div className="text-[9px] uppercase tracking-wider text-slate-400">Rutin</div>
+                          <div className="font-bold text-slate-700">{baseDays} hr</div>
+                        </div>
+                        <div>
+                          <div className="text-[9px] uppercase tracking-wider text-slate-400">Libur</div>
+                          <div className="font-bold text-rose-600">{liburAgenda > 0 ? `-${liburAgenda}` : '0'} hr</div>
+                        </div>
+                      </div>
+
+                      <div className="text-right pl-2 border-l border-slate-100">
+                        <div className="text-[9px] uppercase font-bold text-slate-400 tracking-wider">HEB</div>
+                        <div className="text-base font-black text-blue-700 leading-none">{heb} hr</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Grand Total Mobile Card */}
+          <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black uppercase tracking-wider text-emerald-900">
+                ★ Total 1 Tahun Pelajaran
+              </span>
+              <span className="text-xs font-black text-emerald-800 bg-white px-2.5 py-0.5 rounded-full border border-emerald-200">
+                {fullYearSummary.heb} HARI EFEKTIF
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-[11px] text-emerald-800 pt-1 border-t border-emerald-200/60">
+              <div>
+                <span className="text-[10px] text-emerald-600 block">Kalender</span>
+                <strong>{fullYearSummary.cal} Hari</strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-emerald-600 block">Hari Belajar</span>
+                <strong>{fullYearSummary.base} Hari</strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-emerald-600 block">Libur Agenda</span>
+                <strong className="text-rose-600">{fullYearSummary.libur > 0 ? `-${fullYearSummary.libur}` : '0'} Hari</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Desktop & Tablet Table (Hidden on Mobile HP) */}
+        <div className="hidden md:block border border-slate-200 rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs min-w-[650px]">
               <thead>
