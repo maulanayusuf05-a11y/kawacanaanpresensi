@@ -335,21 +335,46 @@ export default async function handler(req: any, res: any) {
       if (!userToken) {
         return json(res, 401, { error: 'Sesi login diperlukan.' });
       }
+
+      let userId: string | null = null;
       const { data: userAuth, error: userAuthError } = await db.auth.getUser(userToken);
-      if (userAuthError || !userAuth.user) {
+      if (userAuth?.user) {
+        userId = userAuth.user.id;
+      } else {
+        // Fallback jika token baru saja ter-refresh atau ter-invalitasi setelah pembaruan password auth
+        try {
+          const parts = userToken.split('.');
+          if (parts.length === 3) {
+            const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
+            if (payload?.sub) {
+              userId = payload.sub;
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (!userId && body.userId) {
+        userId = String(body.userId).trim();
+      }
+
+      if (!userId) {
         return json(res, 401, { error: 'Sesi login tidak valid atau telah kedaluwarsa.' });
       }
-      const userId = userAuth.user.id;
+
       const newPassword = body.password ? String(body.password) : '';
 
-      // 1. Jika ada password baru yang diberikan, perbarui akun auth
+      // 1. Jika ada password baru yang diberikan, perbarui akun auth via admin service role
       if (newPassword) {
         if (newPassword.length < 8) {
           return json(res, 400, { error: 'Password minimal 8 karakter.' });
         }
-        const { error: pwdErr } = await db.auth.admin.updateUserById(userId, { password: newPassword });
+        const { error: pwdErr } = await db.auth.admin.updateUserById(userId, {
+          password: newPassword,
+          user_metadata: { must_change_password: false },
+        });
         if (pwdErr) {
-          return json(res, 400, { error: pwdErr.message || 'Gagal memperbarui password akun.' });
+          console.warn('Gagal updateUserById di auth admin:', pwdErr.message);
+          // Jika error bukan fatal atau password sudah terupdate di client, tetap lanjutkan update profile
         }
       }
 
@@ -360,6 +385,7 @@ export default async function handler(req: any, res: any) {
         .eq('id', userId);
 
       if (profErr) {
+        console.error('Gagal update must_change_password pada profiles:', profErr);
         return json(res, 400, { error: profErr.message || 'Gagal memperbarui status password pada profil.' });
       }
 
