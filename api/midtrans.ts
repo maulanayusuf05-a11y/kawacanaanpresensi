@@ -615,14 +615,33 @@ export default async function handler(req: any, res: any) {
       })
       .eq('invoice_no', orderId);
 
-    if (existingPayment.school_id) {
+    let targetSchoolId = existingPayment.school_id;
+    if (!targetSchoolId && existingPayment.school_name) {
+      const { data: foundSchool } = await db
+        .from('schools')
+        .select('id')
+        .eq('name', existingPayment.school_name)
+        .maybeSingle();
+      if (foundSchool?.id) {
+        targetSchoolId = foundSchool.id;
+        await db.from('payments').update({ school_id: targetSchoolId }).eq('invoice_no', orderId);
+      }
+    }
+
+    if (targetSchoolId) {
+      const { data: school } = await db
+        .from('schools')
+        .select('*')
+        .eq('id', targetSchoolId)
+        .maybeSingle();
+
       const isYearly =
         existingPayment.plan_name?.toLowerCase().includes('tahun') ||
         existingPayment.amount >= 200000;
       const durationDays = isYearly ? 365 : 30;
       const now = new Date();
-      const currentExpiry = existingPayment.subscription_expires_at
-        ? new Date(existingPayment.subscription_expires_at)
+      const currentExpiry = school?.subscription_expires_at
+        ? new Date(school.subscription_expires_at)
         : now;
       const baseDate = currentExpiry > now ? currentExpiry : now;
       const newExpiry = new Date(baseDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
@@ -638,7 +657,22 @@ export default async function handler(req: any, res: any) {
           plan: targetPlan,
           subscription_expires_at: newExpiry.toISOString(),
         })
-        .eq('id', existingPayment.school_id);
+        .eq('id', targetSchoolId);
+
+      // Catat audit log
+      try {
+        await db.from('audit_logs').insert({
+          school_id: targetSchoolId,
+          actor_name: 'Midtrans Sandbox Simulator',
+          actor_role: 'SYSTEM',
+          action: 'MIDTRANS_SIMULATED_SETTLEMENT',
+          details: {
+            order_id: orderId,
+            gross_amount: existingPayment.amount,
+            new_expiry: newExpiry.toISOString(),
+          },
+        });
+      } catch (_) {}
     }
 
     return json(res, 200, {

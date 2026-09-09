@@ -47,13 +47,21 @@ export const LoginView: React.FC<LoginViewProps> = ({ onBackToLanding }) => {
   // Form states
   const [emailOrUser, setEmailOrUser] = useState(() => {
     try {
+      const stored = sessionStorage.getItem('kwc_prefill_username');
+      if (stored) return stored;
       const p = new URLSearchParams(window.location.search);
       return p.get('user') || p.get('username') || '';
     } catch (_) {
       return '';
     }
   });
-  const [password, setPassword] = useState('');
+  const [password, setPassword] = useState(() => {
+    try {
+      return sessionStorage.getItem('kwc_prefill_password') || '';
+    } catch (_) {
+      return '';
+    }
+  });
   const [showPassword, setShowPassword] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
 

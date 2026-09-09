@@ -58,7 +58,7 @@ export default async function handler(req: any, res: any) {
   const npsn = String(body.npsn || '').replace(/\D/g, '').trim();
   const schoolName = String(body.schoolName || body.namaSekolah || '').trim();
   const plan = String(body.plan || 'free').toLowerCase();
-  const adminName = String(body.adminName || body.contactName || 'Administrator Sekolah').trim();
+  const adminName = String(body.adminName || body.fullName || body.contactName || 'Administrator Sekolah').trim();
   const adminPhone = String(body.adminPhone || body.contactPhone || '').trim();
   const adminEmail = String(body.adminEmail || body.email || '').trim().toLowerCase();
   const adminPassword = String(body.adminPassword || body.password || '');
@@ -96,12 +96,12 @@ export default async function handler(req: any, res: any) {
     return json(res, 400, { error: 'Nama satuan pendidikan wajib diisi.' });
   }
 
-  if (!adminPassword || adminPassword.length < 8) {
-    return json(res, 400, { error: 'Kata sandi minimal 8 karakter demi keamanan akun Anda.' });
+  if (!adminPassword || adminPassword.length < 6) {
+    return json(res, 400, { error: 'Kata sandi minimal 6 karakter demi keamanan akun Anda.' });
   }
 
   // Pola username otomatis berbasis Kode Sekolah atau input pengguna
-  const customUsername = String(body.username || '').trim().toLowerCase().replace(/[^a-z0-9_.]/g, '');
+  const customUsername = String(body.username || '').trim().toLowerCase().replace(/[^a-z0-9_.-]/g, '');
   const adminUsername = customUsername || `admin.${schoolCode.toLowerCase()}`;
   const authEmail = adminEmail || `${adminUsername}@login.kawacanaan.local`;
 
