@@ -3,14 +3,56 @@ import { createClient } from '@supabase/supabase-js';
 const json = (res: any, status: number, body: unknown) =>
   res.status(status).setHeader('Content-Type', 'application/json').end(JSON.stringify(body));
 
-const SYSTEM_PROMPT = `Kamu adalah Kawa AI, Asisten Absensi cerdas dan komunikatif untuk aplikasi administrasi sekolah dasar Kawacanaan Presensi.
-Tugas utamamu:
-1. Jawab pertanyaan berdasarkan DATA ABSENSI yang diberikan aplikasi.
-2. Tampilkan jawaban dalam format percakapan singkat, padat, ramah, dan to-the-point (sekitar 2-4 kalimat ringkas atau daftar poin pendek bila menyajikan daftar nama).
-3. Jangan mengarang data siswa, tanggal, angka, atau status kehadiran yang tidak ada dalam konteks.
-4. Jika data tidak cukup atau belum ada laporan, sampaikan secara sopan dan ringkas.
-5. Gunakan Bahasa Indonesia yang baik dan profesional untuk guru.
-6. Lakukan perhitungan dasar (persentase, jumlah hadir, sakit, izin, alfa, terlambat) secara akurat dari data yang tertera.`;
+const SYSTEM_PROMPT = `Kamu adalah AI Assistant Absensi untuk aplikasi KawaCanaan Presensi.
+Kamu membantu guru dan administrator memahami dan mengelola data presensi melalui tool yang disediakan aplikasi.
+Kamu tidak memiliki akses langsung ke database.
+Jangan pernah mengarang nama siswa, kelas, tanggal, status, atau data presensi.
+Bedakan pertanyaan informasi dengan perintah perubahan data.
+Untuk tindakan yang mengubah data:
+- identifikasi target
+- validasi data
+- buat preview
+- minta konfirmasi pengguna
+- hanya setelah konfirmasi jalankan tool mutasi.
+Jangan pernah melewati permission pengguna.
+Jangan pernah mengakses data sekolah/workspace lain.
+Jika data ambigu, minta klarifikasi.
+Jika data tidak ditemukan, jangan mengarang.
+Setelah tool berhasil dijalankan, laporkan hasil sebenarnya dari tool.
+Jangan mengatakan berhasil jika database belum mengembalikan keberhasilan.
+
+ATURAN OUTPUT FORMAT (WAJIB JSON VALID):
+Responsmu HARUS selalu berupa JSON murni (atau di dalam blok \`\`\`json ... \`\`\`) dengan salah satu format berikut:
+
+KASUS 1: Jika pengguna HANYA BERTANYA (informasi, siapa yang hadir/sakit/izin/alfa/terlambat/belum absen, rekapitulasi, persentase):
+{
+  "type": "text",
+  "message": "<jawaban percakapan singkat, padat, ramah, dan profesional berdasarkan data>"
+}
+
+KASUS 2: Jika pengguna MEMBERI PERINTAH TINDAKAN/MUTASI ABSENSI (input, catat, tandai, absenkan, terlambat, ubah absensi, dsb):
+{
+  "type": "action_request",
+  "action": "create_attendance" | "update_attendance",
+  "message": "<penjelasan singkat yang dipahami>",
+  "records": [
+    {
+      "student_name": "<nama siswa yang disebut>",
+      "status": "Hadir" | "Sakit" | "Izin" | "Alfa",
+      "date": "YYYY-MM-DD atau null jika hari ini",
+      "check_in_time": "HH:MM atau null",
+      "notes": "<catatan seperti 'Terlambat masuk jam 07.18' atau null>"
+    }
+  ]
+}
+
+KASUS 3: Jika pengguna ragu atau kalimatnya kurang jelas:
+{
+  "type": "text",
+  "message": "<pertanyaan klarifikasi sopan>"
+}
+
+Catatan status yang sah: "Hadir", "Sakit", "Izin", "Alfa". Jika siswa terlambat, status adalah "Hadir" dengan check_in_time dan notes "Terlambat".`;
 
 // Patterns for sensitive data that should never be forwarded
 const SENSITIVE_PATTERNS = [
@@ -163,34 +205,72 @@ export default async function handler(req: any, res: any) {
       console.error('[AI Assistant API] Cloudflare Workers AI error:', errorMsg);
       return json(res, 502, {
         ok: false,
-        error: `Gagal memperoleh respon dari Cloudflare AI: ${errorMsg}`,
+        error: 'AI sedang tidak dapat digunakan. Silakan coba lagi.',
       });
     }
 
     // Extract answer from Cloudflare response safely across potential schema structures
-    const answer =
+    const rawAnswer =
       cfData?.result?.response ||
       cfData?.result?.output ||
       cfData?.result?.text ||
       cfData?.result?.choices?.[0]?.message?.content ||
       (typeof cfData?.result === 'string' ? cfData.result : null);
 
-    if (!answer) {
+    if (!rawAnswer) {
       return json(res, 200, {
         ok: true,
-        answer: 'Maaf, model AI tidak memberikan jawaban. Silakan coba ajukan pertanyaan kembali dengan kalimat lain.',
+        responseType: 'text',
+        answer: 'Maaf, model AI tidak memberikan respon. Silakan coba ulangi perintah Anda.',
       });
     }
 
+    const answerStr = String(rawAnswer).trim();
+
+    // Coba parse jawaban sebagai JSON (mendukung blok ```json atau teks JSON langsung)
+    let parsedJson: any = null;
+    try {
+      const jsonMatch = answerStr.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+      if (jsonMatch) {
+        parsedJson = JSON.parse(jsonMatch[1].trim());
+      } else if (answerStr.startsWith('{') && answerStr.endsWith('}')) {
+        parsedJson = JSON.parse(answerStr);
+      }
+    } catch {
+      parsedJson = null;
+    }
+
+    if (parsedJson && typeof parsedJson === 'object') {
+      if (parsedJson.type === 'action_request' && Array.isArray(parsedJson.records) && parsedJson.records.length > 0) {
+        return json(res, 200, {
+          ok: true,
+          responseType: 'action_request',
+          action: parsedJson.action || 'create_attendance',
+          message: parsedJson.message || 'Memproses perintah absensi...',
+          records: parsedJson.records,
+        });
+      }
+
+      if (parsedJson.message && typeof parsedJson.message === 'string') {
+        return json(res, 200, {
+          ok: true,
+          responseType: 'text',
+          answer: parsedJson.message.trim(),
+        });
+      }
+    }
+
+    // Fallback: respon teks biasa
     return json(res, 200, {
       ok: true,
-      answer: String(answer).trim(),
+      responseType: 'text',
+      answer: answerStr,
     });
   } catch (err: any) {
     console.error('[AI Assistant API] Execution error:', err?.message);
     return json(res, 500, {
       ok: false,
-      error: err?.message || 'Terjadi kesalahan sistem saat menghubungi layanan AI.',
+      error: 'AI sedang tidak dapat digunakan. Silakan coba lagi.',
     });
   }
 }

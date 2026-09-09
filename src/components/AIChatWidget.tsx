@@ -1,7 +1,18 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../lib/supabaseClient';
 import { buildAIAttendanceContext } from '../utils/aiContext';
+import { getUserRoleScope } from '../utils/userScope';
+import {
+  resolveAttendanceIntent,
+  detectLocalCommandIntent,
+  create_attendance,
+  update_attendance,
+  PendingAction,
+  PendingAttendanceRecord,
+  formatIndonesianDate,
+  normalizeStatus,
+} from '../utils/aiAttendanceTools';
 import {
   MessageSquare,
   X,
@@ -19,7 +30,11 @@ import {
   ChevronDown,
   Palette,
   User,
-  CornerDownLeft,
+  ClipboardCheck,
+  CheckCircle2,
+  Calendar,
+  Clock,
+  HelpCircle,
 } from 'lucide-react';
 
 export interface ChatMessage {
@@ -27,9 +42,27 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: string;
+  type?: 'text' | 'confirmation' | 'result' | 'error' | 'disambiguation';
+  pendingAction?: PendingAction | null;
+  statusState?: 'pending' | 'confirmed' | 'cancelled' | 'executing';
+  actionResult?: {
+    success: boolean;
+    count: number;
+    records: PendingAttendanceRecord[];
+    message?: string;
+  };
+  disambiguation?: {
+    queryName: string;
+    candidates: Array<{ student: any; className: string }>;
+    targetStatus?: string;
+    targetDate?: string;
+    targetNotes?: string;
+    targetTime?: string;
+    remainingIntent?: any[];
+  };
 }
 
-export type ChatTheme = 'blue' | 'indigo' | 'emerald' | 'violet';
+export type ChatTheme = 'indigo' | 'blue' | 'emerald' | 'violet';
 
 interface ThemeConfig {
   name: string;
@@ -81,11 +114,28 @@ const THEMES: Record<ChatTheme, ThemeConfig> = {
 };
 
 const DEFAULT_SUGGESTIONS = [
-  'Siapa yang terlambat hari ini?',
-  'Siapa yang tidak hadir hari ini?',
-  'Berapa persentase kehadiran kelas bulan ini?',
-  'Siapa siswa dengan kehadiran paling rendah?',
+  'Tolong input absensi hari ini yang sakit Andi',
+  'Catat Budi sebagai izin hari ini',
+  'Tandai Citra hadir',
+  'Catat Andi terlambat masuk jam 07.18',
+  'Siapa saja yang belum memiliki absensi hari ini?',
+  'Siapa yang sakit hari ini?',
 ];
+
+function getStatusBadgeClass(status?: string | null): string {
+  switch (status) {
+    case 'Hadir':
+      return 'bg-emerald-100 text-emerald-800 border border-emerald-300';
+    case 'Sakit':
+      return 'bg-amber-100 text-amber-800 border border-amber-300';
+    case 'Izin':
+      return 'bg-blue-100 text-blue-800 border border-blue-300';
+    case 'Alfa':
+      return 'bg-rose-100 text-rose-800 border border-rose-300';
+    default:
+      return 'bg-slate-100 text-slate-800 border border-slate-300';
+  }
+}
 
 export const AIChatWidget: React.FC = () => {
   const {
@@ -96,6 +146,7 @@ export const AIChatWidget: React.FC = () => {
     teachers,
     subjects,
     attendanceRecords,
+    saveDailyAttendance,
     showToast,
   } = useApp();
 
@@ -108,6 +159,7 @@ export const AIChatWidget: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [isExecutingAction, setIsExecutingAction] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [theme, setTheme] = useState<ChatTheme>('indigo');
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -123,9 +175,14 @@ export const AIChatWidget: React.FC = () => {
   const channelRef = useRef<any>(null);
 
   const storageKey = `kawa_ai_chat_${currentUser.id}_${activeWorkspace?.id || 'default'}`;
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const userScope = useMemo(
+    () => getUserRoleScope(currentUser, classes, subjects, teachers),
+    [currentUser, classes, subjects, teachers]
+  );
 
   // Soft notification sound using Web Audio API
-  const playNotificationSound = () => {
+  const playNotificationSound = (type: 'message' | 'success' = 'message') => {
     if (!soundEnabled) return;
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
@@ -133,15 +190,29 @@ export const AIChatWidget: React.FC = () => {
       const ctx = new AudioCtx();
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
-      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.1); // A5
-      gain.gain.setValueAtTime(0.06, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.1);
+
+      if (type === 'success') {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(523.25, ctx.currentTime); // C5
+        osc.frequency.exponentialRampToValueAtTime(659.25, ctx.currentTime + 0.1); // E5
+        osc.frequency.exponentialRampToValueAtTime(783.99, ctx.currentTime + 0.2); // G5
+        gain.gain.setValueAtTime(0.08, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.25);
+      } else {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+        osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.1); // A5
+        gain.gain.setValueAtTime(0.06, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.1);
+      }
     } catch (_) {}
   };
 
@@ -162,7 +233,8 @@ export const AIChatWidget: React.FC = () => {
     const initialGreeting: ChatMessage = {
       id: `welcome-${Date.now()}`,
       role: 'assistant',
-      content: `Halo Bapak/Ibu ${currentUser.name || 'Guru'}! 👋 Saya **Kawa AI**, asisten digital absensi Anda. Ada yang ingin ditanyakan seputar kehadiran siswa, rekap hari ini, atau pola keterlambatan?`,
+      type: 'text',
+      content: `Halo Bapak/Ibu ${currentUser.name || 'Guru'}! 👋 Saya **Kawa AI**, asisten digital absensi Anda. Anda dapat bertanya seputar data kehadiran atau memberi perintah langsung (misal: *"Tolong input absensi hari ini yang sakit Andi"*).`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
     setMessages([initialGreeting]);
@@ -172,7 +244,7 @@ export const AIChatWidget: React.FC = () => {
   const persistMessages = (updated: ChatMessage[]) => {
     setMessages(updated);
     try {
-      localStorage.setItem(storageKey, JSON.stringify(updated.slice(-30)));
+      localStorage.setItem(storageKey, JSON.stringify(updated.slice(-40)));
     } catch (_) {}
   };
 
@@ -208,23 +280,19 @@ export const AIChatWidget: React.FC = () => {
             if (prev.some((m) => m.id === payload.id)) return prev;
             const next = [...prev, payload];
             try {
-              localStorage.setItem(storageKey, JSON.stringify(next.slice(-30)));
+              localStorage.setItem(storageKey, JSON.stringify(next.slice(-40)));
             } catch (_) {}
             return next;
           });
           if (payload.role === 'assistant') {
-            playNotificationSound();
+            playNotificationSound('message');
           }
         }
       })
       .on('broadcast', { event: 'typing' }, ({ payload }) => {
         setIsTyping(Boolean(payload?.isTyping));
       })
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          // Channel connected
-        }
-      });
+      .subscribe();
 
     channelRef.current = channel;
 
@@ -299,7 +367,156 @@ export const AIChatWidget: React.FC = () => {
     }
   };
 
-  // 5. Kirim Pesan & Dapatkan Jawaban AI
+  // 5. Eksekusi Tindakan Absensi Setelah Konfirmasi Pengguna
+  const handleExecuteAction = async (messageId: string, pendingAction: PendingAction) => {
+    setIsExecutingAction(true);
+    const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    try {
+      // 1. Jalankan tool mutasi resmi menggunakan endpoint absensi yang sudah ada
+      let result;
+      if (pendingAction.type === 'update_attendance') {
+        result = await update_attendance(pendingAction.records, saveDailyAttendance);
+      } else {
+        result = await create_attendance(pendingAction.records, saveDailyAttendance);
+      }
+
+      if (!result.success) {
+        throw new Error(result.error || 'Absensi belum tersimpan karena terjadi kesalahan pada server.');
+      }
+
+      // 2. Tandai pesan konfirmasi sebagai selesai
+      setMessages((prev) => {
+        const updated = prev.map((m) =>
+          m.id === messageId ? { ...m, statusState: 'confirmed' as const } : m
+        );
+
+        // 3. Buat pesan hasil keberhasilan (Result Card)
+        const resultMsg: ChatMessage = {
+          id: `res-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          role: 'assistant',
+          type: 'result',
+          content: 'Data absensi telah berhasil disimpan dan diverifikasi dalam sistem.',
+          timestamp: timeString,
+          actionResult: {
+            success: true,
+            count: pendingAction.records.length,
+            records: pendingAction.records,
+          },
+        };
+
+        const finalMessages = [...updated, resultMsg];
+        persistMessages(finalMessages);
+
+        // Broadcast pesan hasil
+        if (channelRef.current) {
+          channelRef.current.send({
+            type: 'broadcast',
+            event: 'new_message',
+            payload: resultMsg,
+          });
+        }
+
+        return finalMessages;
+      });
+
+      playNotificationSound('success');
+      showToast('Presensi berhasil disimpan melalui AI Assistant!', 'success');
+    } catch (err: any) {
+      console.error('[AIChatWidget] execution error:', err);
+      showToast(err.message || 'Absensi belum tersimpan karena terjadi kesalahan pada server.', 'error');
+
+      const errorMsg: ChatMessage = {
+        id: `err-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        role: 'assistant',
+        type: 'error',
+        content: `Absensi belum tersimpan karena terjadi kesalahan pada server: ${err.message || 'Harap coba lagi.'}`,
+        timestamp: timeString,
+      };
+
+      setMessages((prev) => {
+        const updated = [...prev, errorMsg];
+        persistMessages(updated);
+        return updated;
+      });
+    } finally {
+      setIsExecutingAction(false);
+    }
+  };
+
+  // 6. Batalkan Tindakan Absensi
+  const handleCancelAction = (messageId: string) => {
+    const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setMessages((prev) => {
+      const updated = prev.map((m) =>
+        m.id === messageId ? { ...m, statusState: 'cancelled' as const } : m
+      );
+
+      const cancelMsg: ChatMessage = {
+        id: `cancel-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        role: 'assistant',
+        type: 'text',
+        content: 'Tindakan input absensi dibatalkan. Tidak ada perubahan data yang disimpan.',
+        timestamp: timeString,
+      };
+
+      const finalMessages = [...updated, cancelMsg];
+      persistMessages(finalMessages);
+      return finalMessages;
+    });
+  };
+
+  // 7. Penanganan Pemilihan Siswa Ambigu (Disambiguation)
+  const handleSelectDisambiguation = (
+    messageId: string,
+    candidate: { student: any; className: string },
+    disambiguationData: NonNullable<ChatMessage['disambiguation']>
+  ) => {
+    const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const targetDate = disambiguationData.targetDate || todayStr;
+    const targetStatus = normalizeStatus(disambiguationData.targetStatus);
+
+    const pendingRec: PendingAttendanceRecord = {
+      studentId: candidate.student.id,
+      studentName: candidate.student.nama,
+      className: candidate.className,
+      classId: candidate.student.classId,
+      date: targetDate,
+      formattedDate: formatIndonesianDate(targetDate),
+      status: targetStatus,
+      checkInTime: disambiguationData.targetTime || (targetStatus === 'Hadir' ? '07:00' : null),
+      notes: disambiguationData.targetNotes || (targetStatus === 'Sakit' ? 'Sakit' : targetStatus === 'Izin' ? 'Izin' : null),
+    };
+
+    const newPendingAction: PendingAction = {
+      id: `act-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      type: 'create_attendance',
+      records: [pendingRec],
+      createdAt: Date.now(),
+    };
+
+    setMessages((prev) => {
+      const updated = prev.map((m) =>
+        m.id === messageId ? { ...m, statusState: 'confirmed' as const } : m
+      );
+
+      const confirmMsg: ChatMessage = {
+        id: `ai-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        role: 'assistant',
+        type: 'confirmation',
+        content: `Saya menemukan siswa: **${candidate.student.nama}** (${candidate.className}). Mohon konfirmasi penyimpanan absensi:`,
+        timestamp: timeString,
+        pendingAction: newPendingAction,
+        statusState: 'pending',
+      };
+
+      const finalMessages = [...updated, confirmMsg];
+      persistMessages(finalMessages);
+      return finalMessages;
+    });
+  };
+
+  // 8. Kirim Pesan & Dapatkan Jawaban AI atau Siapkan Konfirmasi Tindakan
   const handleSendMessage = async (customPrompt?: string) => {
     const textToSend = (customPrompt || inputText).trim();
     if (!textToSend || isTyping) return;
@@ -338,7 +555,10 @@ export const AIChatWidget: React.FC = () => {
     setIsTyping(true);
 
     try {
-      // Dapatkan token Supabase
+      // 1. Cek deteksi intent lokal tercepat untuk perintah absensi
+      const localIntent = detectLocalCommandIntent(textToSend, todayStr);
+
+      // 2. Dapatkan token Supabase
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       const token = sessionData?.session?.access_token;
 
@@ -346,7 +566,7 @@ export const AIChatWidget: React.FC = () => {
         throw new Error('Sesi autentikasi Anda tidak ditemukan. Harap muat ulang halaman.');
       }
 
-      // Bangun konteks absensi
+      // 3. Bangun konteks absensi
       const context = buildAIAttendanceContext({
         currentUser,
         activeWorkspace,
@@ -357,13 +577,13 @@ export const AIChatWidget: React.FC = () => {
         attendanceRecords,
       });
 
-      // Format dialog history (5 turn terakhir)
+      // Format dialog history (6 turn terakhir)
       const history = updatedMessages.slice(-6).map((m) => ({
         role: m.role,
         content: m.content,
       }));
 
-      // Panggil backend API Cloudflare AI
+      // 4. Panggil backend API AI
       const response = await fetch('/api/ai', {
         method: 'POST',
         headers: {
@@ -380,17 +600,116 @@ export const AIChatWidget: React.FC = () => {
       const result = await response.json();
 
       if (!response.ok || !result.ok) {
-        throw new Error(result.error || `Gagal menghubungi AI (Status ${response.status})`);
+        throw new Error(result.error || 'AI sedang tidak dapat digunakan. Silakan coba lagi.');
       }
 
-      const answerText = result.answer || 'Maaf, belum ada data yang dapat dirangkum.';
+      let assistantMsg: ChatMessage;
 
-      const assistantMsg: ChatMessage = {
-        id: `ai-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        role: 'assistant',
-        content: answerText,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
+      // 5. Evaluasi apakah AI atau parser lokal mendeteksi perintah tindakan (ACTION COMMAND)
+      const isActionRequest =
+        result.responseType === 'action_request' &&
+        Array.isArray(result.records) &&
+        result.records.length > 0;
+
+      const recordsToProcess = isActionRequest
+        ? result.records
+        : localIntent.isCommand && localIntent.records
+        ? localIntent.records
+        : null;
+
+      const actionTypeToProcess = (isActionRequest ? result.action : localIntent.action) || 'create_attendance';
+
+      if (recordsToProcess && recordsToProcess.length > 0) {
+        // AI / Intent mendeteksi perintah tindakan absensi!
+        // Validasi siswa, role scope, dan susun konfirmasi
+        const resolved = resolveAttendanceIntent(recordsToProcess, actionTypeToProcess, {
+          userScope,
+          allStudents: students,
+          classes,
+          attendanceRecords,
+          defaultDate: todayStr,
+        });
+
+        if (resolved.notFound) {
+          assistantMsg = {
+            id: `ai-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+            role: 'assistant',
+            type: 'error',
+            content: `Saya tidak menemukan siswa bernama "${resolved.notFound.queryName}" dalam data yang dapat Anda akses.`,
+            timestamp: timeString,
+          };
+        } else if (resolved.permissionDenied) {
+          assistantMsg = {
+            id: `ai-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+            role: 'assistant',
+            type: 'error',
+            content: `Anda tidak memiliki akses untuk mengubah absensi siswa ${resolved.permissionDenied.studentName} (${resolved.permissionDenied.className}).`,
+            timestamp: timeString,
+          };
+        } else if (resolved.ambiguous) {
+          const listText = resolved.ambiguous.candidates
+            .map((c, i) => `${i + 1}. ${c.student.nama} — ${c.className}`)
+            .join('\n');
+
+          assistantMsg = {
+            id: `ai-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+            role: 'assistant',
+            type: 'disambiguation',
+            content: `Saya menemukan beberapa siswa bernama **${resolved.ambiguous.queryName}**:\n${listText}\n\nSilakan pilih siswa yang dimaksud:`,
+            timestamp: timeString,
+            disambiguation: {
+              queryName: resolved.ambiguous.queryName,
+              candidates: resolved.ambiguous.candidates,
+              remainingIntent: resolved.ambiguous.remainingRecords,
+              targetStatus: recordsToProcess[0]?.status || 'Hadir',
+              targetDate: recordsToProcess[0]?.date || todayStr,
+              targetNotes: recordsToProcess[0]?.notes || undefined,
+              targetTime: recordsToProcess[0]?.check_in_time || undefined,
+            },
+          };
+        } else if (resolved.ready && resolved.pendingAction) {
+          // Lolos validasi penuh -> Tampilkan Card Konfirmasi Tindakan
+          const isMulti = resolved.pendingAction.records.length > 1;
+          const isUpdate = resolved.pendingAction.type === 'update_attendance';
+
+          let leadText = '';
+          if (isMulti) {
+            leadText = `Saya telah menyiapkan ${resolved.pendingAction.records.length} data absensi untuk dicatat. Mohon periksa dan konfirmasi rincian di bawah:`;
+          } else if (isUpdate) {
+            leadText = `Saya menemukan catatan absensi siswa yang akan diperbarui. Mohon konfirmasi perubahan berikut:`;
+          } else {
+            leadText = `Saya menemukan data siswa untuk dicatat. Mohon konfirmasi absensi berikut:`;
+          }
+
+          assistantMsg = {
+            id: `ai-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+            role: 'assistant',
+            type: 'confirmation',
+            content: leadText,
+            timestamp: timeString,
+            pendingAction: resolved.pendingAction,
+            statusState: 'pending',
+          };
+        } else {
+          assistantMsg = {
+            id: `ai-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+            role: 'assistant',
+            type: 'text',
+            content: resolved.error || result.answer || 'Mohon sebutkan nama siswa dan status absensi secara lengkap.',
+            timestamp: timeString,
+          };
+        }
+      } else {
+        // Pertanyaan / Informasi biasa (read-only query)
+        const answerText = result.answer || 'Maaf, data presensi untuk pertanyaan tersebut belum tersedia.';
+        assistantMsg = {
+          id: `ai-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          role: 'assistant',
+          type: 'text',
+          content: answerText,
+          timestamp: timeString,
+        };
+      }
 
       // Matikan status typing dan broadcast pesan AI
       if (channelRef.current) {
@@ -408,11 +727,22 @@ export const AIChatWidget: React.FC = () => {
 
       setIsTyping(false);
       persistMessages([...updatedMessages, assistantMsg]);
-      playNotificationSound();
+      playNotificationSound('message');
     } catch (err: any) {
       console.error('[AIChatWidget] error:', err);
       setIsTyping(false);
-      setErrorMessage(err.message || 'Gagal memproses jawaban.');
+      const safeErrorMsg = err.message || 'AI sedang tidak dapat digunakan. Silakan coba lagi.';
+      setErrorMessage(safeErrorMsg);
+
+      const errAssistantMsg: ChatMessage = {
+        id: `err-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        role: 'assistant',
+        type: 'error',
+        content: safeErrorMsg,
+        timestamp: timeString,
+      };
+
+      persistMessages([...updatedMessages, errAssistantMsg]);
 
       if (channelRef.current) {
         channelRef.current.send({
@@ -434,7 +764,8 @@ export const AIChatWidget: React.FC = () => {
     const freshGreeting: ChatMessage = {
       id: `welcome-${Date.now()}`,
       role: 'assistant',
-      content: `Riwayat obrolan telah dibersihkan. Ada lagi data presensi yang ingin Anda diskusikan?`,
+      type: 'text',
+      content: `Riwayat obrolan telah dibersihkan. Ada lagi data presensi yang ingin Anda diskusikan atau tindakan yang ingin dijalankan?`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
     persistMessages([freshGreeting]);
@@ -476,7 +807,7 @@ export const AIChatWidget: React.FC = () => {
           {!isOpen && (
             <span className="hidden sm:group-hover:flex absolute right-16 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xs text-white text-xs font-bold whitespace-nowrap shadow-lg border border-slate-700 items-center gap-1.5 transition-all">
               <Sparkles size={12} className="text-yellow-400" />
-              Tanya Kawa AI
+              Tanya / Input via Kawa AI
             </span>
           )}
         </button>
@@ -486,7 +817,7 @@ export const AIChatWidget: React.FC = () => {
       {isOpen && (
         <div
           id="window-ai-live-chat"
-          className="fixed bottom-22 sm:bottom-24 right-3 sm:right-6 z-40 w-[calc(100vw-24px)] sm:w-[420px] h-[580px] max-h-[80vh] bg-white rounded-3xl shadow-2xl border border-slate-200/90 flex flex-col overflow-hidden animate-in slide-in-from-bottom-5 zoom-in-95 duration-200"
+          className="fixed bottom-22 sm:bottom-24 right-3 sm:right-6 z-40 w-[calc(100vw-24px)] sm:w-[440px] h-[600px] max-h-[82vh] bg-white rounded-3xl shadow-2xl border border-slate-200/90 flex flex-col overflow-hidden animate-in slide-in-from-bottom-5 zoom-in-95 duration-200"
         >
           {/* HEADER JENDELA CHAT */}
           <div
@@ -514,7 +845,7 @@ export const AIChatWidget: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-1.5 text-[11px] text-blue-100/90 font-medium">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                  <span>Online • Supabase Realtime</span>
+                  <span>Online • Tool Calling Aktif</span>
                 </div>
               </div>
             </div>
@@ -569,11 +900,11 @@ export const AIChatWidget: React.FC = () => {
                 )}
               </div>
 
-              {/* Clear Chat */}
+              {/* Clear Chat Button */}
               <button
                 type="button"
                 onClick={handleClearChat}
-                title="Bersihkan riwayat obrolan"
+                title="Bersihkan riwayat percakapan"
                 className="p-1.5 rounded-lg text-white/80 hover:text-white hover:bg-white/15 transition-colors cursor-pointer"
               >
                 <RotateCcw size={16} />
@@ -594,10 +925,11 @@ export const AIChatWidget: React.FC = () => {
           {/* BADGE SCOPE KELAS / ROLE GURU */}
           <div className="bg-slate-50 border-b border-slate-200/80 px-4 py-2 flex items-center justify-between text-[11px] text-slate-500 shrink-0">
             <span className="truncate max-w-[260px] font-medium">
-              Guru: <strong className="text-slate-800">{currentUser.name || 'Pendidik'}</strong> ({currentUser.role})
+              Akses: <strong className="text-slate-800">{userScope.roleBadgeLabel}</strong>
+              {userScope.assignedWaliClassName ? ` • ${userScope.assignedWaliClassName}` : ''}
             </span>
             <span className="text-[10px] bg-slate-200/70 text-slate-700 px-2 py-0.5 rounded-md font-semibold shrink-0">
-              GLM-4.7-Flash
+              Presensi Otomatis
             </span>
           </div>
 
@@ -614,7 +946,7 @@ export const AIChatWidget: React.FC = () => {
                   {/* Avatar Asisten di Sebelah Kiri */}
                   {isAssistant && (
                     <div
-                      className={`w-7 h-7 rounded-xl ${activeTheme.avatarBg} flex items-center justify-center shrink-0 shadow-2xs text-yellow-300 border border-white`}
+                      className={`w-7 h-7 rounded-xl ${activeTheme.avatarBg} flex items-center justify-center shrink-0 shadow-2xs text-yellow-300 border border-white self-start mt-1`}
                     >
                       <Bot size={15} />
                     </div>
@@ -622,7 +954,7 @@ export const AIChatWidget: React.FC = () => {
 
                   {/* Bubble Pesan */}
                   <div
-                    className={`relative group max-w-[84%] sm:max-w-[78%] rounded-2xl p-3.5 text-xs sm:text-[13px] leading-relaxed transition-all shadow-2xs ${
+                    className={`relative group max-w-[88%] sm:max-w-[84%] rounded-2xl p-3.5 text-xs sm:text-[13px] leading-relaxed transition-all shadow-2xs ${
                       isAssistant
                         ? 'bg-white border border-slate-200/90 text-slate-800 rounded-bl-xs font-normal'
                         : `${activeTheme.userBubble} rounded-br-xs font-medium`
@@ -636,8 +968,242 @@ export const AIChatWidget: React.FC = () => {
                       <span>{msg.timestamp}</span>
                     </div>
 
-                    {/* Isi Pesan dengan Format Percakapan Singkat */}
+                    {/* Isi Pesan Teks Utama */}
                     <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+
+                    {/* 1. CARD DISAMBIGUASI (PILIHAN BEBERAPA SISWA DENGAN NAMA SAMA) */}
+                    {msg.type === 'disambiguation' && msg.disambiguation && (
+                      <div className="mt-3 bg-blue-50/90 border border-blue-200/90 rounded-2xl p-3 text-xs text-blue-900 shadow-2xs">
+                        <div className="flex items-center gap-1.5 font-bold mb-2 text-blue-950 text-[11px]">
+                          <HelpCircle size={14} className="text-blue-600" />
+                          <span>Pilih Siswa yang Dimaksud:</span>
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          {msg.disambiguation.candidates.map((c: any, idx: number) => (
+                            <button
+                              key={c.student?.id || idx}
+                              type="button"
+                              disabled={msg.statusState === 'confirmed'}
+                              onClick={() => handleSelectDisambiguation(msg.id, c, msg.disambiguation!)}
+                              className="text-left px-3 py-2 rounded-xl bg-white border border-blue-200 hover:border-blue-400 hover:bg-blue-50/60 text-slate-800 font-semibold text-xs shadow-2xs transition-all cursor-pointer flex items-center justify-between group/item disabled:opacity-60"
+                            >
+                              <span>
+                                {idx + 1}. <strong>{c.student.nama}</strong> — {c.className}
+                              </span>
+                              <span className="text-[10px] text-blue-600 group-hover/item:translate-x-0.5 transition-transform font-bold">
+                                Pilih →
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 2. CARD KONFIRMASI TINDAKAN (PREVIEW & KONFIRMASI PENGGUNA) */}
+                    {msg.type === 'confirmation' && msg.pendingAction && (
+                      <div className="mt-3 bg-gradient-to-b from-amber-50/90 to-amber-100/60 border border-amber-200/90 rounded-2xl p-3.5 shadow-2xs text-slate-800 animate-in fade-in zoom-in-98 duration-150">
+                        {/* Header Card Konfirmasi */}
+                        <div className="flex items-center justify-between pb-2 mb-2 border-b border-amber-200/80">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-5 h-5 rounded-md bg-amber-500/20 text-amber-800 flex items-center justify-center shrink-0">
+                              <ClipboardCheck size={13} />
+                            </div>
+                            <span className="font-extrabold text-xs text-amber-950">
+                              Konfirmasi Tindakan
+                            </span>
+                          </div>
+                          <span className="text-[10px] font-bold text-amber-800/80 uppercase tracking-wider">
+                            {msg.pendingAction.records.length > 1
+                              ? `${msg.pendingAction.records.length} Siswa`
+                              : '1 Siswa'}
+                          </span>
+                        </div>
+
+                        <p className="text-[11px] font-semibold text-amber-900/90 mb-2">
+                          Data yang akan diubah:
+                        </p>
+
+                        {/* Rincian: 1 Siswa */}
+                        {msg.pendingAction.records.length === 1 ? (
+                          <div className="bg-white/95 border border-amber-200/80 rounded-xl p-3 space-y-1.5 text-xs shadow-2xs">
+                            <div className="flex justify-between items-center">
+                              <span className="text-slate-500 font-medium text-[11px]">Siswa:</span>
+                              <span className="font-bold text-slate-900">
+                                {msg.pendingAction.records[0].studentName}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-slate-500 font-medium text-[11px]">Kelas:</span>
+                              <span className="font-semibold text-slate-700">
+                                {msg.pendingAction.records[0].className}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-slate-500 font-medium text-[11px]">Tanggal:</span>
+                              <span className="font-semibold text-slate-700">
+                                {msg.pendingAction.records[0].formattedDate}
+                              </span>
+                            </div>
+
+                            {/* Tampilan Perubahan (Jika Update) */}
+                            {msg.pendingAction.records[0].previousStatus ? (
+                              <div className="flex justify-between items-center pt-1 border-t border-slate-100">
+                                <span className="text-slate-500 font-medium text-[11px]">Sebelumnya:</span>
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
+                                  {msg.pendingAction.records[0].previousStatus}
+                                </span>
+                              </div>
+                            ) : null}
+
+                            <div className="flex justify-between items-center pt-1 border-t border-slate-100">
+                              <span className="text-slate-500 font-medium text-[11px]">
+                                {msg.pendingAction.records[0].previousStatus ? 'Menjadi:' : 'Status:'}
+                              </span>
+                              <span
+                                className={`px-2 py-0.5 rounded-md text-[11px] font-bold ${getStatusBadgeClass(
+                                  msg.pendingAction.records[0].status
+                                )}`}
+                              >
+                                {msg.pendingAction.records[0].status}
+                                {msg.pendingAction.records[0].notes?.toLowerCase().includes('terlambat')
+                                  ? ' (Terlambat)'
+                                  : ''}
+                              </span>
+                            </div>
+
+                            {msg.pendingAction.records[0].checkInTime && (
+                              <div className="flex justify-between items-center">
+                                <span className="text-slate-500 font-medium text-[11px]">Jam Masuk:</span>
+                                <span className="font-semibold text-slate-700">
+                                  {msg.pendingAction.records[0].checkInTime}
+                                </span>
+                              </div>
+                            )}
+
+                            {msg.pendingAction.records[0].notes &&
+                              !msg.pendingAction.records[0].notes.toLowerCase().includes('terlambat') && (
+                                <div className="flex justify-between items-center">
+                                  <span className="text-slate-500 font-medium text-[11px]">Catatan:</span>
+                                  <span className="font-medium text-slate-600 italic text-[11px]">
+                                    {msg.pendingAction.records[0].notes}
+                                  </span>
+                                </div>
+                              )}
+                          </div>
+                        ) : (
+                          /* Rincian: Banyak Siswa */
+                          <div className="space-y-2">
+                            <div className="bg-white/95 border border-amber-200/80 rounded-xl p-2.5 max-h-48 overflow-y-auto space-y-1.5 text-xs divide-y divide-slate-100 shadow-2xs">
+                              {msg.pendingAction.records.map((rec, idx) => (
+                                <div
+                                  key={idx}
+                                  className="pt-1.5 first:pt-0 flex items-center justify-between gap-2"
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <span className="font-bold text-slate-900 block truncate">
+                                      {rec.studentName}
+                                    </span>
+                                    <span className="text-[10px] text-slate-500">{rec.className}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    {rec.previousStatus && (
+                                      <>
+                                        <span className="text-[10px] text-slate-400 line-through">
+                                          {rec.previousStatus}
+                                        </span>
+                                        <span className="text-[10px] text-slate-400">→</span>
+                                      </>
+                                    )}
+                                    <span
+                                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${getStatusBadgeClass(
+                                        rec.status
+                                      )}`}
+                                    >
+                                      {rec.status}
+                                      {rec.notes?.toLowerCase().includes('terlambat') ? ' (Terlambat)' : ''}
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="flex justify-between items-center px-1 text-[11px] text-slate-600 font-medium">
+                              <span>Tanggal: <strong>{msg.pendingAction.records[0]?.formattedDate}</strong></span>
+                              <span>Total: <strong>{msg.pendingAction.records.length} Siswa</strong></span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Tombol Konfirmasi Pengguna */}
+                        {msg.statusState === 'pending' || !msg.statusState ? (
+                          <div className="flex items-center gap-2 mt-3 pt-2 border-t border-amber-200/60">
+                            <button
+                              type="button"
+                              onClick={() => handleCancelAction(msg.id)}
+                              className="flex-1 py-2 px-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                            >
+                              Batalkan
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleExecuteAction(msg.id, msg.pendingAction!)}
+                              disabled={isExecutingAction}
+                              className={`flex-1 py-2 px-3 rounded-xl ${activeTheme.primaryBtn} text-xs font-bold shadow-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5`}
+                            >
+                              {isExecutingAction ? (
+                                <>
+                                  <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                  <span>Menyimpan...</span>
+                                </>
+                              ) : (
+                                <span>
+                                  {msg.pendingAction.records.length > 1
+                                    ? 'Simpan Semua'
+                                    : msg.pendingAction.type === 'update_attendance'
+                                    ? 'Simpan Perubahan'
+                                    : 'Simpan Absensi'}
+                                </span>
+                              )}
+                            </button>
+                          </div>
+                        ) : msg.statusState === 'confirmed' ? (
+                          <div className="mt-2.5 py-1.5 px-3 rounded-xl bg-emerald-100/90 text-emerald-800 text-[11px] font-bold flex items-center gap-1.5">
+                            <Check size={14} className="text-emerald-700" />
+                            <span>Tindakan telah dikonfirmasi dan disimpan</span>
+                          </div>
+                        ) : msg.statusState === 'cancelled' ? (
+                          <div className="mt-2.5 py-1.5 px-3 rounded-xl bg-slate-200/80 text-slate-600 text-[11px] font-semibold flex items-center gap-1.5">
+                            <X size={14} className="text-slate-500" />
+                            <span>Tindakan dibatalkan oleh pengguna</span>
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
+
+                    {/* 3. CARD HASIL (RESULT CARD) */}
+                    {msg.type === 'result' && msg.actionResult && (
+                      <div className="mt-2.5 bg-emerald-50/95 border border-emerald-200 rounded-2xl p-3 text-xs text-emerald-950 shadow-2xs animate-in fade-in">
+                        <div className="flex items-center gap-1.5 font-bold mb-1.5 text-emerald-800">
+                          <CheckCircle2 size={16} className="text-emerald-600" />
+                          <span>Berhasil Menyimpan Absensi</span>
+                        </div>
+                        <ul className="space-y-1 text-[11px] pl-1 divide-y divide-emerald-100/70">
+                          {msg.actionResult.records.map((r, i) => (
+                            <li key={i} className="flex items-center justify-between pt-1 first:pt-0">
+                              <span>
+                                • <strong>{r.studentName}</strong> ({r.className})
+                              </span>
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${getStatusBadgeClass(r.status)}`}>
+                                {r.status}
+                                {r.notes?.toLowerCase().includes('terlambat') ? ' (Terlambat)' : ''}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                        <p className="text-[10px] text-emerald-700 mt-2 pt-1.5 border-t border-emerald-200/60 font-semibold">
+                          ✓ Terverifikasi di database sekolah
+                        </p>
+                      </div>
+                    )}
 
                     {/* Tombol Copy untuk Pesan Asisten */}
                     {isAssistant && (
@@ -646,7 +1212,7 @@ export const AIChatWidget: React.FC = () => {
                           type="button"
                           onClick={() => handleCopyMessage(msg.id, msg.content)}
                           className="inline-flex items-center gap-1 text-[10px] text-slate-400 hover:text-indigo-600 transition-colors cursor-pointer"
-                          title="Salin jawaban"
+                          title="Salin pesan"
                         >
                           {copiedMsgId === msg.id ? (
                             <>
@@ -666,7 +1232,7 @@ export const AIChatWidget: React.FC = () => {
 
                   {/* Avatar Pengguna di Sebelah Kanan */}
                   {!isAssistant && (
-                    <div className="w-7 h-7 rounded-xl bg-slate-200 text-slate-700 flex items-center justify-center shrink-0 shadow-2xs font-bold text-[11px] border border-white">
+                    <div className="w-7 h-7 rounded-xl bg-slate-200 text-slate-700 flex items-center justify-center shrink-0 shadow-2xs font-bold text-[11px] border border-white self-start mt-1">
                       <User size={14} />
                     </div>
                   )}
@@ -687,7 +1253,7 @@ export const AIChatWidget: React.FC = () => {
                 {/* Bubble Typing dengan 3 Titik Animasi */}
                 <div className="bg-white border border-slate-200/90 rounded-2xl rounded-bl-xs px-3.5 py-2.5 shadow-2xs flex items-center gap-2 text-slate-500">
                   <span className="text-[11px] font-semibold text-slate-600">
-                    Kawa AI sedang mengetik
+                    Kawa AI sedang memproses
                   </span>
                   <div className="flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-bounce [animation-delay:-0.3s]" />
@@ -703,7 +1269,7 @@ export const AIChatWidget: React.FC = () => {
               <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2 animate-in fade-in">
                 <AlertCircle size={15} className="text-rose-600 shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <span className="font-bold block">Gagal Merespon</span>
+                  <span className="font-bold block">Pemberitahuan</span>
                   <span className="text-[11px]">{errorMessage}</span>
                 </div>
                 <button
@@ -719,7 +1285,7 @@ export const AIChatWidget: React.FC = () => {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* CHIP REKOMENDASI PERTANYAAN (QUICK SUGGESTIONS) */}
+          {/* CHIP REKOMENDASI PERTANYAAN & TINDAKAN (QUICK SUGGESTIONS) */}
           <div className="px-3 py-2 bg-white border-t border-slate-100 flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0">
             {DEFAULT_SUGGESTIONS.map((sug, idx) => (
               <button
@@ -752,7 +1318,7 @@ export const AIChatWidget: React.FC = () => {
                   placeholder={
                     isListening
                       ? 'Mendengarkan ucapan Anda...'
-                      : 'Ketik pertanyaan absensi...'
+                      : 'Ketik perintah atau pertanyaan absensi...'
                   }
                   disabled={isTyping}
                   className={`w-full pl-3.5 pr-9 py-2.5 rounded-2xl border border-slate-200 text-xs sm:text-[13px] text-slate-800 bg-white outline-none transition-all ${activeTheme.activeRing} focus:ring-2 disabled:opacity-50 min-h-[42px]`}
@@ -789,14 +1355,14 @@ export const AIChatWidget: React.FC = () => {
                 disabled={isTyping || !inputText.trim()}
                 className={`p-2.5 rounded-2xl ${activeTheme.primaryBtn} transition-all shadow-sm flex items-center justify-center min-h-[42px] min-w-[42px] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed`}
                 id="btn-send-live-ai-chat"
-                title="Kirim pesan (Enter)"
+                title="Kirim perintah (Enter)"
               >
                 <Send size={16} />
               </button>
             </form>
             <div className="mt-1.5 flex items-center justify-between text-[10px] text-slate-400 px-1">
               <span>Tekan Enter untuk mengirim</span>
-              <span>Cloudflare AI & Supabase Realtime</span>
+              <span>Kawa AI Function Calling</span>
             </div>
           </div>
         </div>

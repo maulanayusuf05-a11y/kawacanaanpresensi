@@ -213,6 +213,11 @@ export function buildAIAttendanceContext(options: AIContextOptions): string {
     }
   });
 
+  // Hitung siswa yang belum diabsen hari ini
+  const recordedStudentIds = new Set(todayRecords.map((r) => r.studentId));
+  const unrecordedStudents = scopedStudents.filter((s) => !recordedStudentIds.has(s.id));
+  const unrecordedList = unrecordedStudents.map((s) => `${s.nama} (${s.className || 'Kelas'})`);
+
   // 6. Temuan Khusus (Paling sering terlambat & Kehadiran terendah)
   const allStatsList = Object.values(studentStats);
   const mostLateStudents = allStatsList
@@ -251,6 +256,11 @@ Rata-rata Persentase Kehadiran Keseluruhan: ${overallPercentage}%
 - Alfa: ${todayAlfaCount} siswa
 - Siswa Tidak Hadir Hari Ini: ${todayAbsentList.length > 0 ? todayAbsentList.join('; ') : 'Semua hadir atau belum ada laporan'}
 - Siswa Terlambat Hari Ini: ${todayLateList.length > 0 ? todayLateList.join('; ') : 'Tidak ada keterlambatan'}
+- Siswa Belum Memiliki Absensi Hari Ini (${unrecordedStudents.length} siswa): ${
+  unrecordedList.length > 0
+    ? unrecordedList.join(', ')
+    : 'Semua siswa dalam pengawasan Anda sudah memiliki catatan absensi hari ini.'
+}
 
 [SISWA PALING SERING TERLAMBAT]
 ${
