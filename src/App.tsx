@@ -22,6 +22,8 @@ import { AppAuthLoadingSkeleton } from './components/DashboardSkeleton';
 import { BookLoadingModal } from './components/BookLoader';
 import { AIChatWidget } from './components/AIChatWidget';
 import { UpgradePromptModal } from './components/UpgradePromptModal';
+import { TeacherUpgradeModal } from './components/TeacherUpgradeModal';
+import { SchoolUpgradeModal } from './components/SchoolUpgradeModal';
 import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
 import type { ActiveView, UserRole } from './types';
 
@@ -145,6 +147,10 @@ const MainAppContent: React.FC = () => {
     switchingWorkspaceMessage,
     upgradeModal,
     closeUpgradeModal,
+    isTeacherUpgradeOpen,
+    setIsTeacherUpgradeOpen,
+    isSchoolUpgradeOpen,
+    setIsSchoolUpgradeOpen,
   } = useApp();
   const [showLanding, setShowLanding] = React.useState(() => {
     if (typeof window === 'undefined') return true;
@@ -344,7 +350,7 @@ const MainAppContent: React.FC = () => {
       {/* Live AI Attendance Assistant Chat Widget */}
       <AIChatWidget />
 
-      {/* Universal Upgrade Prompt Modal with Friendly Wording */}
+      {/* Universal Upgrade Prompt Modal with Friendly Wording & Dual Onboarding Options */}
       <UpgradePromptModal
         isOpen={upgradeModal.isOpen}
         onClose={closeUpgradeModal}
@@ -352,6 +358,20 @@ const MainAppContent: React.FC = () => {
         customTitle={upgradeModal.customTitle}
         customMessage={upgradeModal.customMessage}
         targetPackage={upgradeModal.targetPackage}
+        onOpenTeacherUpgrade={() => setIsTeacherUpgradeOpen(true)}
+        onOpenSchoolUpgrade={() => setIsSchoolUpgradeOpen(true)}
+      />
+
+      {/* Onboarding Upgrade Paket Guru (Ruang Kerja Individu Pro) */}
+      <TeacherUpgradeModal
+        isOpen={isTeacherUpgradeOpen}
+        onClose={() => setIsTeacherUpgradeOpen(false)}
+      />
+
+      {/* Onboarding Upgrade Paket Sekolah (Ruang Kerja Sekolah Terpadu) */}
+      <SchoolUpgradeModal
+        isOpen={isSchoolUpgradeOpen}
+        onClose={() => setIsSchoolUpgradeOpen(false)}
       />
 
       {/* Global Toast Notifications */}

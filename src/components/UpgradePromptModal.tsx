@@ -6,9 +6,11 @@ import {
   X,
   ArrowRight,
   School,
-  UserCheck,
+  GraduationCap,
   MessageCircle,
-  ShieldAlert,
+  ShieldCheck,
+  ChevronRight,
+  Zap,
 } from 'lucide-react';
 import { SYSTEM_FEATURES } from '../utils/featureRegistry';
 
@@ -19,6 +21,8 @@ export interface UpgradePromptModalProps {
   customTitle?: string;
   customMessage?: string;
   targetPackage?: 'guru_pro' | 'sekolah_pro';
+  onOpenTeacherUpgrade?: () => void;
+  onOpenSchoolUpgrade?: () => void;
 }
 
 export const UpgradePromptModal: React.FC<UpgradePromptModalProps> = ({
@@ -28,6 +32,8 @@ export const UpgradePromptModal: React.FC<UpgradePromptModalProps> = ({
   customTitle,
   customMessage,
   targetPackage = 'guru_pro',
+  onOpenTeacherUpgrade,
+  onOpenSchoolUpgrade,
 }) => {
   if (!isOpen) return null;
 
@@ -35,36 +41,39 @@ export const UpgradePromptModal: React.FC<UpgradePromptModalProps> = ({
     ? SYSTEM_FEATURES.find((f) => f.id === featureId)
     : null;
 
-  const featureName = customTitle || featureInfo?.name || 'Fitur Ekstra Kawacanaan';
+  const featureName = customTitle || featureInfo?.name || 'Fitur Unggulan Kawacanaan';
   const featureCategory = featureInfo?.category || 'Fasilitas Layanan';
-  const featureDesc = customMessage || featureInfo?.description || 'Fitur ini dirancang khusus untuk meningkatkan kemudahan administrasi pembelajaran Anda.';
+  const featureDesc =
+    customMessage ||
+    featureInfo?.description ||
+    'Fitur ini dirancang khusus untuk mempermudah administrasi dan kelancaran presensi Anda.';
 
-  const isSchoolTarget = targetPackage === 'sekolah_pro' || [
-    'data_guru',
-    'data_sekolah',
-    'kop_surat',
-    'stempel_digital',
-    'laporan_kepsek',
-    'portal_siswa',
-    'izin_online',
-    'generator_akun',
-    'manajemen_multiuser',
-  ].includes(featureId || '');
+  const isSchoolTarget =
+    targetPackage === 'sekolah_pro' ||
+    [
+      'data_guru',
+      'data_sekolah',
+      'kop_surat',
+      'stempel_digital',
+      'laporan_kepsek',
+      'portal_siswa',
+      'izin_online',
+      'generator_akun',
+      'manajemen_multiuser',
+    ].includes(featureId || '');
 
   const whatsappMessage = encodeURIComponent(
-    `Halo Tim Kawacanaan, saya ingin berkonsultasi mengenai upgrade ${
-      isSchoolTarget ? 'Paket Sekolah' : 'Paket Guru'
-    } untuk mengakses fitur "${featureName}". Mohon informasinya.`
+    `Halo Tim Pendamping Kawacanaan, saya sedang menggunakan Paket Gratis (Ruang Kerja Individu) dan ingin berkonsultasi mengenai upgrade untuk mengakses fitur "${featureName}". Mohon informasinya.`
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
-      <div 
-        className="bg-white w-full max-w-lg rounded-3xl shadow-2xl border border-slate-100 overflow-hidden text-left animate-in zoom-in-95 duration-200"
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200 overflow-y-auto">
+      <div
+        className="bg-white w-full max-w-xl rounded-3xl shadow-2xl border border-slate-100 overflow-hidden text-left animate-in zoom-in-95 duration-200 my-auto"
         id="modal-upgrade-prompt"
       >
-        {/* Header Visual */}
-        <div className="relative bg-gradient-to-br from-blue-600 via-indigo-600 to-sky-600 p-6 text-white">
+        {/* Header Visual Hangat & Ramah */}
+        <div className="relative bg-gradient-to-r from-blue-700 via-indigo-700 to-sky-700 p-5 sm:p-6 text-white">
           <button
             type="button"
             onClick={onClose}
@@ -74,93 +83,143 @@ export const UpgradePromptModal: React.FC<UpgradePromptModalProps> = ({
             <X size={18} />
           </button>
 
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-white text-[11px] font-bold tracking-wide uppercase mb-3">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-white text-[11px] font-bold tracking-wide uppercase mb-2.5">
             <Sparkles size={12} className="text-amber-300" />
-            <span>Tingkatkan Pengalaman Anda</span>
+            <span>Pemberitahuan Hak Akses Layanan</span>
           </div>
 
-          <h3 className="text-xl font-black leading-snug">
+          <h3 className="text-lg sm:text-xl font-black leading-snug">
             {featureName}
           </h3>
           <p className="text-xs text-blue-100 mt-1">
-            Kategori: {featureCategory}
+            Kategori: <span className="font-semibold">{featureCategory}</span>
           </p>
         </div>
 
-        {/* Content Body */}
-        <div className="p-6 space-y-4">
+        {/* Content Body dengan Kalimat Ramah & Solutif */}
+        <div className="p-5 sm:p-6 space-y-4 sm:space-y-5">
+          {/* Apresiasi & Penjelasan Batas Akses Ramah */}
           <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 flex items-start gap-3">
-            <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 mt-0.5">
+            <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 mt-0.5">
               <Lock size={18} />
             </div>
             <div className="text-xs text-slate-600 leading-relaxed">
-              <p className="font-semibold text-slate-800 mb-0.5">
-                Pemberitahuan Hak Akses Paket
+              <p className="font-bold text-slate-800 text-xs mb-1">
+                Terima Kasih atas Dedikasi Bapak/Ibu Pendidik!
               </p>
               <p>
                 Saat ini akun Anda berada pada <strong>Paket Gratis (Ruang Kerja Individu)</strong>. {featureDesc}
               </p>
+              <p className="text-[11px] text-emerald-700 font-semibold mt-1.5 flex items-center gap-1">
+                <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
+                <span>Seluruh data kelas dan catatan presensi yang telah Anda buat tetap aman tersimpan.</span>
+              </p>
             </div>
           </div>
 
-          {/* Rekomendasi Solusi yang Ramah */}
-          <div className="space-y-2">
+          {/* Opsi Jalur Onboarding Upgrade */}
+          <div className="space-y-3">
             <p className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-              {isSchoolTarget ? 'Dapatkan Akses Penuh via Paket Sekolah:' : 'Kelebihan Mengaktifkan Paket Guru:'}
+              Pilih Jalur Onboarding Upgrade Sesuai Kebutuhan Anda:
             </p>
 
-            {isSchoolTarget ? (
-              <div className="bg-indigo-50/70 border border-indigo-100 rounded-2xl p-3.5 text-xs text-indigo-950 space-y-2">
-                <div className="flex items-center gap-2">
-                  <School size={16} className="text-indigo-600 shrink-0" />
-                  <span className="font-bold">Paket Ruang Kerja Sekolah Terpadu</span>
+            <div className="grid grid-cols-1 gap-3">
+              {/* OPSI 1: ONBOARDING PAKET GURU (RUANG KERJA INDIVIDU) */}
+              <div
+                onClick={() => {
+                  onClose();
+                  if (onOpenTeacherUpgrade) onOpenTeacherUpgrade();
+                }}
+                className={`group p-4 rounded-2xl border transition-all duration-200 cursor-pointer flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
+                  !isSchoolTarget
+                    ? 'border-emerald-500 bg-emerald-50/60 ring-2 ring-emerald-500/20 shadow-xs'
+                    : 'border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/30 bg-white'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                    <GraduationCap size={20} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black text-slate-800">
+                        Paket Guru (Ruang Kerja Individu Pro)
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                        Rp 29.000/bln
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                      Kelola hingga 5 rombel, presensi per jam mata pelajaran, cetak format resmi PDF A4 siap supervisi & SPJ, kapasitas 150 siswa.
+                    </p>
+                  </div>
                 </div>
-                <ul className="space-y-1.5 text-[11px] text-indigo-900/90 pl-1">
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
-                    <span>Mencakup seluruh kelas (1 s/d 6 paralel) dalam 1 sekolah.</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
-                    <span>Laporan otomatis ber-Kop Dinas, stempel sekolah & pengesahan Kepsek.</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
-                    <span>Portal siswa mandiri & pengajuan surat izin online orang tua.</span>
-                  </li>
-                </ul>
-              </div>
-            ) : (
-              <div className="bg-emerald-50/70 border border-emerald-100 rounded-2xl p-3.5 text-xs text-emerald-950 space-y-2">
-                <div className="flex items-center gap-2">
-                  <UserCheck size={16} className="text-emerald-600 shrink-0" />
-                  <span className="font-bold">Paket Guru (Ruang Kerja Mandiri Profesional)</span>
-                </div>
-                <ul className="space-y-1.5 text-[11px] text-emerald-900/90 pl-1">
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
-                    <span>Dukungan penuh Guru Mapel untuk mengajar di banyak kelas.</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
-                    <span>Cetak laporan PDF A4 rapi siap serah terima saat supervisi.</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
-                    <span>Kustomisasi Hari Efektif Belajar (HEB) dan catatan kehadiran lengkap.</span>
-                  </li>
-                </ul>
-              </div>
-            )}
-          </div>
 
-          <p className="text-[11px] text-slate-500 italic text-center">
-            Pekerjaan dan data presensi yang sudah Anda buat di kelas saat ini akan tetap aman dan tidak akan hilang.
-          </p>
+                <button
+                  type="button"
+                  className="w-full sm:w-auto shrink-0 inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition cursor-pointer shadow-2xs group-hover:bg-emerald-700"
+                >
+                  <span>Onboarding Paket Guru</span>
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+
+              {/* OPSI 2: ONBOARDING PAKET SEKOLAH (RUANG KERJA SEKOLAH) */}
+              <div
+                onClick={() => {
+                  onClose();
+                  if (onOpenSchoolUpgrade) onOpenSchoolUpgrade();
+                }}
+                className={`group p-4 rounded-2xl border transition-all duration-200 cursor-pointer flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
+                  isSchoolTarget
+                    ? 'border-blue-500 bg-blue-50/60 ring-2 ring-blue-500/20 shadow-xs'
+                    : 'border-slate-200 hover:border-blue-300 hover:bg-blue-50/30 bg-white'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                    <School size={20} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black text-slate-800">
+                        Paket Sekolah (Ruang Kerja Sekolah Terpadu)
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-bold">
+                        Uji Coba 14 Hari Gratis
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                      Menghubungkan seluruh rombel kelas 1-6 paralel, akun Kepala Sekolah & dewan guru, Kop Surat Dinas & Stempel Digital otomatis, serta Portal Siswa.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="w-full sm:w-auto shrink-0 inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black transition cursor-pointer shadow-2xs group-hover:bg-blue-700"
+                >
+                  <span>Onboarding Paket Sekolah</span>
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Footer Actions */}
-        <div className="p-4 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-end gap-2.5">
+        <div className="p-4 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-2.5">
+          <a
+            href={`https://wa.me/6281234567890?text=${whatsappMessage}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 text-xs text-slate-500 hover:text-blue-700 font-bold transition py-1"
+            id="btn-whatsapp-upgrade-consult"
+          >
+            <MessageCircle size={14} className="text-emerald-600" />
+            <span>Butuh Konsultasi? Hubungi WhatsApp</span>
+          </a>
+
           <button
             type="button"
             onClick={onClose}
@@ -169,18 +228,6 @@ export const UpgradePromptModal: React.FC<UpgradePromptModalProps> = ({
           >
             Nanti Saja
           </button>
-          
-          <a
-            href={`https://wa.me/6281234567890?text=${whatsappMessage}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-xs font-black text-white transition shadow-sm active:scale-95 cursor-pointer"
-            id="btn-whatsapp-upgrade-consult"
-          >
-            <MessageCircle size={15} />
-            <span>Konsultasi Upgrade Sekarang</span>
-            <ArrowRight size={14} />
-          </a>
         </div>
       </div>
     </div>

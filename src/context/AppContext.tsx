@@ -211,6 +211,12 @@ interface AppContextType {
     targetPackage?: 'guru_pro' | 'sekolah_pro';
   }) => void;
   closeUpgradeModal: () => void;
+  isTeacherUpgradeOpen: boolean;
+  setIsTeacherUpgradeOpen: (open: boolean) => void;
+  isSchoolUpgradeOpen: boolean;
+  setIsSchoolUpgradeOpen: (open: boolean) => void;
+  upgradeToTeacherPro: (billingCycle: 'monthly' | 'yearly') => Promise<boolean>;
+  upgradeToSchoolWorkspace: (schoolData: any) => Promise<{ success: boolean; schoolCode: string }>;
   requestFeatureAccess: (
     featureId: string,
     customTitle?: string,
@@ -756,6 +762,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const closeUpgradeModal = () => {
     setUpgradeModal((prev) => ({ ...prev, isOpen: false }));
   };
+
+  const [isTeacherUpgradeOpen, setIsTeacherUpgradeOpen] = useState(false);
+  const [isSchoolUpgradeOpen, setIsSchoolUpgradeOpen] = useState(false);
 
   // Workspace & Onboarding State
   const [userWorkspaces, setUserWorkspaces] = useState<WorkspaceMembership[]>(
@@ -7011,12 +7020,132 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     return true;
   };
 
+  const upgradeToTeacherPro = async (
+    billingCycle: 'monthly' | 'yearly'
+  ): Promise<boolean> => {
+    try {
+      const days = billingCycle === 'yearly' ? 365 : 30;
+      const expiresAt = new Date(Date.now() + days * 86400000).toISOString();
+
+      setActiveWorkspace((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          subscriptionPlan: 'pro',
+          subscription: {
+            ...(prev.subscription || {}),
+            plan: 'pro',
+            status: 'active',
+            maxClasses: 5,
+            maxStudents: 150,
+            expiresAt,
+          } as any,
+        };
+      });
+
+      setUserWorkspaces((prev) =>
+        prev.map((ws) => {
+          if (ws.workspaceType === 'personal' || ws.workspaceType === 'individu') {
+            return {
+              ...ws,
+              subscriptionPlan: 'pro',
+              subscription: {
+                ...(ws.subscription || {}),
+                plan: 'pro',
+                status: 'active',
+                maxClasses: 5,
+                maxStudents: 150,
+                expiresAt,
+              } as any,
+            };
+          }
+          return ws;
+        })
+      );
+
+      setCurrentUser((prev) => (prev ? { ...prev, subscriptionPlan: 'pro' } : prev));
+
+      try {
+        const cached = getCachedUserSession();
+        if (cached) {
+          localStorage.setItem(
+            CACHE_USER_SESSION_KEY,
+            JSON.stringify({ ...cached, subscriptionPlan: 'pro' })
+          );
+        }
+      } catch (_) {}
+
+      try {
+        if (currentUser?.id) {
+          await supabase
+            .from('profiles')
+            .update({ subscription_plan: 'pro' })
+            .eq('id', currentUser.id);
+        }
+      } catch (_) {}
+
+      showToast('Ruang Kerja Individu Anda berhasil ditingkatkan ke Paket Guru Pro!', 'success');
+      return true;
+    } catch (e: any) {
+      showToast(e?.message || 'Gagal mengaktifkan Paket Guru.', 'error');
+      return false;
+    }
+  };
+
+  const upgradeToSchoolWorkspace = async (
+    schoolData: any
+  ): Promise<{ success: boolean; schoolCode: string }> => {
+    try {
+      const schoolCode =
+        'SCH-' + Math.floor(100000 + Math.random() * 900000).toString();
+      const newWsId = `school-ws-${Date.now()}`;
+      const newSchoolWs: WorkspaceMembership = {
+        id: `mem-${Date.now()}`,
+        userId: currentUser?.id || 'usr-default',
+        workspaceId: newWsId,
+        workspaceName: schoolData.schoolName,
+        workspaceType: 'school',
+        role: 'ADMIN',
+        roleLabel: 'Administrator Sekolah',
+        npsn: schoolData.npsn,
+        workspaceCode: schoolCode,
+        subscriptionPlan: 'school',
+        subscription: {
+          plan: 'school',
+          status: 'active',
+          maxClasses: 8,
+          maxStudents: 256,
+          maxTeachers: 9,
+          expiresAt: new Date(Date.now() + 14 * 86400000).toISOString(),
+        } as any,
+      };
+
+      setUserWorkspaces((prev) => [newSchoolWs, ...prev]);
+      await selectWorkspace(newSchoolWs);
+
+      showToast(
+        `Ruang Kerja Sekolah "${schoolData.schoolName}" berhasil diaktifkan!`,
+        'success'
+      );
+      return { success: true, schoolCode };
+    } catch (e: any) {
+      showToast(e?.message || 'Gagal membentuk ruang kerja sekolah.', 'error');
+      throw e;
+    }
+  };
+
   return (
     <AppContext.Provider
       value={{
         upgradeModal,
         openUpgradeModal,
         closeUpgradeModal,
+        isTeacherUpgradeOpen,
+        setIsTeacherUpgradeOpen,
+        isSchoolUpgradeOpen,
+        setIsSchoolUpgradeOpen,
+        upgradeToTeacherPro,
+        upgradeToSchoolWorkspace,
         requestFeatureAccess,
         isAuthChecking,
         isDataLoading,
