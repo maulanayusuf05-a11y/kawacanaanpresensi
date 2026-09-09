@@ -31,6 +31,7 @@ export const LaporanView: React.FC = () => {
     subjects,
     teachers,
     currentUser,
+    requestFeatureAccess,
   } = useApp();
 
   const userScope = useMemo(
@@ -437,10 +438,28 @@ export const LaporanView: React.FC = () => {
 
   const handlePrintSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (
+      !requestFeatureAccess(
+        'cetak_pdf',
+        'Cetak Dokumen PDF Resmi A4',
+        'Format cetak PDF resmi A4 siap SPJ lengkap dengan lembar tanda tangan tersedia di Paket Guru dan Paket Sekolah. Pada Paket Gratis, Anda tetap dapat mengekspor rekapitulasi data dalam format Spreadsheet (Excel).'
+      )
+    ) {
+      return;
+    }
     setIsPrintModalOpen(true);
   };
 
   const handleKepsekPrint = () => {
+    if (
+      !requestFeatureAccess(
+        'laporan_kepsek',
+        'Laporan Supervisi Kepala Sekolah',
+        'Laporan supervisi komparasi kehadiran seluruh rombel sekolah tersedia khusus pada Paket Sekolah.'
+      )
+    ) {
+      return;
+    }
     setIsPrintModalOpen(true);
   };
 

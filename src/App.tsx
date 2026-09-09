@@ -21,6 +21,7 @@ import { WorkspaceSelectorView } from './views/WorkspaceSelectorView';
 import { AppAuthLoadingSkeleton } from './components/DashboardSkeleton';
 import { BookLoadingModal } from './components/BookLoader';
 import { AIChatWidget } from './components/AIChatWidget';
+import { UpgradePromptModal } from './components/UpgradePromptModal';
 import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
 import type { ActiveView, UserRole } from './types';
 
@@ -141,7 +142,9 @@ const MainAppContent: React.FC = () => {
     isSwitchingWorkspace,
     switchingWorkspaceProgress,
     switchingWorkspaceTitle,
-    switchingWorkspaceMessage
+    switchingWorkspaceMessage,
+    upgradeModal,
+    closeUpgradeModal,
   } = useApp();
   const [showLanding, setShowLanding] = React.useState(() => {
     if (typeof window === 'undefined') return true;
@@ -340,6 +343,16 @@ const MainAppContent: React.FC = () => {
 
       {/* Live AI Attendance Assistant Chat Widget */}
       <AIChatWidget />
+
+      {/* Universal Upgrade Prompt Modal with Friendly Wording */}
+      <UpgradePromptModal
+        isOpen={upgradeModal.isOpen}
+        onClose={closeUpgradeModal}
+        featureId={upgradeModal.featureId}
+        customTitle={upgradeModal.customTitle}
+        customMessage={upgradeModal.customMessage}
+        targetPackage={upgradeModal.targetPackage}
+      />
 
       {/* Global Toast Notifications */}
       <ToastContainer />

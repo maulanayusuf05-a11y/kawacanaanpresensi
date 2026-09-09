@@ -42,6 +42,7 @@ export const AbsensiView: React.FC = () => {
     setActiveView,
     showToast,
     attendanceRecords,
+    requestFeatureAccess,
   } = useApp();
 
   const userScope = useMemo(
@@ -614,7 +615,19 @@ export const AbsensiView: React.FC = () => {
                 {/* Guru Mapel Button */}
                 <button
                   type="button"
-                  onClick={() => !userScope.isGuruMapel && setAttendanceMode('SUBJECT')}
+                  onClick={() => {
+                    if (userScope.isGuruMapel) return;
+                    if (
+                      !requestFeatureAccess(
+                        'presensi_mapel',
+                        'Presensi Guru Mata Pelajaran',
+                        'Pencatatan presensi per jam pelajaran dan lintas kelas binaan merupakan fasilitas pada Paket Guru dan Paket Sekolah.'
+                      )
+                    ) {
+                      return;
+                    }
+                    setAttendanceMode('SUBJECT');
+                  }}
                   id="btn-mode-subject"
                   className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-black transition-all ${
                     attendanceMode === 'SUBJECT'

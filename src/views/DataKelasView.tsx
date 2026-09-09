@@ -78,6 +78,7 @@ export const DataKelasView: React.FC = () => {
     assignTeacherClasses,
     showToast,
     activeWorkspace,
+    requestFeatureAccess,
   } = useApp();
 
   const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN';
@@ -357,9 +358,16 @@ export const DataKelasView: React.FC = () => {
   }, [classStudents, studentSearchTerm]);
 
   const openAdd = () => {
-    if (isPersonalWorkspace && isWaliKelas && classes.length >= 1) {
-      showToast('Ruang Kerja Individu (Wali Kelas) dibatasi maksimal 1 rombel/kelas. Anda dapat mengedit data kelas binaan yang sudah ada.', 'warning');
-      return;
+    if (isPersonalWorkspace && classes.length >= 1) {
+      if (
+        !requestFeatureAccess(
+          'data_kelas',
+          'Kelola Multi-Rombel Kelas',
+          'Paket Gratis didesain khusus untuk mengelola 1 rombel binaan. Untuk mengelola beberapa kelas paralel atau lintas tingkat, silakan tingkatkan ke Paket Guru atau Paket Sekolah.'
+        )
+      ) {
+        return;
+      }
     }
     setEditing(null);
     setName('');

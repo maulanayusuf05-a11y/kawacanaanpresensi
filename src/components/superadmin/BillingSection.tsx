@@ -20,14 +20,17 @@ import {
   Filter,
   Check,
   X,
-  RotateCcw
+  RotateCcw,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { getTenantLifecycleInfo } from '../../utils/tenantLifecycle';
+import { PackageFeatureMatrixTab } from './PackageFeatureMatrixTab';
 
-export type BillingSubTab = 'ringkasan' | 'langganan' | 'pembayaran' | 'akan-habis' | 'tidak-aktif';
+export type BillingSubTab = 'ringkasan' | 'matriks-fitur' | 'langganan' | 'pembayaran' | 'akan-habis' | 'tidak-aktif';
 
 const subTabs: { id: BillingSubTab; label: string; icon: any; desc: string }[] = [
   { id: 'ringkasan', label: 'Ringkasan', icon: CreditCard, desc: 'Metrik pendapatan & status langganan' },
+  { id: 'matriks-fitur', label: 'Matriks Ceklis Fitur', icon: SlidersHorizontal, desc: 'Kontrol ceklis hak akses tiap paket' },
   { id: 'langganan', label: 'Langganan', icon: Sparkles, desc: 'Masa aktif seluruh sekolah' },
   { id: 'pembayaran', label: 'Pembayaran', icon: QrCode, desc: 'Daftar transaksi & invoice' },
   { id: 'akan-habis', label: 'Akan Habis', icon: AlertTriangle, desc: 'Sekolah segera habis masa berlaku' },
@@ -200,9 +203,9 @@ export const BillingSection: React.FC<{
 
   return (
     <div className="space-y-6">
-      {/* Sub-Navigation Bar (5 Tab Utama Sesuai Ketentuan) */}
+      {/* Sub-Navigation Bar (6 Sub-Tab Utama) */}
       <div className="bg-white border border-slate-200/80 p-1.5 rounded-2xl shadow-xs">
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5">
           {subTabs.map((st) => {
             const isActive = currentSubTab === st.id;
             const Icon = st.icon;
@@ -210,18 +213,18 @@ export const BillingSection: React.FC<{
               <button
                 key={st.id}
                 onClick={() => switchSubTab(st.id)}
-                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition-all text-left cursor-pointer ${
+                className={`flex items-center gap-2 px-2.5 py-2 rounded-xl transition-all text-left cursor-pointer ${
                   isActive
                     ? 'bg-slate-900 text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                 }`}
               >
-                <div className={`p-1.5 rounded-lg ${isActive ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
-                  <Icon size={16} />
+                <div className={`p-1.5 rounded-lg shrink-0 ${isActive ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                  <Icon size={15} />
                 </div>
                 <div className="min-w-0">
                   <div className="text-xs font-black truncate">{st.label}</div>
-                  <div className={`text-[10px] truncate ${isActive ? 'text-slate-300' : 'text-slate-400'}`}>
+                  <div className={`text-[9px] truncate ${isActive ? 'text-slate-300' : 'text-slate-400'}`}>
                     {st.desc}
                   </div>
                 </div>
@@ -230,6 +233,11 @@ export const BillingSection: React.FC<{
           })}
         </div>
       </div>
+
+      {/* TAB MATRIKS CEKLIS FITUR PAKET */}
+      {currentSubTab === 'matriks-fitur' && (
+        <PackageFeatureMatrixTab showToast={showToast} />
+      )}
 
       {/* 1. TAB RINGKASAN */}
       {currentSubTab === 'ringkasan' && (

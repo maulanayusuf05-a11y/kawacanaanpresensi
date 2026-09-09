@@ -26,6 +26,7 @@ import {
   DEFAULT_SD_SUBJECTS,
 } from "../data/initialData";
 import { normalizeTeacherName, normalizeNip } from "../utils/userScope";
+import { isFeatureAccessibleInPackage } from "../utils/featureRegistry";
 
 interface Toast {
   id: string;
@@ -196,6 +197,25 @@ interface AppContextType {
     active: boolean;
   }) => Promise<void>;
   reconcileSchoolData: (showFeedback?: boolean) => Promise<{ success: boolean; message: string }>;
+  upgradeModal: {
+    isOpen: boolean;
+    featureId?: string;
+    customTitle?: string;
+    customMessage?: string;
+    targetPackage?: 'guru_pro' | 'sekolah_pro';
+  };
+  openUpgradeModal: (params?: {
+    featureId?: string;
+    customTitle?: string;
+    customMessage?: string;
+    targetPackage?: 'guru_pro' | 'sekolah_pro';
+  }) => void;
+  closeUpgradeModal: () => void;
+  requestFeatureAccess: (
+    featureId: string,
+    customTitle?: string,
+    customMessage?: string
+  ) => boolean;
 }
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
@@ -708,6 +728,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   });
   const [registrationRequired, setRegistrationRequired] = useState(false);
   const [passwordRecovery, setPasswordRecovery] = useState(false);
+
+  // Modal Upgrade Hak Akses Fitur yang Ramah
+  const [upgradeModal, setUpgradeModal] = useState<{
+    isOpen: boolean;
+    featureId?: string;
+    customTitle?: string;
+    customMessage?: string;
+    targetPackage?: 'guru_pro' | 'sekolah_pro';
+  }>({ isOpen: false });
+
+  const openUpgradeModal = (params?: {
+    featureId?: string;
+    customTitle?: string;
+    customMessage?: string;
+    targetPackage?: 'guru_pro' | 'sekolah_pro';
+  }) => {
+    setUpgradeModal({
+      isOpen: true,
+      featureId: params?.featureId,
+      customTitle: params?.customTitle,
+      customMessage: params?.customMessage,
+      targetPackage: params?.targetPackage || 'guru_pro',
+    });
+  };
+
+  const closeUpgradeModal = () => {
+    setUpgradeModal((prev) => ({ ...prev, isOpen: false }));
+  };
 
   // Workspace & Onboarding State
   const [userWorkspaces, setUserWorkspaces] = useState<WorkspaceMembership[]>(
@@ -6919,9 +6967,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     };
   }, [currentUser?.schoolId, activeWorkspace?.workspaceType]);
 
+  const requestFeatureAccess = (
+    featureId: string,
+    customTitle?: string,
+    customMessage?: string
+  ): boolean => {
+    // Super admin selalu diizinkan
+    if (currentUser?.role === "SUPER_ADMIN") return true;
+
+    const wsType =
+      activeWorkspace?.workspaceType ||
+      (currentUser?.subscriptionPlan === "mulai" ? "individu" : "sekolah");
+    const isIndividu = wsType === "individu" || wsType === "personal";
+    const planRaw = (
+      currentUser?.subscriptionPlan ||
+      activeWorkspace?.subscriptionPlan ||
+      "gratis"
+    ).toLowerCase();
+
+    let activePackageKey: "guru_gratis" | "guru_pro" | "sekolah_pro" = "guru_gratis";
+    if (!isIndividu || planRaw.includes("sekolah") || planRaw === "school") {
+      activePackageKey = "sekolah_pro";
+    } else if (
+      planRaw.includes("pro") ||
+      planRaw === "teacher" ||
+      planRaw === "guru_pro"
+    ) {
+      activePackageKey = "guru_pro";
+    } else {
+      activePackageKey = "guru_gratis";
+    }
+
+    const hasAccess = isFeatureAccessibleInPackage(activePackageKey, featureId);
+    if (!hasAccess) {
+      openUpgradeModal({
+        featureId,
+        customTitle,
+        customMessage,
+        targetPackage: activePackageKey === "guru_gratis" ? "guru_pro" : "sekolah_pro",
+      });
+      return false;
+    }
+    return true;
+  };
+
   return (
     <AppContext.Provider
       value={{
+        upgradeModal,
+        openUpgradeModal,
+        closeUpgradeModal,
+        requestFeatureAccess,
         isAuthChecking,
         isDataLoading,
         isLoginPreparing,
