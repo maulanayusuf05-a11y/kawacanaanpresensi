@@ -1,6 +1,6 @@
 {
   "name": "Kawacanaan Presensi",
-  "description": "Sistem Presensi Digital Terpadu Sekolah Dasar — Presensi Harian Wali Kelas, Presensi Guru Mapel, Kode Undangan Sekolah, dan Portal Siswa.",
-  "requestFramePermissions": [],
+  "description": "Sistem Presensi Digital Terpadu Sekolah Dasar — Presensi Harian Wali Kelas, Presensi Guru Mapel, AI Asisten Absensi, Kode Undangan Sekolah, dan Portal Siswa.",
+  "requestFramePermissions": ["microphone"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

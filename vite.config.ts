@@ -45,6 +45,7 @@ function apiDevMiddleware(): Plugin {
               'sync-teacher-assignments': './api/sync-teacher-assignments.ts',
               'sync-wali-kelas': './api/sync-wali-kelas.ts',
               'attendance': './api/attendance.ts',
+              'ai': './api/ai.ts',
               'teacher-subject': './api/sync-teacher-assignments.ts',
               'midtrans': './api/midtrans.ts',
               'midtrans-webhook': './api/midtrans.ts',

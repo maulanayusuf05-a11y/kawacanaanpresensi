@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { getUserRoleScope } from '../utils/userScope';
 import { DashboardSkeleton } from '../components/DashboardSkeleton';
+import { AIAttendanceAssistant } from '../components/AIAttendanceAssistant';
 import {
   Users,
   Calendar,
@@ -1207,6 +1208,9 @@ export const DashboardView: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* AI Asisten Absensi */}
+      <AIAttendanceAssistant />
 
       {/* Info / Action Row */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 sm:gap-4">
