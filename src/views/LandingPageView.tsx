@@ -13,6 +13,7 @@ import { ContactSection } from '../landing/components/ContactSection';
 import { Footer } from '../landing/components/Footer';
 import { RegisterModal } from '../landing/components/RegisterModal';
 import { FreeStartModal } from '../landing/components/FreeStartModal';
+import { TeacherRegisterModal } from '../landing/components/TeacherRegisterModal';
 import { TermsAndLegalModal, LegalTabType } from '../landing/components/TermsAndLegalModal';
 
 interface LandingPageViewProps {
@@ -23,6 +24,7 @@ interface LandingPageViewProps {
 export const LandingPageView: React.FC<LandingPageViewProps> = ({ onEnterSystem, onEnterDashboard }) => {
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
   const [isFreeStartOpen, setIsFreeStartOpen] = useState(false);
+  const [isTeacherRegisterOpen, setIsTeacherRegisterOpen] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState<'free' | 'teacher' | 'school'>('school');
   const [isLegalOpen, setIsLegalOpen] = useState(false);
   const [legalTab, setLegalTab] = useState<LegalTabType>('terms');
@@ -42,6 +44,11 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({ onEnterSystem,
 
     if (planId === 'free') {
       setIsFreeStartOpen(true);
+      return;
+    }
+
+    if (planId === 'teacher') {
+      setIsTeacherRegisterOpen(true);
       return;
     }
 
@@ -92,6 +99,16 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({ onEnterSystem,
       <FreeStartModal
         isOpen={isFreeStartOpen}
         onClose={() => setIsFreeStartOpen(false)}
+        onOpenLogin={handleOpenLogin}
+        onEnterSystem={onEnterSystem}
+        onEnterDashboard={onEnterDashboard}
+        lang={lang}
+      />
+
+      {/* Modal Paket Guru Berbayar (Midtrans Gateway + Ruang Kerja Individu Pro) */}
+      <TeacherRegisterModal
+        isOpen={isTeacherRegisterOpen}
+        onClose={() => setIsTeacherRegisterOpen(false)}
         onOpenLogin={handleOpenLogin}
         onEnterSystem={onEnterSystem}
         onEnterDashboard={onEnterDashboard}

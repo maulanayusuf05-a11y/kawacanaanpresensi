@@ -1580,29 +1580,36 @@ export default async function handler(req: any, res: any) {
       const newUserId = authData.user.id;
       let finalSchoolId = schoolId;
       let createdTeacher: any = null;
+      let newSchoolRecord: any = null;
+      let wsName = '';
 
       if (mode === 'personal' || !finalSchoolId) {
         const isPersonal = mode === 'personal';
-        const wsName = isPersonal ? 'Ruang Kerja Individu' : String(body.workspaceName || `Ruang Kerja ${fullName}`).trim();
+        wsName = isPersonal ? 'Ruang Kerja Individu' : String(body.workspaceName || `Ruang Kerja ${fullName}`).trim();
         const trial = calculateGuruProTrialPeriod();
         const inviteCode = generateSchoolInviteCode();
+        const isTeacherPro = body.plan === 'teacher' || body.plan === 'guru_pro';
+        const initialPlan = isTeacherPro ? 'guru_pro' : trial.plan;
+        const initialMaxClasses = isTeacherPro ? 5 : trial.maxClasses;
+        const initialMaxStudents = isTeacherPro ? 150 : trial.maxStudents;
         const { data: newSchool, error: schoolErr } = await db.from('schools').insert({
           name: wsName,
           code: inviteCode,
-          plan: trial.plan,
+          plan: initialPlan,
           status: 'active',
           workspace_type: 'personal',
           is_personal: true,
           owner_id: newUserId,
           subscription_started_at: trial.startedAt,
           subscription_expires_at: trial.expiresAt,
-          notes: trial.notes,
+          notes: isTeacherPro ? '[Paket Guru Pro: Ruang Kerja Individu]' : trial.notes,
           max_teachers: trial.maxTeachers,
-          max_students: trial.maxStudents,
-          max_classes: trial.maxClasses,
-        }).select('id').single();
+          max_students: initialMaxStudents,
+          max_classes: initialMaxClasses,
+        }).select('id, code, name').single();
 
         if (schoolErr) throw schoolErr;
+        newSchoolRecord = newSchool;
         finalSchoolId = newSchool.id;
 
         // Untuk Ruang Kerja Individu baru, nama satuan pendidikan tetap KOSONG (tidak diisi otomatis oleh sistem)
@@ -1748,6 +1755,8 @@ export default async function handler(req: any, res: any) {
         userId: newUserId,
         email: authEmail,
         schoolId: finalSchoolId,
+        schoolCode: newSchoolRecord?.code || null,
+        schoolName: wsName || 'Ruang Kerja Individu',
       });
     }
 
