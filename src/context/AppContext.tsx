@@ -557,7 +557,7 @@ const dbConfig = (c: any): SystemConfig => ({
   reportPlace: c.report_place || "",
   reportDate: c.report_date || new Date().toISOString().slice(0, 10),
   activeStudyDays: c.active_study_days || [1, 2, 3, 4, 5],
-  studentSelfAttendanceEnabled: c.student_self_attendance_enabled ?? true,
+  studentSelfAttendanceEnabled: c.student_self_attendance_enabled ?? false,
   checkInStartTime: String(c.check_in_start_time || "06:00").slice(0, 5),
   checkInDeadlineTime: String(c.check_in_deadline_time || "07:00").slice(0, 5),
   checkOutStartTime: String(c.check_out_start_time || "12:30").slice(0, 5),

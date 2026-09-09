@@ -99,6 +99,7 @@ export const PengaturanView: React.FC = () => {
     showToast,
     currentUser,
     activeWorkspace,
+    requestFeatureAccess,
   } = useApp();
 
   const isPersonalWorkspace =
@@ -108,7 +109,10 @@ export const PengaturanView: React.FC = () => {
 
   const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN';
 
-  const [formData, setFormData] = useState<SystemConfig>({ ...systemConfig });
+  const [formData, setFormData] = useState<SystemConfig>({
+    ...systemConfig,
+    studentSelfAttendanceEnabled: Boolean(systemConfig.studentSelfAttendanceEnabled),
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const kopInputRef = useRef<HTMLInputElement>(null);
 
@@ -120,6 +124,21 @@ export const PengaturanView: React.FC = () => {
     } else {
       setFormData((prev) => ({ ...prev, [name]: value }));
     }
+  };
+
+  const handleToggleSelfAttendance = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const willEnable = e.target.checked;
+    if (willEnable) {
+      const allowed = requestFeatureAccess(
+        'portal_siswa',
+        'Presensi Mandiri Siswa (Portal Siswa HP)',
+        'Fitur ini tersedia di Paket Guru. Upgrade sekarang untuk akses penuh: tambah kelas, laporan lengkap, dan manajemen guru.'
+      );
+      if (!allowed) {
+        return;
+      }
+    }
+    setFormData((prev) => ({ ...prev, studentSelfAttendanceEnabled: willEnable }));
   };
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -205,6 +224,16 @@ export const PengaturanView: React.FC = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (formData.studentSelfAttendanceEnabled) {
+      const allowed = requestFeatureAccess(
+        'portal_siswa',
+        'Presensi Mandiri Siswa (Portal Siswa HP)',
+        'Fitur ini tersedia di Paket Guru. Upgrade sekarang untuk akses penuh: tambah kelas, laporan lengkap, dan manajemen guru.'
+      );
+      if (!allowed) {
+        return;
+      }
+    }
     updateSystemConfig(formData);
   };
 
@@ -276,21 +305,33 @@ export const PengaturanView: React.FC = () => {
 
           {/* Toggle Aktifkan Presensi Mandiri */}
           <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-bold text-slate-900">
-                Izinkan Siswa Presensi Mandiri Lewat HP
-              </p>
-              <p className="text-xs text-slate-500">
-                Jika diaktifkan, siswa yang login dengan NISN dapat menekan tombol Masuk dan Pulang secara mandiri.
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <p className="text-xs font-bold text-slate-900">
+                  Izinkan Siswa Presensi Mandiri Lewat HP
+                </p>
+                {formData.studentSelfAttendanceEnabled ? (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                    AKTIF
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-slate-200 text-slate-600">
+                    MATI (DEFAULT OFF)
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Sistem memberikan setelan bawaan <strong>Mati (Off)</strong>. Jika diaktifkan, siswa yang login dengan NISN dapat menekan tombol Masuk dan Pulang secara mandiri.
               </p>
             </div>
-            <label className="relative inline-flex items-center cursor-pointer select-none shrink-0">
+            <label className="relative inline-flex items-center cursor-pointer select-none shrink-0" id="label-toggle-self-attendance">
               <input
                 type="checkbox"
                 name="studentSelfAttendanceEnabled"
-                checked={formData.studentSelfAttendanceEnabled ?? true}
-                onChange={handleChange}
+                checked={Boolean(formData.studentSelfAttendanceEnabled)}
+                onChange={handleToggleSelfAttendance}
                 className="sr-only peer"
+                id="toggle-student-self-attendance"
               />
               <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
             </label>

@@ -181,9 +181,9 @@ export const SYSTEM_FEATURES: SystemFeatureItem[] = [
   // 6. Multi-User & Portal
   {
     id: 'portal_siswa',
-    name: 'Portal Siswa & Orang Tua',
+    name: 'Presensi Mandiri Siswa (Integrasi Waktu Real-Time HP / Portal Siswa)',
     category: 'Multi-User & Portal',
-    description: 'Hak akses login mandiri bagi siswa atau orang tua untuk memantau kehadiran anak di sekolah.',
+    description: 'Presensi mandiri siswa via HP dengan integrasi waktu real-time dan portal pantauan orang tua (Default Off di Pengaturan).',
     defaultChecked: { guru_gratis: false, guru_pro: true, sekolah_pro: true },
   },
   {
@@ -217,13 +217,6 @@ const STORAGE_KEY_MATRIX = 'kawacanaan_package_feature_matrix_v1';
  * Mendapatkan konfigurasi matriks ceklis aktif (dengan opsi kustomisasi Super Admin)
  */
 export function getActiveFeatureMatrix(): PackageMatrixOverrides {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY_MATRIX);
-    if (saved) {
-      return JSON.parse(saved);
-    }
-  } catch (_) {}
-
   // Buat default dari SYSTEM_FEATURES
   const defaults: PackageMatrixOverrides = {
     guru_gratis: {},
@@ -236,6 +229,18 @@ export function getActiveFeatureMatrix(): PackageMatrixOverrides {
     defaults.guru_pro[feat.id] = feat.defaultChecked.guru_pro;
     defaults.sekolah_pro[feat.id] = feat.defaultChecked.sekolah_pro;
   });
+
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY_MATRIX);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return {
+        guru_gratis: { ...defaults.guru_gratis, ...(parsed.guru_gratis || {}) },
+        guru_pro: { ...defaults.guru_pro, ...(parsed.guru_pro || {}) },
+        sekolah_pro: { ...defaults.sekolah_pro, ...(parsed.sekolah_pro || {}) },
+      };
+    }
+  } catch (_) {}
 
   return defaults;
 }

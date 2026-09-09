@@ -284,20 +284,25 @@ export const PackageFeatureMatrixTab: React.FC<{
                     id={`row-feat-${feat.id}`}
                   >
                     {/* No */}
-                    <td className="py-3 px-4 text-center font-bold text-slate-400 text-[11px]">
-                      {idx + 1}
+                    <td className="py-3 px-4 text-center font-bold text-slate-500 text-xs">
+                      {SYSTEM_FEATURES.findIndex((f) => f.id === feat.id) + 1}
                     </td>
 
                     {/* Feature Name & Category */}
                     <td className="py-3 px-4">
                       <div className="space-y-1">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span className="font-black text-slate-800 text-xs group-hover:text-blue-700 transition-colors">
                             {feat.name}
                           </span>
                           <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-slate-100 text-slate-600 border border-slate-200">
                             {feat.category}
                           </span>
+                          {feat.id === 'portal_siswa' && (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              Poin 21 - Default Off di Pengaturan
+                            </span>
+                          )}
                         </div>
                         <p className="text-[11px] text-slate-500 leading-relaxed">
                           {feat.description}
