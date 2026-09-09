@@ -123,14 +123,15 @@ export default async function handler(req: any, res: any) {
     return json(res, 403, { ok: false, error: 'Profil pengguna tidak ditemukan atau akses ditolak.' });
   }
 
-  // 5. Verify Cloudflare Workers AI credentials (server-side only, never returned)
+  // 5. Verify AI credentials (server-side only, never returned)
   const cfAccountId = process.env.CLOUDFLARE_ACCOUNT_ID;
   const cfApiToken = process.env.CLOUDFLARE_API_TOKEN;
+  const geminiApiKey = process.env.GEMINI_API_KEY;
 
-  if (!cfAccountId || !cfApiToken) {
+  if ((!cfAccountId || !cfApiToken) && !geminiApiKey) {
     return json(res, 500, {
       ok: false,
-      error: 'Konfigurasi CLOUDFLARE_ACCOUNT_ID atau CLOUDFLARE_API_TOKEN belum tersedia pada server/Vercel environment.',
+      error: 'Konfigurasi AI (GEMINI_API_KEY atau CLOUDFLARE_ACCOUNT_ID/CLOUDFLARE_API_TOKEN) belum tersedia pada server environment.',
     });
   }
 
@@ -164,58 +165,102 @@ export default async function handler(req: any, res: any) {
       content: sanitizeText(String(m.content).trim()),
     }));
 
-  // 7. Call Cloudflare Workers AI REST API
-  // Model: @cf/zai-org/glm-4.7-flash
-  const cfEndpoint = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(
-    cfAccountId
-  )}/ai/run/@cf/zai-org/glm-4.7-flash`;
+  const systemInstructionText = `${SYSTEM_PROMPT}\n\n=== DATA ABSENSI & KONTEKS GURU ===\n${
+    sanitizedContext || 'Data absensi belum tersedia atau kosong untuk konteks saat ini.'
+  }`;
 
-  const messages = [
-    {
-      role: 'system',
-      content: `${SYSTEM_PROMPT}\n\n=== DATA ABSENSI & KONTEKS GURU ===\n${
-        sanitizedContext || 'Data absensi belum tersedia atau kosong untuk konteks saat ini.'
-      }`,
-    },
-    ...historyMessages,
-    {
-      role: 'user',
-      content: sanitizedQuestion,
-    },
-  ];
+  let rawAnswer: string | null = null;
 
+  // 7. Execute AI generation via Gemini or Cloudflare Workers AI
   try {
-    const cfResponse = await fetch(cfEndpoint, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${cfApiToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        messages,
-      }),
-    });
+    if (geminiApiKey) {
+      const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(
+        geminiApiKey
+      )}`;
 
-    const cfData = await cfResponse.json();
+      const geminiContents = [
+        ...historyMessages.map((m: any) => ({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: m.content }],
+        })),
+        {
+          role: 'user',
+          parts: [{ text: sanitizedQuestion }],
+        },
+      ];
 
-    if (!cfResponse.ok || cfData?.success === false) {
-      const errorMsg =
-        cfData?.errors?.map((e: any) => e.message || String(e)).join(', ') ||
-        `Cloudflare Workers AI HTTP status ${cfResponse.status}`;
-      console.error('[AI Assistant API] Cloudflare Workers AI error:', errorMsg);
-      return json(res, 502, {
-        ok: false,
-        error: 'AI sedang tidak dapat digunakan. Silakan coba lagi.',
+      const geminiResponse = await fetch(geminiEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_instruction: {
+            parts: [{ text: systemInstructionText }],
+          },
+          contents: geminiContents,
+        }),
       });
-    }
 
-    // Extract answer from Cloudflare response safely across potential schema structures
-    const rawAnswer =
-      cfData?.result?.response ||
-      cfData?.result?.output ||
-      cfData?.result?.text ||
-      cfData?.result?.choices?.[0]?.message?.content ||
-      (typeof cfData?.result === 'string' ? cfData.result : null);
+      const geminiData = await geminiResponse.json();
+
+      if (!geminiResponse.ok || geminiData?.error) {
+        const errorMsg = geminiData?.error?.message || `Gemini HTTP status ${geminiResponse.status}`;
+        console.error('[AI Assistant API] Gemini error:', errorMsg);
+        return json(res, 502, {
+          ok: false,
+          error: 'AI sedang tidak dapat digunakan. Silakan coba lagi.',
+        });
+      }
+
+      rawAnswer = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+    } else if (cfAccountId && cfApiToken) {
+      // Model: @cf/zai-org/glm-4.7-flash
+      const cfEndpoint = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(
+        cfAccountId
+      )}/ai/run/@cf/zai-org/glm-4.7-flash`;
+
+      const messages = [
+        {
+          role: 'system',
+          content: systemInstructionText,
+        },
+        ...historyMessages,
+        {
+          role: 'user',
+          content: sanitizedQuestion,
+        },
+      ];
+
+      const cfResponse = await fetch(cfEndpoint, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${cfApiToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages,
+        }),
+      });
+
+      const cfData = await cfResponse.json();
+
+      if (!cfResponse.ok || cfData?.success === false) {
+        const errorMsg =
+          cfData?.errors?.map((e: any) => e.message || String(e)).join(', ') ||
+          `Cloudflare Workers AI HTTP status ${cfResponse.status}`;
+        console.error('[AI Assistant API] Cloudflare Workers AI error:', errorMsg);
+        return json(res, 502, {
+          ok: false,
+          error: 'AI sedang tidak dapat digunakan. Silakan coba lagi.',
+        });
+      }
+
+      rawAnswer =
+        cfData?.result?.response ||
+        cfData?.result?.output ||
+        cfData?.result?.text ||
+        cfData?.result?.choices?.[0]?.message?.content ||
+        (typeof cfData?.result === 'string' ? cfData.result : null);
+    }
 
     if (!rawAnswer) {
       return json(res, 200, {
