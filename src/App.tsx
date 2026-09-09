@@ -127,6 +127,7 @@ const SubscriptionGate: React.FC = () => {
 const MainAppContent: React.FC = () => {
   const { 
     currentUser, 
+    activeWorkspace,
     activeView, 
     setActiveView, 
     showToast, 
@@ -278,14 +279,27 @@ const MainAppContent: React.FC = () => {
 
   // Defense-in-depth: jangan pernah render view yang perannya tidak diizinkan,
   // apa pun cara `activeView` bisa berubah.
+  const isPersonalWs =
+    activeWorkspace?.workspaceType === 'personal' ||
+    activeWorkspace?.workspaceType === 'individu' ||
+    (currentUser?.subscriptionPlan === 'mulai' && !currentUser?.schoolId);
+
   const allowedRoles = VIEW_ACCESS[activeView];
-  const isAllowed = allowedRoles === 'all' || allowedRoles.includes(currentUser.role);
+  let isAllowed = allowedRoles === 'all' || allowedRoles.includes(currentUser.role);
+
+  // Aturan akses khusus Pengaturan Sistem di Ruang Kerja Sekolah:
+  // Hanya dapat diakses oleh Admin dan Kepala Sekolah.
+  // Sembunyikan & tolak akses untuk Wali Kelas dan Guru Mapel di Ruang Kerja Sekolah.
+  // Di Ruang Kerja Individu, tetap diizinkan.
+  if (activeView === 'pengaturan' && !isPersonalWs && (currentUser.role === 'WALI KELAS' || currentUser.role === 'GURU MAPEL')) {
+    isAllowed = false;
+  }
 
   if (!isAllowed) {
     const fallback = defaultViewForRole(currentUser.role);
     // Jangan setState saat render; jadwalkan redirect lalu tampilkan layar kosong sesaat.
     setTimeout(() => {
-      showToast('Anda tidak memiliki akses ke halaman tersebut.', 'error');
+      showToast('Menu Pengaturan Sistem hanya dapat diakses oleh Administrator dan Kepala Sekolah di ruang kerja sekolah.', 'error');
       setActiveView(fallback);
     }, 0);
     return (

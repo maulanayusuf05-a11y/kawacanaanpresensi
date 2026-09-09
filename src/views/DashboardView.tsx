@@ -608,7 +608,15 @@ export const DashboardView: React.FC = () => {
     return menuItems.filter((item) => {
       if (!currentUser) return false;
       if (currentUser.role === 'ADMIN' || currentUser.role === 'SUPER_ADMIN') return true;
-      if (isPersonalWorkspace && item.id === 'pengaturan') return true;
+
+      // Aturan menu 'pengaturan' (Pengaturan Sistem):
+      if (item.id === 'pengaturan') {
+        // Ruang kerja individu: tetap pertahankan di dashboard untuk semua pengguna
+        if (isPersonalWorkspace) return true;
+        // Ruang kerja sekolah: hanya muncul di role admin dan kepala sekolah, sembunyikan pada wali kelas dan guru mapel
+        return currentUser.role === 'KEPALA SEKOLAH';
+      }
+
       if (currentUser.role === 'WALI KELAS') {
         return [
           'data-referensi',
@@ -616,7 +624,6 @@ export const DashboardView: React.FC = () => {
           'absensi',
           'rekapitulasi',
           'laporan',
-          'pengaturan',
         ].includes(item.id);
       }
       if (
@@ -628,7 +635,6 @@ export const DashboardView: React.FC = () => {
           'absensi',
           'rekapitulasi',
           'laporan',
-          'pengaturan',
         ].includes(item.id);
       }
       if (currentUser.role === 'KEPALA SEKOLAH') {

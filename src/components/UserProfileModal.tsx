@@ -42,7 +42,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     activeWorkspace, 
     userWorkspaces,
     switchToSchoolWorkspace, 
-    switchToPersonalWorkspace 
+    switchToPersonalWorkspace,
+    setIsJoinSchoolModalOpen
   } = useApp();
 
   if (!isOpen || !currentUser) return null;
@@ -187,7 +188,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                   type="button"
                   onClick={() => {
                     onClose();
-                    void switchToSchoolWorkspace();
+                    setIsJoinSchoolModalOpen(true);
                   }}
                   className="w-full flex items-center justify-between p-3.5 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-bold text-xs transition-all shadow-sm hover:shadow active:scale-98 cursor-pointer group"
                 >
@@ -198,7 +199,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                     <div className="text-left min-w-0">
                       <div className="text-xs font-black uppercase tracking-tight">Ruang Kerja Sekolah</div>
                       <div className="text-[10px] text-blue-100 font-normal truncate">
-                        {existingSchoolWs ? `Ke ${existingSchoolWs.workspaceName}` : 'Masukkan kode sekolah untuk terhubung'}
+                        Onboarding dengan kode sekolah resmi
                       </div>
                     </div>
                   </div>

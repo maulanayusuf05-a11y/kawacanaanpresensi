@@ -1004,7 +1004,10 @@ export default async function handler(req: any, res: any) {
         }
       }
       if (role === 'GURU MAPEL' && classIds.length === 0) {
-        return json(res, 400, { error: 'Guru Mapel wajib memilih minimal satu kelas yang diajar.' });
+        const { data: anyCls } = await db.from('classes').select('id').eq('school_id', schoolId).limit(1);
+        if (anyCls && anyCls.length > 0) {
+          return json(res, 400, { error: 'Guru Mapel wajib memilih minimal satu kelas yang diajar.' });
+        }
       }
 
       const linkedTeacher = (role === 'WALI KELAS' || role === 'GURU MAPEL')
@@ -1027,9 +1030,11 @@ export default async function handler(req: any, res: any) {
           await assignHomeroom(schoolId, linkedTeacher.id, targetClassId, effectiveUserId);
         }
       } else {
-        const { data: validClasses, error: classErr } = await db.from('classes').select('id').eq('school_id', schoolId).in('id', classIds);
-        if (classErr) throw classErr;
-        if ((validClasses || []).length !== classIds.length) throw new Error('Ada kelas Guru Mapel yang tidak berasal dari sekolah yang dipilih.');
+        if (classIds.length > 0) {
+          const { data: validClasses, error: classErr } = await db.from('classes').select('id').eq('school_id', schoolId).in('id', classIds);
+          if (classErr) throw classErr;
+          if ((validClasses || []).length !== classIds.length) throw new Error('Ada kelas Guru Mapel yang tidak berasal dari sekolah yang dipilih.');
+        }
         const subjectLabel = subjectName || 'Guru Mapel';
         const { data: existingSub } = await db.from('subjects').select('id').eq('school_id', schoolId).ilike('name', subjectLabel).maybeSingle();
         let subjectRow = existingSub;

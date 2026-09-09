@@ -22,7 +22,11 @@ interface JoinSchoolModalProps {
 }
 
 export const JoinSchoolModal: React.FC<JoinSchoolModalProps> = ({ isOpen, onClose }) => {
-  const { currentUser, userWorkspaces, selectWorkspace, showToast, loadData } = useApp();
+  const { currentUser, userWorkspaces, selectWorkspace, showToast, loadData, switchToSchoolWorkspace } = useApp();
+
+  const existingSchoolWs = userWorkspaces.find(
+    (ws) => ws.workspaceType !== 'personal' && ws.workspaceType !== 'individu'
+  );
 
   const [schoolCode, setSchoolCode] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
@@ -31,12 +35,10 @@ export const JoinSchoolModal: React.FC<JoinSchoolModalProps> = ({ isOpen, onClos
 
   // Role in School
   const [role, setRole] = useState<'WALI KELAS' | 'GURU MAPEL'>('WALI KELAS');
-  const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [selectedSubjectClassIds, setSelectedSubjectClassIds] = useState<string[]>([]);
-  const [classMode, setClassMode] = useState<'select' | 'new'>('select');
-  const [newGrade, setNewGrade] = useState<number>(5);
-  const [newClassName, setNewClassName] = useState<string>('Kelas 5');
   const [subjectName, setSubjectName] = useState<string>('Pendidikan Jasmani, Olahraga, dan Kesehatan (PJOK)');
+  const [isCustomSubject, setIsCustomSubject] = useState(false);
+  const [customSubjectName, setCustomSubjectName] = useState('');
 
   const [teacherName, setTeacherName] = useState('');
   const [teacherNip, setTeacherNip] = useState('');
@@ -53,6 +55,12 @@ export const JoinSchoolModal: React.FC<JoinSchoolModalProps> = ({ isOpen, onClos
       }
     }
   }, [currentUser, isOpen]);
+
+  useEffect(() => {
+    if (isOpen && existingSchoolWs?.workspaceCode && !schoolCode) {
+      setSchoolCode(existingSchoolWs.workspaceCode);
+    }
+  }, [isOpen, existingSchoolWs]);
 
   if (!isOpen || !currentUser) return null;
 
@@ -78,13 +86,7 @@ export const JoinSchoolModal: React.FC<JoinSchoolModalProps> = ({ isOpen, onClos
       if (data.ok && Array.isArray(data.schools) && data.schools.length > 0) {
         const found = data.schools[0];
         setVerifiedSchool(found);
-        if (found.classes && found.classes.length > 0) {
-          setSelectedClassId(found.classes[0].id);
-          setSelectedSubjectClassIds([]);
-          setClassMode('select');
-        } else {
-          setClassMode('new');
-        }
+        setSelectedSubjectClassIds([]);
       } else {
         setVerifyError('Sekolah tidak ditemukan dengan kode ini. Silakan tanyakan kode resmi kepada Administrator Sekolah.');
       }
@@ -107,9 +109,21 @@ export const JoinSchoolModal: React.FC<JoinSchoolModalProps> = ({ isOpen, onClos
       return;
     }
 
-    if (role === 'GURU MAPEL' && selectedSubjectClassIds.length === 0) {
-      showToast('Pilih minimal satu kelas yang diajar.', 'error');
-      return;
+    const finalSubject = (isCustomSubject ? customSubjectName.trim() : subjectName.trim()) || 'Guru Mapel';
+
+    if (role === 'GURU MAPEL') {
+      if (!finalSubject) {
+        showToast('Nama mata pelajaran wajib diisi.', 'error');
+        return;
+      }
+      if (
+        verifiedSchool.classes &&
+        verifiedSchool.classes.length > 0 &&
+        selectedSubjectClassIds.length === 0
+      ) {
+        showToast('Pilih minimal satu kelas yang diajar.', 'error');
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -124,18 +138,11 @@ export const JoinSchoolModal: React.FC<JoinSchoolModalProps> = ({ isOpen, onClos
         teacherName: teacherName.trim(),
         name: teacherName.trim(),
         nip: teacherNip.trim() || null,
-        subjectName: role === 'GURU MAPEL' ? subjectName : '',
+        subjectName: role === 'GURU MAPEL' ? finalSubject : '',
         classIds: role === 'GURU MAPEL' ? selectedSubjectClassIds : [],
+        classId: null,
+        className: null,
       };
-
-      if (role === 'WALI KELAS') {
-        if (classMode === 'select' && selectedClassId) {
-          payload.classId = selectedClassId;
-        } else if (classMode === 'new' || selectedClassId === '__NEW_CLASS__') {
-          payload.className = newClassName;
-          payload.grade = newGrade;
-        }
-      }
 
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData.session?.access_token;
@@ -200,6 +207,34 @@ export const JoinSchoolModal: React.FC<JoinSchoolModalProps> = ({ isOpen, onClos
 
         {/* Modal Body */}
         <form onSubmit={handleJoinSubmit} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+          {/* Quick info if user already has an existing school workspace */}
+          {existingSchoolWs && !verifiedSchool && (
+            <div className="p-3.5 bg-indigo-50/80 border border-indigo-200/90 rounded-2xl flex items-center justify-between gap-3 text-xs">
+              <div className="min-w-0">
+                <span className="text-[10px] font-extrabold text-indigo-600 uppercase tracking-wider block">Sekolah Terdaftar Sebelumnya</span>
+                <span className="font-bold text-indigo-950 truncate block text-sm">{existingSchoolWs.workspaceName}</span>
+                {existingSchoolWs.workspaceCode && (
+                  <span className="text-[11px] text-indigo-700 font-mono font-bold">Kode: {existingSchoolWs.workspaceCode}</span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (existingSchoolWs.workspaceCode) {
+                    setSchoolCode(existingSchoolWs.workspaceCode);
+                    void handleVerifyCode(existingSchoolWs.workspaceCode);
+                  } else {
+                    onClose();
+                    void switchToSchoolWorkspace();
+                  }
+                }}
+                className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs rounded-xl transition shadow-xs shrink-0 cursor-pointer"
+              >
+                Gunakan Kode Ini
+              </button>
+            </div>
+          )}
+
           {/* Step 1: Input Kode Sekolah */}
           <div className="space-y-1.5">
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
@@ -312,130 +347,150 @@ export const JoinSchoolModal: React.FC<JoinSchoolModalProps> = ({ isOpen, onClos
                 </div>
               </div>
 
-              {/* Role dikunci mengikuti role akun; tidak ada perpindahan silang. */}
-              <div className="p-3 rounded-xl border border-indigo-100 bg-indigo-50/60">
+              {/* Role Info Box */}
+              <div className="p-3.5 rounded-2xl border border-indigo-100 bg-indigo-50/70">
                 <div className="flex items-start gap-2.5">
                   {role === 'WALI KELAS' ? <UserCheck size={18} className="text-blue-600 shrink-0" /> : <BookOpen size={18} className="text-indigo-600 shrink-0" />}
                   <div>
-                    <div className="font-extrabold text-xs text-slate-900">Penugasan di Sekolah</div>
-                    <div className="text-[11px] text-slate-600 mt-0.5">Role akun Anda dikunci sebagai <strong>{role === 'WALI KELAS' ? 'Wali Kelas' : 'Guru Mapel'}</strong>. Role tidak dapat diubah saat bergabung ke sekolah.</div>
+                    <div className="font-extrabold text-xs text-slate-900">
+                      Penugasan di Sekolah: {role === 'WALI KELAS' ? 'Wali Kelas' : 'Guru Mapel'}
+                    </div>
+                    <div className="text-[11px] text-slate-600 mt-0.5">
+                      Role akun Anda dikunci sebagai <strong>{role === 'WALI KELAS' ? 'Wali Kelas' : 'Guru Mapel'}</strong>.
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* If Wali Kelas: Select / Create Class */}
+              {/* If Wali Kelas: Penentuan Kelas oleh Admin */}
               {role === 'WALI KELAS' && (
-                <div className="space-y-2 p-3 bg-slate-50 rounded-xl border border-slate-200/80">
-                  <div className="flex items-center justify-between">
-                    <label className="font-bold text-slate-700 text-[11px]">
-                      Pilih Rombongan Belajar (Kelas)
-                    </label>
-                    {verifiedSchool.classes && verifiedSchool.classes.length > 0 && (
+                <div className="p-3.5 bg-blue-50/80 border border-blue-200/90 rounded-2xl space-y-2">
+                  <div className="flex items-center gap-2 text-blue-950 font-extrabold text-xs">
+                    <ShieldCheck size={18} className="text-blue-600 shrink-0" />
+                    <span>Penetapan Kelas oleh Administrator Sekolah</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-blue-800">
+                    Sesuai ketentuan, Anda bergabung sebagai <strong>Wali Kelas</strong>. Penentuan dan penetapan rombongan belajar (kelas) yang Anda bina akan ditentukan langsung oleh <strong>Administrator Sekolah</strong> melalui menu Data Kelas/Data Pengguna.
+                  </p>
+                  <div className="flex items-center gap-2 text-[10px] text-blue-700 font-semibold bg-white/80 px-3 py-1.5 rounded-xl border border-blue-100">
+                    <span className="w-2 h-2 rounded-full bg-blue-600 inline-block animate-pulse" />
+                    <span>Giliran Administrator Sekolah menentukan rombel/kelas Anda setelah terhubung</span>
+                  </div>
+                </div>
+              )}
+
+              {/* If Guru Mapel: Mata Pelajaran & Kelas yang Diajarkan */}
+              {role === 'GURU MAPEL' && (
+                <div className="space-y-3">
+                  {/* Subject Input */}
+                  <div className="space-y-1.5 p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80">
+                    <div className="flex items-center justify-between">
+                      <label className="block font-bold text-slate-800 text-xs">
+                        Nama Mata Pelajaran *
+                      </label>
                       <button
                         type="button"
-                        onClick={() => setClassMode(classMode === 'select' ? 'new' : 'select')}
-                        className="text-[10px] font-bold text-blue-600 hover:underline cursor-pointer"
+                        onClick={() => setIsCustomSubject(!isCustomSubject)}
+                        className="text-[10px] font-bold text-indigo-600 hover:underline cursor-pointer"
                       >
-                        {classMode === 'select' ? '+ Buat Kelas Baru' : 'Pilih dari Daftar'}
+                        {isCustomSubject ? 'Pilih dari Daftar Umum' : '+ Ketik Nama Mapel Lain'}
                       </button>
+                    </div>
+
+                    {isCustomSubject ? (
+                      <input
+                        type="text"
+                        value={customSubjectName}
+                        onChange={(e) => setCustomSubjectName(e.target.value)}
+                        placeholder="Contoh: Informatika, Bahasa Arab, Koding, SBdP..."
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-slate-800 font-semibold focus:border-indigo-600 outline-none text-xs"
+                      />
+                    ) : (
+                      <select
+                        value={subjectName}
+                        onChange={(e) => setSubjectName(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-slate-800 font-semibold focus:border-indigo-600 outline-none text-xs"
+                      >
+                        <option value="Pendidikan Jasmani, Olahraga, dan Kesehatan (PJOK)">Pendidikan Jasmani, Olahraga, dan Kesehatan (PJOK)</option>
+                        <option value="Pendidikan Agama Islam (PAI)">Pendidikan Agama Islam (PAI)</option>
+                        <option value="Pendidikan Agama Kristen">Pendidikan Agama Kristen</option>
+                        <option value="Bahasa Inggris">Bahasa Inggris</option>
+                        <option value="Bahasa Sunda / Daerah">Bahasa Sunda / Daerah</option>
+                        <option value="Seni Budaya & Prakarya (SBdP)">Seni Budaya & Prakarya (SBdP)</option>
+                        <option value="Pendidikan Pancasila & Kewarganegaraan (PPKn)">Pendidikan Pancasila & Kewarganegaraan (PPKn)</option>
+                        <option value="Matematika">Matematika</option>
+                        <option value="Ilmu Pengetahuan Alam dan Sosial (IPAS)">Ilmu Pengetahuan Alam dan Sosial (IPAS)</option>
+                        <option value="Informatika / TIK">Informatika / TIK</option>
+                      </select>
                     )}
+                    <p className="text-[10px] text-slate-500">
+                      Guru Mapel dan Admin dapat mengisi atau menginput data mata pelajaran yang diajarkan.
+                    </p>
                   </div>
 
-                  {classMode === 'select' && verifiedSchool.classes && verifiedSchool.classes.length > 0 ? (
-                    <select
-                      value={selectedClassId}
-                      onChange={(e) => {
-                        if (e.target.value === '__NEW__') {
-                          setClassMode('new');
-                        } else {
-                          setSelectedClassId(e.target.value);
-                        }
-                      }}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-slate-800 font-semibold focus:border-blue-600 outline-none"
-                    >
-                      {verifiedSchool.classes.map((c: any) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name} (Tingkat {c.grade || 5})
-                        </option>
-                      ))}
-                      <option value="__NEW__">+ Buat Rombel Baru</option>
-                    </select>
-                  ) : (
-                    <div className="grid grid-cols-3 gap-2">
-                      <div className="col-span-1">
-                        <label className="block text-[10px] text-slate-500 mb-0.5">Tingkat</label>
-                        <select
-                          value={newGrade}
-                          onChange={(e) => {
-                            const g = Number(e.target.value);
-                            setNewGrade(g);
-                            setNewClassName(`Kelas ${g}`);
-                          }}
-                          className="w-full px-2 py-2 bg-white border border-slate-200 rounded-xl font-bold"
-                        >
-                          {[1, 2, 3, 4, 5, 6].map((g) => (
-                            <option key={g} value={g}>Kelas {g}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="col-span-2">
-                        <label className="block text-[10px] text-slate-500 mb-0.5">Nama Rombel</label>
-                        <input
-                          type="text"
-                          value={newClassName}
-                          onChange={(e) => setNewClassName(e.target.value)}
-                          placeholder="Contoh: Kelas 5A"
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold"
-                        />
+                  {/* Classes Selection */}
+                  <div className="space-y-2 p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80">
+                    <div className="flex items-center justify-between">
+                      <label className="block font-bold text-slate-800 text-xs">
+                        Kelas yang Diajarkan *
+                      </label>
+                      <div className="flex items-center gap-2">
+                        {verifiedSchool.classes && verifiedSchool.classes.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (selectedSubjectClassIds.length === verifiedSchool.classes.length) {
+                                setSelectedSubjectClassIds([]);
+                              } else {
+                                setSelectedSubjectClassIds(verifiedSchool.classes.map((c: any) => c.id));
+                              }
+                            }}
+                            className="text-[10px] font-bold text-indigo-600 hover:underline cursor-pointer"
+                          >
+                            {selectedSubjectClassIds.length === verifiedSchool.classes.length ? 'Batal Semua' : 'Pilih Semua'}
+                          </button>
+                        )}
+                        <span className="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
+                          {selectedSubjectClassIds.length} dipilih
+                        </span>
                       </div>
                     </div>
-                  )}
-                </div>
-              )}
 
-              {/* If Guru Mapel: Classes */}
-              {role === 'GURU MAPEL' && (
-                <div className="space-y-2 p-3 bg-slate-50 rounded-xl border border-slate-200/80">
-                  <div className="flex items-center justify-between">
-                    <label className="block font-bold text-slate-700 text-[11px]">Kelas yang Diajar *</label>
-                    <span className="text-[10px] font-bold text-indigo-600">{selectedSubjectClassIds.length} dipilih</span>
+                    {verifiedSchool.classes && verifiedSchool.classes.length > 0 ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+                        {verifiedSchool.classes.map((c: any) => {
+                          const checked = selectedSubjectClassIds.includes(c.id);
+                          return (
+                            <label
+                              key={c.id}
+                              className={`flex items-center gap-2.5 p-2.5 rounded-xl border cursor-pointer transition ${
+                                checked ? 'border-indigo-500 bg-indigo-50/80' : 'border-slate-200 bg-white hover:bg-slate-50'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() =>
+                                  setSelectedSubjectClassIds((prev) =>
+                                    checked ? prev.filter((id) => id !== c.id) : [...prev, c.id]
+                                  )
+                                }
+                                className="w-4 h-4 accent-indigo-600 rounded cursor-pointer"
+                              />
+                              <span className="text-xs font-semibold text-slate-800">{c.name}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="p-3 bg-amber-50 rounded-xl border border-amber-200/60 text-[11px] text-amber-800">
+                        Belum ada data rombel di sekolah ini. Anda tetap dapat bergabung dan Administrator Sekolah dapat menambahkan kelas serta menugaskannya kepada Anda.
+                      </div>
+                    )}
+                    <p className="text-[10px] text-slate-500">
+                      Pilih semua rombel yang Anda ajar. Administrator dan Guru Mapel dapat mengelola data kelas ini.
+                    </p>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {(verifiedSchool.classes || []).map((c: any) => {
-                      const checked = selectedSubjectClassIds.includes(c.id);
-                      return (
-                        <label key={c.id} className={`flex items-center gap-2.5 p-2.5 rounded-xl border cursor-pointer ${checked ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 bg-white'}`}>
-                          <input type="checkbox" checked={checked} onChange={() => setSelectedSubjectClassIds((prev) => checked ? prev.filter((id) => id !== c.id) : [...prev, c.id])} className="w-4 h-4 accent-indigo-600" />
-                          <span className="text-xs font-semibold text-slate-800">{c.name}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                  <p className="text-[10px] text-slate-500">Pilih semua kelas yang Anda ajar untuk mata pelajaran ini.</p>
-                </div>
-              )}
-
-              {/* If Guru Mapel: Subject Name */}
-              {role === 'GURU MAPEL' && (
-                <div className="space-y-1.5 p-3 bg-slate-50 rounded-xl border border-slate-200/80">
-                  <label className="block font-bold text-slate-700 text-[11px]">
-                    Nama Mata Pelajaran
-                  </label>
-                  <select
-                    value={subjectName}
-                    onChange={(e) => setSubjectName(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-slate-800 font-semibold focus:border-blue-600 outline-none"
-                  >
-                    <option value="Pendidikan Agama Islam (PAI)">Pendidikan Agama Islam (PAI)</option>
-                    <option value="Pendidikan Agama Kristen">Pendidikan Agama Kristen</option>
-                    <option value="Pendidikan Jasmani, Olahraga, dan Kesehatan (PJOK)">Pendidikan Jasmani, Olahraga, dan Kesehatan (PJOK)</option>
-                    <option value="Bahasa Inggris">Bahasa Inggris</option>
-                    <option value="Bahasa Sunda / Daerah">Bahasa Sunda / Daerah</option>
-                    <option value="Seni Budaya & Prakarya (SBdP)">Seni Budaya & Prakarya (SBdP)</option>
-                    <option value="Pendidikan Pancasila & Kewarganegaraan (PPKn)">Pendidikan Pancasila & Kewarganegaraan (PPKn)</option>
-                    <option value="Matematika">Matematika</option>
-                    <option value="Ilmu Pengetahuan Alam dan Sosial (IPAS)">Ilmu Pengetahuan Alam dan Sosial (IPAS)</option>
-                  </select>
                 </div>
               )}
             </div>
