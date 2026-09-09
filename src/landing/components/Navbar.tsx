@@ -159,16 +159,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
               </div>
 
-              {/* Daftar Sekolah CTA Button */}
-              <button
-                type="button"
-                id="btn-navbar-register-school"
-                onClick={onOpenRegisterSchool || onOpenRegister}
-                className="px-4 py-2.5 border border-[#0B2F64] text-[#0B2F64] hover:bg-blue-50 active:scale-95 text-xs font-bold uppercase tracking-wider transition-all cursor-pointer rounded-lg flex items-center gap-1.5 shadow-xs"
-              >
-                <span>{lang === 'ID' ? 'Daftar Sekolah' : 'Register School'}</span>
-              </button>
-
               {/* Login Button - Authoritative Blue Theme */}
               <button
                 type="button"
