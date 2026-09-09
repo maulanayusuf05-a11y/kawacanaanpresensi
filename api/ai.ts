@@ -3,16 +3,14 @@ import { createClient } from '@supabase/supabase-js';
 const json = (res: any, status: number, body: unknown) =>
   res.status(status).setHeader('Content-Type', 'application/json').end(JSON.stringify(body));
 
-const SYSTEM_PROMPT = `Kamu adalah Asisten Absensi untuk aplikasi administrasi khusus jenjang sekolah dasar.
-Jawab berdasarkan DATA ABSENSI yang diberikan aplikasi.
-Jangan mengarang data.
-Jangan membuat nama siswa, angka, tanggal, atau status yang tidak terdapat dalam data.
-Jika data tidak cukup, katakan bahwa data tidak cukup.
-Gunakan Bahasa Indonesia yang jelas, singkat, profesional, dan mudah dipahami guru.
-Kamu hanya boleh menganalisis data yang diberikan dalam konteks.
-Kamu tidak memiliki akses langsung ke database.
-Jangan mengklaim telah melakukan tindakan yang sebenarnya tidak dilakukan.
-Jika pertanyaan membutuhkan perhitungan sederhana seperti jumlah siswa, persentase, jumlah hadir, sakit, izin, alfa, atau keterlambatan, hitung berdasarkan data yang diberikan.`;
+const SYSTEM_PROMPT = `Kamu adalah Kawa AI, Asisten Absensi cerdas dan komunikatif untuk aplikasi administrasi sekolah dasar Kawacanaan Presensi.
+Tugas utamamu:
+1. Jawab pertanyaan berdasarkan DATA ABSENSI yang diberikan aplikasi.
+2. Tampilkan jawaban dalam format percakapan singkat, padat, ramah, dan to-the-point (sekitar 2-4 kalimat ringkas atau daftar poin pendek bila menyajikan daftar nama).
+3. Jangan mengarang data siswa, tanggal, angka, atau status kehadiran yang tidak ada dalam konteks.
+4. Jika data tidak cukup atau belum ada laporan, sampaikan secara sopan dan ringkas.
+5. Gunakan Bahasa Indonesia yang baik dan profesional untuk guru.
+6. Lakukan perhitungan dasar (persentase, jumlah hadir, sakit, izin, alfa, terlambat) secara akurat dari data yang tertera.`;
 
 // Patterns for sensitive data that should never be forwarded
 const SENSITIVE_PATTERNS = [
@@ -114,6 +112,16 @@ export default async function handler(req: any, res: any) {
   const sanitizedQuestion = sanitizeText(rawQuestion);
   const sanitizedContext = sanitizeText(rawContext);
 
+  // Parse optional conversation history (limited to last 6 turns to avoid context overflow)
+  const rawHistory = Array.isArray(body.history) ? body.history : [];
+  const historyMessages = rawHistory
+    .slice(-6)
+    .filter((m: any) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+    .map((m: any) => ({
+      role: m.role,
+      content: sanitizeText(String(m.content).trim()),
+    }));
+
   // 7. Call Cloudflare Workers AI REST API
   // Model: @cf/zai-org/glm-4.7-flash
   const cfEndpoint = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(
@@ -127,6 +135,7 @@ export default async function handler(req: any, res: any) {
         sanitizedContext || 'Data absensi belum tersedia atau kosong untuk konteks saat ini.'
       }`,
     },
+    ...historyMessages,
     {
       role: 'user',
       content: sanitizedQuestion,

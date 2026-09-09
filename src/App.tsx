@@ -20,6 +20,7 @@ import { OnboardingView } from './views/OnboardingView';
 import { WorkspaceSelectorView } from './views/WorkspaceSelectorView';
 import { AppAuthLoadingSkeleton } from './components/DashboardSkeleton';
 import { BookLoadingModal } from './components/BookLoader';
+import { AIChatWidget } from './components/AIChatWidget';
 import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
 import type { ActiveView, UserRole } from './types';
 
@@ -322,6 +323,9 @@ const MainAppContent: React.FC = () => {
         progress={switchingWorkspaceProgress}
         statusMessage={switchingWorkspaceMessage}
       />
+
+      {/* Live AI Attendance Assistant Chat Widget */}
+      <AIChatWidget />
 
       {/* Global Toast Notifications */}
       <ToastContainer />
