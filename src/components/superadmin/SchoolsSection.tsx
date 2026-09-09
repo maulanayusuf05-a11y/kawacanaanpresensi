@@ -1268,6 +1268,45 @@ export const SchoolsSection: React.FC<{
 
                       <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1.5">
+                          {(lifecycle.isExpiringSoon || lifecycle.isGracePeriod || lifecycle.isSuspended) && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const currentExpiry = s.subscription_expires_at || new Date().toISOString().slice(0, 10);
+                                  const baseDate = new Date(currentExpiry) > new Date() ? currentExpiry : new Date().toISOString().slice(0, 10);
+                                  const nextDate = new Date(baseDate);
+                                  nextDate.setDate(nextDate.getDate() + 7);
+                                  const nextExpiryStr = nextDate.toISOString().slice(0, 10);
+                                  await call('update_school', {
+                                    school_id: s.school_id || s.id,
+                                    name: s.name,
+                                    npsn: s.npsn,
+                                    plan: s.plan,
+                                    status: 'active',
+                                    subscription_expires_at: nextExpiryStr,
+                                  });
+                                  showToast(`Masa tenggang +7 hari berhasil diberikan ke "${s.name}".`, 'success');
+                                  loadSchools();
+                                } catch (err: any) {
+                                  showToast(err.message || 'Gagal memperpanjang masa aktif.', 'error');
+                                }
+                              }}
+                              title="Beri Masa Tenggang Cepat +7 Hari"
+                              className="px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 font-bold text-[10px] cursor-pointer transition-colors shrink-0 flex items-center gap-1"
+                            >
+                              <Clock size={11} />
+                              <span>+7 Hari</span>
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleImpersonate(s)}
+                            title="Masuk Mode Asistensi Dukungan (Simulasi)"
+                            className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs cursor-pointer transition-colors"
+                          >
+                            <ExternalLink size={13} />
+                          </button>
                           <button
                             onClick={() => handleSelectSchool(s)}
                             className="px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs cursor-pointer transition-colors"

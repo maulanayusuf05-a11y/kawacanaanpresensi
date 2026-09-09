@@ -848,15 +848,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     name: string;
     plan?: string;
   }) => {
-    showToast(
-      `Mode impersonasi langsung dinonaktifkan untuk keamanan RLS. Gunakan akun ADMIN sekolah untuk masuk sebagai tenant ${school.name}.`,
-      "info",
-    );
+    if (!currentUser) return;
+    const backupUser = { ...currentUser };
+    setCurrentUser({
+      ...currentUser,
+      role: 'ADMIN',
+      schoolId: school.id,
+      name: `Admin (${school.name})`,
+      subscriptionPlan: (school.plan as any) || 'school',
+      impersonatedFrom: backupUser,
+    });
+    setSchoolProfile((p) => ({
+      ...p,
+      id: school.id,
+      namaSekolah: school.name,
+    }));
+    setActiveView('dashboard');
+    showToast(`Beralih ke mode simulasi dukungan untuk "${school.name}".`, 'info');
   };
   const stopImpersonation = () => {
     if (currentUser?.impersonatedFrom) {
       setCurrentUser(currentUser.impersonatedFrom);
-      setActiveView("superadmin");
+      setActiveView('superadmin');
+      showToast('Kembali ke Pusat Kendali Super Admin.', 'info');
     }
   };
   const showToast = (message: string, type: Toast["type"] = "success") => {

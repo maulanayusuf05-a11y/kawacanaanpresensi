@@ -311,11 +311,11 @@ const MainAppContent: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-800 flex flex-col antialiased selection:bg-blue-600 selection:text-white">
-      {/* Universal Top Header */}
-      <Header />
+      {/* Universal Top Header (disembunyikan khusus Super Admin view agar layout Sidebar Kiri tampil penuh) */}
+      {activeView !== 'superadmin' && <Header />}
 
       {/* Dynamic View Body */}
-      <main className="flex-1 pb-12">
+      <main className={`flex-1 ${activeView === 'superadmin' ? '' : 'pb-12'}`}>
         {activeView === 'superadmin' && <SuperAdminView />}
         {activeView === 'dashboard' && <DashboardView />}
         {activeView === 'data-referensi' && <DataReferensiView />}
