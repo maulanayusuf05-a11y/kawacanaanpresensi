@@ -215,6 +215,12 @@ interface AppContextType {
   setIsTeacherUpgradeOpen: (open: boolean) => void;
   isSchoolUpgradeOpen: boolean;
   setIsSchoolUpgradeOpen: (open: boolean) => void;
+  hasUsedTeacherTrial: boolean;
+  activateTeacherTrial: () => Promise<boolean>;
+  createTeacherMidtransTransaction: (billingCycle: 'monthly' | 'yearly') => Promise<any>;
+  completeTeacherUpgrade: (orderId: string, billingCycle: 'monthly' | 'yearly') => Promise<boolean>;
+  createSchoolMidtransTransaction: (schoolData: any, billingCycle: 'monthly' | 'yearly') => Promise<any>;
+  completeSchoolUpgrade: (schoolData: any, orderId: string, billingCycle: 'monthly' | 'yearly') => Promise<any>;
   upgradeToTeacherPro: (billingCycle: 'monthly' | 'yearly') => Promise<boolean>;
   upgradeToSchoolWorkspace: (schoolData: any) => Promise<{ success: boolean; schoolCode: string }>;
   requestFeatureAccess: (
@@ -766,6 +772,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const [isTeacherUpgradeOpen, setIsTeacherUpgradeOpen] = useState(false);
   const [isSchoolUpgradeOpen, setIsSchoolUpgradeOpen] = useState(false);
 
+  // Status Riwayat Trial 14 Hari Guru
+  const [hasUsedTeacherTrial, setHasUsedTeacherTrial] = useState<boolean>(() => {
+    try {
+      const cached = getCachedUserSession();
+      if (
+        cached?.id &&
+        localStorage.getItem(`kawacanaan_teacher_trial_used_${cached.id}`) === 'true'
+      ) {
+        return true;
+      }
+      return Boolean(
+        (cached as any)?.hasUsedTeacherTrial ||
+          (cached as any)?.has_used_teacher_trial
+      );
+    } catch (_) {
+      return false;
+    }
+  });
+
   // Workspace & Onboarding State
   const [userWorkspaces, setUserWorkspaces] = useState<WorkspaceMembership[]>(
     [],
@@ -785,6 +810,94 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     useState<string>("");
   const [switchingWorkspaceMessage, setSwitchingWorkspaceMessage] =
     useState<string>("");
+
+  // Pengecekan otomatis masa uji coba 14 hari Guru Uji Coba (guru_uji_coba)
+  useEffect(() => {
+    if (!currentUser) return;
+
+    if (
+      localStorage.getItem(`kawacanaan_teacher_trial_used_${currentUser.id}`) ===
+      'true'
+    ) {
+      setHasUsedTeacherTrial(true);
+    }
+
+    const currentPlan = (currentUser.subscriptionPlan || '').toLowerCase();
+    const wsPlan = (
+      activeWorkspace?.subscriptionPlan ||
+      activeWorkspace?.subscription?.plan ||
+      ''
+    ).toLowerCase();
+
+    if (currentPlan === 'guru_uji_coba' || wsPlan === 'guru_uji_coba') {
+      const expiresAt =
+        currentUser.subscriptionExpiresAt ||
+        activeWorkspace?.subscription?.expiresAt;
+      if (expiresAt) {
+        const expiryDate = new Date(expiresAt);
+        const now = new Date();
+        if (now > expiryDate) {
+          // Masa uji coba 14 hari telah habis! Kembalikan ke Paket Gratis
+          setCurrentUser((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  subscriptionPlan: 'guru_gratis',
+                  subscriptionStatus: 'active',
+                }
+              : prev
+          );
+          setActiveWorkspace((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  subscriptionPlan: 'guru_gratis',
+                  subscription: {
+                    ...(prev.subscription || {}),
+                    plan: 'guru_gratis',
+                    status: 'active',
+                    maxClasses: 1,
+                    maxStudents: 32,
+                    expiresAt: null,
+                  } as any,
+                }
+              : prev
+          );
+          setHasUsedTeacherTrial(true);
+          localStorage.setItem(
+            `kawacanaan_teacher_trial_used_${currentUser.id}`,
+            'true'
+          );
+
+          try {
+            const cached = getCachedUserSession();
+            if (cached) {
+              localStorage.setItem(
+                CACHE_USER_SESSION_KEY,
+                JSON.stringify({ ...cached, subscriptionPlan: 'guru_gratis' })
+              );
+            }
+          } catch (_) {}
+
+          try {
+            supabase
+              .from('profiles')
+              .update({ subscription_plan: 'guru_gratis' })
+              .eq('id', currentUser.id);
+          } catch (_) {}
+
+          showToast(
+            'Masa uji coba 14 hari Paket Guru telah berakhir. Akun Anda kembali ke Paket Gratis.',
+            'info'
+          );
+        }
+      }
+    }
+  }, [
+    currentUser?.id,
+    currentUser?.subscriptionPlan,
+    activeWorkspace?.subscriptionPlan,
+  ]);
 
   // Login preparation state for GlowingLoadingCircle
   const [isLoginPreparing, setIsLoginPreparing] = useState<boolean>(false);
@@ -7020,7 +7133,152 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     return true;
   };
 
-  const upgradeToTeacherPro = async (
+  // 1. Aktivasi Masa Uji Coba 14 Hari Paket Guru (Hanya 1x Seumur Hidup)
+  const activateTeacherTrial = async (): Promise<boolean> => {
+    if (hasUsedTeacherTrial) {
+      showToast(
+        'Masa uji coba 14 hari telah pernah digunakan sebelumnya. Silakan pilih paket langganan resmi.',
+        'error'
+      );
+      return false;
+    }
+
+    try {
+      const trialDays = 14;
+      const trialExpiresAt = new Date(
+        Date.now() + trialDays * 86400000
+      ).toISOString();
+
+      setActiveWorkspace((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          subscriptionPlan: 'guru_uji_coba',
+          subscription: {
+            ...(prev.subscription || {}),
+            plan: 'guru_uji_coba',
+            status: 'trial',
+            maxClasses: 5,
+            maxStudents: 150,
+            expiresAt: trialExpiresAt,
+          } as any,
+        };
+      });
+
+      setUserWorkspaces((prev) =>
+        prev.map((ws) => {
+          if (
+            ws.workspaceType === 'personal' ||
+            ws.workspaceType === 'individu'
+          ) {
+            return {
+              ...ws,
+              subscriptionPlan: 'guru_uji_coba',
+              subscription: {
+                ...(ws.subscription || {}),
+                plan: 'guru_uji_coba',
+                status: 'trial',
+                maxClasses: 5,
+                maxStudents: 150,
+                expiresAt: trialExpiresAt,
+              } as any,
+            };
+          }
+          return ws;
+        })
+      );
+
+      setCurrentUser((prev) =>
+        prev
+          ? {
+              ...prev,
+              subscriptionPlan: 'guru_uji_coba',
+              subscriptionExpiresAt: trialExpiresAt,
+            }
+          : prev
+      );
+
+      setHasUsedTeacherTrial(true);
+      if (currentUser?.id) {
+        localStorage.setItem(
+          `kawacanaan_teacher_trial_used_${currentUser.id}`,
+          'true'
+        );
+      }
+
+      try {
+        const cached = getCachedUserSession();
+        if (cached) {
+          localStorage.setItem(
+            CACHE_USER_SESSION_KEY,
+            JSON.stringify({
+              ...cached,
+              subscriptionPlan: 'guru_uji_coba',
+              subscriptionExpiresAt: trialExpiresAt,
+              hasUsedTeacherTrial: true,
+            })
+          );
+        }
+      } catch (_) {}
+
+      try {
+        if (currentUser?.id) {
+          await supabase
+            .from('profiles')
+            .update({
+              subscription_plan: 'guru_uji_coba',
+              subscription_expires_at: trialExpiresAt,
+            })
+            .eq('id', currentUser.id);
+        }
+      } catch (_) {}
+
+      showToast(
+        'Selamat! Masa Uji Coba 14 Hari Paket Guru aktif. Nikmati akses penuh hingga 14 hari ke depan.',
+        'success'
+      );
+      return true;
+    } catch (e: any) {
+      showToast(e?.message || 'Gagal mengaktifkan masa uji coba.', 'error');
+      return false;
+    }
+  };
+
+  // 2. Buat Transaksi Midtrans untuk Paket Guru
+  const createTeacherMidtransTransaction = async (
+    billingCycle: 'monthly' | 'yearly'
+  ): Promise<any> => {
+    try {
+      const res = await fetch('/api/midtrans', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create_transaction',
+          plan_id: 'teacher',
+          billing_cycle: billingCycle,
+          contact_name:
+            currentUser?.name || currentUser?.username || 'Bapak/Ibu Guru',
+          email:
+            currentUser?.email ||
+            `${currentUser?.username || 'guru'}@kawacanaan.sch.id`,
+          school_name: `Ruang Kerja ${currentUser?.name || currentUser?.username || 'Individu'}`,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || 'Gagal membuat sesi transaksi Midtrans.');
+      }
+      return data;
+    } catch (err: any) {
+      showToast(err.message || 'Gagal menghubungkan ke Midtrans.', 'error');
+      throw err;
+    }
+  };
+
+  // 3. Selesaikan Upgrade Paket Guru setelah Pembayaran Midtrans Berhasil
+  const completeTeacherUpgrade = async (
+    orderId: string,
     billingCycle: 'monthly' | 'yearly'
   ): Promise<boolean> => {
     try {
@@ -7031,10 +7289,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         if (!prev) return prev;
         return {
           ...prev,
-          subscriptionPlan: 'pro',
+          subscriptionPlan: 'guru_pro',
           subscription: {
             ...(prev.subscription || {}),
-            plan: 'pro',
+            plan: 'guru_pro',
             status: 'active',
             maxClasses: 5,
             maxStudents: 150,
@@ -7045,13 +7303,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 
       setUserWorkspaces((prev) =>
         prev.map((ws) => {
-          if (ws.workspaceType === 'personal' || ws.workspaceType === 'individu') {
+          if (
+            ws.workspaceType === 'personal' ||
+            ws.workspaceType === 'individu'
+          ) {
             return {
               ...ws,
-              subscriptionPlan: 'pro',
+              subscriptionPlan: 'guru_pro',
               subscription: {
                 ...(ws.subscription || {}),
-                plan: 'pro',
+                plan: 'guru_pro',
                 status: 'active',
                 maxClasses: 5,
                 maxStudents: 150,
@@ -7063,14 +7324,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         })
       );
 
-      setCurrentUser((prev) => (prev ? { ...prev, subscriptionPlan: 'pro' } : prev));
+      setCurrentUser((prev) =>
+        prev
+          ? {
+              ...prev,
+              subscriptionPlan: 'guru_pro',
+              subscriptionExpiresAt: expiresAt,
+            }
+          : prev
+      );
 
       try {
         const cached = getCachedUserSession();
         if (cached) {
           localStorage.setItem(
             CACHE_USER_SESSION_KEY,
-            JSON.stringify({ ...cached, subscriptionPlan: 'pro' })
+            JSON.stringify({
+              ...cached,
+              subscriptionPlan: 'guru_pro',
+              subscriptionExpiresAt: expiresAt,
+            })
           );
         }
       } catch (_) {}
@@ -7079,26 +7352,102 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         if (currentUser?.id) {
           await supabase
             .from('profiles')
-            .update({ subscription_plan: 'pro' })
+            .update({
+              subscription_plan: 'guru_pro',
+              subscription_expires_at: expiresAt,
+            })
             .eq('id', currentUser.id);
         }
       } catch (_) {}
 
-      showToast('Ruang Kerja Individu Anda berhasil ditingkatkan ke Paket Guru Pro!', 'success');
+      try {
+        if (orderId) {
+          await supabase
+            .from('payments')
+            .update({ status: 'SETTLEMENT' })
+            .eq('invoice_no', orderId);
+        }
+      } catch (_) {}
+
+      showToast(
+        'Pembayaran berhasil! Paket Guru Pro resmi aktif di Ruang Kerja Anda.',
+        'success'
+      );
       return true;
     } catch (e: any) {
-      showToast(e?.message || 'Gagal mengaktifkan Paket Guru.', 'error');
+      showToast(e?.message || 'Gagal menyelesaikan aktivasi paket.', 'error');
       return false;
     }
   };
 
-  const upgradeToSchoolWorkspace = async (
-    schoolData: any
+  // 4. Buat Transaksi Midtrans untuk Paket Sekolah (Tanpa Trial)
+  const createSchoolMidtransTransaction = async (
+    schoolData: any,
+    billingCycle: 'monthly' | 'yearly'
+  ): Promise<any> => {
+    try {
+      const res = await fetch('/api/midtrans', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create_transaction',
+          plan_id: 'school',
+          billing_cycle: billingCycle,
+          school_name: schoolData.schoolName,
+          npsn: schoolData.npsn,
+          contact_name:
+            schoolData.adminName || currentUser?.name || 'Administrator',
+          email:
+            currentUser?.email ||
+            `${schoolData.npsn || 'admin'}@sekolah.kawacanaan.sch.id`,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(
+          data.error || 'Gagal membuat sesi transaksi Midtrans untuk Sekolah.'
+        );
+      }
+      return data;
+    } catch (err: any) {
+      showToast(err.message || 'Gagal menghubungkan ke Midtrans.', 'error');
+      throw err;
+    }
+  };
+
+  // 5. Selesaikan Pendaftaran & Upgrade Paket Sekolah setelah Pembayaran Berhasil
+  const completeSchoolUpgrade = async (
+    schoolData: any,
+    orderId: string,
+    billingCycle: 'monthly' | 'yearly'
   ): Promise<{ success: boolean; schoolCode: string }> => {
     try {
+      const days = billingCycle === 'yearly' ? 365 : 30;
+      const expiresAt = new Date(Date.now() + days * 86400000).toISOString();
       const schoolCode =
+        schoolData.npsn ||
         'SCH-' + Math.floor(100000 + Math.random() * 900000).toString();
       const newWsId = `school-ws-${Date.now()}`;
+
+      // Daftarkan sekolah di database jika belum ada
+      try {
+        await supabase.from('schools').upsert(
+          {
+            name: schoolData.schoolName,
+            npsn: schoolData.npsn,
+            status: 'active',
+            plan: 'sekolah_pro',
+            subscription_expires_at: expiresAt,
+            principal_name: schoolData.principalName || null,
+            principal_nip: schoolData.principalNip || null,
+            city: schoolData.city || null,
+            province: schoolData.province || null,
+          },
+          { onConflict: 'npsn' }
+        );
+      } catch (_) {}
+
       const newSchoolWs: WorkspaceMembership = {
         id: `mem-${Date.now()}`,
         userId: currentUser?.id || 'usr-default',
@@ -7109,22 +7458,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         roleLabel: 'Administrator Sekolah',
         npsn: schoolData.npsn,
         workspaceCode: schoolCode,
-        subscriptionPlan: 'school',
+        subscriptionPlan: 'sekolah_pro',
         subscription: {
-          plan: 'school',
+          plan: 'sekolah_pro',
           status: 'active',
-          maxClasses: 8,
-          maxStudents: 256,
-          maxTeachers: 9,
-          expiresAt: new Date(Date.now() + 14 * 86400000).toISOString(),
+          maxClasses: 12,
+          maxStudents: 500,
+          maxTeachers: 25,
+          expiresAt: expiresAt,
         } as any,
       };
 
       setUserWorkspaces((prev) => [newSchoolWs, ...prev]);
       await selectWorkspace(newSchoolWs);
 
+      try {
+        if (orderId) {
+          await supabase
+            .from('payments')
+            .update({ status: 'SETTLEMENT' })
+            .eq('invoice_no', orderId);
+        }
+      } catch (_) {}
+
       showToast(
-        `Ruang Kerja Sekolah "${schoolData.schoolName}" berhasil diaktifkan!`,
+        `Pembayaran berhasil! Ruang Kerja Sekolah "${schoolData.schoolName}" resmi aktif!`,
         'success'
       );
       return { success: true, schoolCode };
@@ -7132,6 +7490,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       showToast(e?.message || 'Gagal membentuk ruang kerja sekolah.', 'error');
       throw e;
     }
+  };
+
+  const upgradeToTeacherPro = async (
+    billingCycle: 'monthly' | 'yearly'
+  ): Promise<boolean> => {
+    return completeTeacherUpgrade('', billingCycle);
+  };
+
+  const upgradeToSchoolWorkspace = async (
+    schoolData: any
+  ): Promise<{ success: boolean; schoolCode: string }> => {
+    return completeSchoolUpgrade(schoolData, '', 'monthly');
   };
 
   return (
@@ -7144,6 +7514,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         setIsTeacherUpgradeOpen,
         isSchoolUpgradeOpen,
         setIsSchoolUpgradeOpen,
+        hasUsedTeacherTrial,
+        activateTeacherTrial,
+        createTeacherMidtransTransaction,
+        completeTeacherUpgrade,
+        createSchoolMidtransTransaction,
+        completeSchoolUpgrade,
         upgradeToTeacherPro,
         upgradeToSchoolWorkspace,
         requestFeatureAccess,

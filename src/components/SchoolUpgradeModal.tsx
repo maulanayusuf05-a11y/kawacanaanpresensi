@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   School,
   Sparkles,
@@ -16,7 +16,10 @@ import {
   Calendar,
   Layers,
   Loader2,
-  Share2,
+  CreditCard,
+  RefreshCw,
+  Clock,
+  AlertCircle,
   Zap,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
@@ -27,13 +30,32 @@ interface SchoolUpgradeModalProps {
   onSuccess?: () => void;
 }
 
+interface PaymentSessionData {
+  orderId: string;
+  snapToken: string | null;
+  amount: number;
+  planTitle: string;
+  billingCycle: 'monthly' | 'yearly';
+  status: 'PENDING' | 'SETTLED' | 'EXPIRED';
+}
+
 export const SchoolUpgradeModal: React.FC<SchoolUpgradeModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
 }) => {
-  const { currentUser, upgradeToSchoolWorkspace, showToast } = useApp();
+  const {
+    currentUser,
+    createSchoolMidtransTransaction,
+    completeSchoolUpgrade,
+    showToast,
+  } = useApp();
 
+  // Wizard Steps:
+  // 1: Data Identitas Satuan Pendidikan & Kepala Sekolah
+  // 2: Siklus Tagihan Langganan Sekolah Resmi (Tanpa Trial)
+  // 3: Pembayaran Payment Gateway Midtrans (Snap / QRIS / VA)
+  // 4: Ruang Kerja Sekolah Aktif & Kode Sekolah
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
 
   // Form Fields Satuan Pendidikan
@@ -43,30 +65,107 @@ export const SchoolUpgradeModal: React.FC<SchoolUpgradeModalProps> = ({
   const [province, setProvince] = useState('DKI Jakarta');
   const [status, setStatus] = useState<'Negeri' | 'Swasta'>('Negeri');
 
-  // Pejabat & Admin
+  // Pejabat & Pimpinan
   const [principalName, setPrincipalName] = useState('Dra. Hj. Nurjanah, M.Pd.');
   const [principalNip, setPrincipalNip] = useState('197508122000032001');
-  const [adminName, setAdminName] = useState(
-    currentUser?.name || currentUser?.username || 'Administrator Sekolah'
-  );
 
-  // Paket Aktivasi
-  const [planOption, setPlanOption] = useState<'trial' | 'annual'>('trial');
-  const [isProcessing, setIsProcessing] = useState(false);
+  // Admin Sekolah Terhubung
+  const adminName = currentUser?.name || currentUser?.username || 'Administrator Sekolah';
+  const adminEmail = currentUser?.email || 'admin@sekolah.kawacanaan.sch.id';
+
+  // Siklus Tagihan (Paket Sekolah Tidak Ada Trial)
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('yearly');
+
+  // Payment Session State
+  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
+  const [paymentSession, setPaymentSession] = useState<PaymentSessionData | null>(null);
+  const [isCheckingPayment, setIsCheckingPayment] = useState(false);
+  const [paymentCheckMessage, setPaymentCheckMessage] = useState<string | null>(null);
+  const [copiedInvoice, setCopiedInvoice] = useState(false);
 
   // Hasil Sukses
-  const [generatedSchoolCode, setGeneratedSchoolCode] = useState('9B3366AB');
+  const [generatedSchoolCode, setGeneratedSchoolCode] = useState('');
   const [copiedCode, setCopiedCode] = useState(false);
+
+  const pollingRef = useRef<any>(null);
+
+  const monthlyPrice = 249000;
+  const yearlyPrice = 2490000; // Hemat 2 bulan (Rp 498.000)
+  const amountToPay = billingCycle === 'yearly' ? yearlyPrice : monthlyPrice;
+
+  // Load Midtrans Snap Script on modal open
+  useEffect(() => {
+    if (!isOpen) return;
+
+    fetch('/api/midtrans?action=get_client_config')
+      .then((res) => res.json())
+      .then((cfg) => {
+        if (cfg.ok && cfg.enabled && cfg.client_key) {
+          if (!document.getElementById('midtrans-snap-script')) {
+            const script = document.createElement('script');
+            script.id = 'midtrans-snap-script';
+            script.src = cfg.snap_url || 'https://app.sandbox.midtrans.com/snap/snap.js';
+            script.setAttribute('data-client-key', cfg.client_key);
+            script.async = true;
+            document.body.appendChild(script);
+          }
+        }
+      })
+      .catch(() => {});
+  }, [isOpen]);
+
+  // Real-time polling when waiting for payment in step 3
+  useEffect(() => {
+    if (paymentSession && paymentSession.status === 'PENDING' && step === 3) {
+      if (!pollingRef.current) {
+        pollingRef.current = setInterval(async () => {
+          try {
+            const res = await fetch(
+              `/api/midtrans?action=check_status&order_id=${encodeURIComponent(paymentSession.orderId)}`
+            );
+            const body = await res.json();
+            if (res.ok && (body.is_settled || body.status === 'settlement' || body.status === 'capture')) {
+              if (pollingRef.current) {
+                clearInterval(pollingRef.current);
+                pollingRef.current = null;
+              }
+              handleFinishPaymentActivation(paymentSession.orderId);
+            }
+          } catch (_) {}
+        }, 4000);
+      }
+    } else {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    }
+
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, [paymentSession, step]);
+
+  // Reset state on modal close
+  useEffect(() => {
+    if (!isOpen) {
+      setStep(1);
+      setPaymentSession(null);
+      setPaymentCheckMessage(null);
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const handleCopyCode = () => {
-    navigator.clipboard.writeText(generatedSchoolCode);
-    setCopiedCode(true);
-    setTimeout(() => setCopiedCode(false), 2000);
-  };
-
-  const handleActivateSchool = async () => {
+  // Step 2 Submission: Buat Transaksi Midtrans untuk Sekolah
+  const handleProceedToPayment = async () => {
     if (!schoolName.trim()) {
       showToast('Nama satuan pendidikan wajib diisi.', 'error');
       return;
@@ -76,35 +175,148 @@ export const SchoolUpgradeModal: React.FC<SchoolUpgradeModalProps> = ({
       return;
     }
 
-    setIsProcessing(true);
+    setIsSubmittingPayment(true);
+    setPaymentCheckMessage(null);
+
     try {
-      let createdCode = 'SCH-' + Math.floor(100000 + Math.random() * 900000);
-      if (upgradeToSchoolWorkspace) {
-        const res = await upgradeToSchoolWorkspace({
-          schoolName,
-          npsn,
+      const resData = await createSchoolMidtransTransaction(
+        {
+          schoolName: schoolName.trim(),
+          npsn: npsn.trim(),
+          principalName,
+          principalNip,
+          city,
+          province,
+          adminName,
+        },
+        billingCycle
+      );
+
+      const session: PaymentSessionData = {
+        orderId: resData.order_id,
+        snapToken: resData.snap_token || null,
+        amount: resData.amount || amountToPay,
+        planTitle: resData.plan_title || `Paket Sekolah (${billingCycle === 'yearly' ? '1 Tahun' : '1 Bulan'})`,
+        billingCycle,
+        status: 'PENDING',
+      };
+
+      setPaymentSession(session);
+      setStep(3);
+
+      // Auto-launch Snap popup if available
+      if (session.snapToken && (window as any).snap) {
+        setTimeout(() => {
+          handleLaunchSnap(session.snapToken!);
+        }, 500);
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'Gagal membuat sesi transaksi Midtrans.', 'error');
+    } finally {
+      setIsSubmittingPayment(false);
+    }
+  };
+
+  // Launch Snap Modal
+  const handleLaunchSnap = (token: string) => {
+    if (!(window as any).snap) {
+      setPaymentCheckMessage(
+        'Komponen Snap belum termuat. Anda dapat menggunakan verifikasi pembayaran langsung di bawah.'
+      );
+      return;
+    }
+
+    (window as any).snap.pay(token, {
+      onSuccess: () => {
+        if (paymentSession) {
+          handleFinishPaymentActivation(paymentSession.orderId);
+        }
+      },
+      onPending: () => {
+        setPaymentCheckMessage('Menunggu penyelesaian transfer/pembayaran sekolah via Midtrans.');
+      },
+      onError: (err: any) => {
+        setPaymentCheckMessage(err?.status_message || 'Pembayaran dibatalkan atau gagal.');
+      },
+      onClose: () => {
+        setPaymentCheckMessage('Jendela pembayaran Snap ditutup. Anda dapat membukanya kembali.');
+      },
+    });
+  };
+
+  // Manual status check
+  const handleCheckPaymentStatus = async () => {
+    if (!paymentSession) return;
+    setIsCheckingPayment(true);
+    setPaymentCheckMessage('Memeriksa status pembayaran ke Midtrans...');
+
+    try {
+      const res = await fetch(
+        `/api/midtrans?action=check_status&order_id=${encodeURIComponent(paymentSession.orderId)}`
+      );
+      const data = await res.json();
+
+      if (res.ok && (data.is_settled || data.status === 'settlement' || data.status === 'capture')) {
+        setPaymentCheckMessage('Pembayaran terverifikasi! Mengaktifkan Ruang Kerja Sekolah...');
+        await handleFinishPaymentActivation(paymentSession.orderId);
+      } else {
+        setPaymentCheckMessage(
+          `Status saat ini: ${data.status || 'PENDING'}. Menunggu pembayaran diselesaikan.`
+        );
+      }
+    } catch (_) {
+      setPaymentCheckMessage('Gagal memeriksa status ke Midtrans. Silakan coba kembali.');
+    } finally {
+      setIsCheckingPayment(false);
+    }
+  };
+
+  // Selesaikan Aktivasi Sekolah setelah pembayaran sukses
+  const handleFinishPaymentActivation = async (orderId: string) => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+
+    try {
+      const res = await completeSchoolUpgrade(
+        {
+          schoolName: schoolName.trim(),
+          npsn: npsn.trim(),
           city,
           province,
           status,
           principalName,
           principalNip,
           adminName,
-          planOption,
-        });
-        if (res?.schoolCode) {
-          createdCode = res.schoolCode;
-        }
+        },
+        orderId,
+        billingCycle
+      );
+
+      if (res?.schoolCode) {
+        setGeneratedSchoolCode(res.schoolCode);
+      } else {
+        setGeneratedSchoolCode(npsn.trim());
       }
-      setGeneratedSchoolCode(createdCode);
+
       setStep(4);
-      if (onSuccess) {
-        onSuccess();
-      }
-    } catch (err: any) {
-      showToast(err?.message || 'Gagal membentuk Ruang Kerja Sekolah.', 'error');
-    } finally {
-      setIsProcessing(false);
+      if (onSuccess) onSuccess();
+    } catch (e: any) {
+      showToast(e?.message || 'Gagal membentuk ruang kerja sekolah.', 'error');
     }
+  };
+
+  const handleCopyCode = () => {
+    navigator.clipboard.writeText(generatedSchoolCode);
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2000);
+  };
+
+  const handleCopyInvoice = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedInvoice(true);
+    setTimeout(() => setCopiedInvoice(false), 2000);
   };
 
   return (
@@ -126,7 +338,7 @@ export const SchoolUpgradeModal: React.FC<SchoolUpgradeModalProps> = ({
 
           <div className="flex items-center gap-2 mb-2">
             <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-white/20 text-white text-[11px] font-bold tracking-wide uppercase">
-              <Sparkles size={12} className="text-amber-300" />
+              <Building2 size={12} className="text-sky-300" />
               Onboarding Ruang Kerja Sekolah
             </span>
             <span className="text-[11px] text-blue-100 font-medium">
@@ -135,16 +347,16 @@ export const SchoolUpgradeModal: React.FC<SchoolUpgradeModalProps> = ({
           </div>
 
           <h3 className="text-xl sm:text-2xl font-black leading-snug">
-            {step === 1 && 'Identitas Satuan Pendidikan (SD)'}
-            {step === 2 && 'Pejabat & Pengesahan Sekolah'}
-            {step === 3 && 'Aktivasi Ruang Kerja Sekolah Terpadu'}
-            {step === 4 && 'Ruang Kerja Sekolah Berhasil Dibentuk!'}
+            {step === 1 && 'Identitas Satuan Pendidikan & Pimpinan'}
+            {step === 2 && 'Pilih Siklus Langganan Resmi Sekolah'}
+            {step === 3 && 'Pembayaran Payment Gateway Midtrans'}
+            {step === 4 && 'Ruang Kerja Sekolah Berhasil Diaktifkan!'}
           </h3>
           <p className="text-xs sm:text-sm text-blue-100 mt-1">
-            {step === 1 && 'Masukkan data resmi SD untuk mengintegrasikan seluruh kelas dan rombel paralel.'}
-            {step === 2 && 'Atur nama Kepala Sekolah dan penanggung jawab administrasi kedinasan.'}
-            {step === 3 && 'Pilih paket aktivasi (Masa Uji Coba 14 Hari Penuh atau Lisensi Tahunan).'}
-            {step === 4 && 'Dapatkan Kode Undangan Sekolah untuk dibagikan ke seluruh guru dan siswa.'}
+            {step === 1 && 'Sama dengan onboarding pendaftaran sekolah. Akun Anda otomatis menjadi Admin Sekolah.'}
+            {step === 2 && 'Paket Sekolah adalah langganan resmi institusi tanpa masa uji coba/trial.'}
+            {step === 3 && 'Selesaikan pembayaran resmi sekolah via Midtrans Snap (QRIS, VA Bank, Transfer).'}
+            {step === 4 && 'Bagikan Kode Sekolah kepada seluruh guru dan wali kelas untuk bergabung.'}
           </p>
 
           {/* Stepper Dots */}
@@ -166,274 +378,373 @@ export const SchoolUpgradeModal: React.FC<SchoolUpgradeModalProps> = ({
 
         {/* Modal Body Steps */}
         <div className="p-5 sm:p-7 space-y-6">
-          {/* STEP 1: IDENTITAS SATUAN PENDIDIKAN */}
+          {/* STEP 1: FORMULIR SEKOLAH & PIMPINAN */}
           {step === 1 && (
             <div className="space-y-4">
-              <div>
-                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                  Nama Satuan Pendidikan (SD):
-                </label>
-                <input
-                  type="text"
-                  value={schoolName}
-                  onChange={(e) => setSchoolName(e.target.value)}
-                  placeholder="Contoh: SDN Cideng 07 Pagi"
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
-                />
+              {/* Box Akun Admin Terhubung */}
+              <div className="p-3 bg-blue-50/70 border border-blue-200/80 rounded-2xl flex items-center justify-between gap-3 text-xs text-blue-900">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold">
+                    <Users size={16} />
+                  </div>
+                  <div>
+                    <span className="text-[11px] text-blue-600 block">Penanggung Jawab / Admin Sekolah:</span>
+                    <span className="font-black text-slate-800">{adminName}</span>
+                    <span className="text-slate-500 ml-1">({adminEmail})</span>
+                  </div>
+                </div>
+                <span className="hidden sm:inline-block px-2.5 py-1 bg-blue-100 text-blue-800 text-[10px] font-bold rounded-lg uppercase">
+                  Akun Terhubung
+                </span>
               </div>
 
+              {/* Data Satuan Pendidikan */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                    NPSN (Nomor Pokok Sekolah):
-                  </label>
+                <div className="sm:col-span-2 space-y-1">
+                  <label className="text-xs font-bold text-slate-700">Nama Satuan Pendidikan (SD):</label>
                   <input
                     type="text"
-                    value={npsn}
-                    maxLength={8}
-                    onChange={(e) => setNpsn(e.target.value.replace(/\D/g, ''))}
-                    placeholder="8 Digit Angka NPSN"
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono font-medium"
+                    value={schoolName}
+                    onChange={(e) => setSchoolName(e.target.value)}
+                    placeholder="Contoh: SDN Cideng 07 Pagi"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                   />
                 </div>
 
-                <div>
-                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                    Status Satuan Pendidikan:
-                  </label>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setStatus('Negeri')}
-                      className={`flex-1 py-2.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
-                        status === 'Negeri'
-                          ? 'bg-blue-600 border-blue-600 text-white shadow-2xs'
-                          : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
-                      }`}
-                    >
-                      Negeri
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setStatus('Swasta')}
-                      className={`flex-1 py-2.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
-                        status === 'Swasta'
-                          ? 'bg-blue-600 border-blue-600 text-white shadow-2xs'
-                          : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
-                      }`}
-                    >
-                      Swasta
-                    </button>
-                  </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700">NPSN (8 Digit):</label>
+                  <input
+                    type="text"
+                    maxLength={8}
+                    value={npsn}
+                    onChange={(e) => setNpsn(e.target.value.replace(/\D/g, ''))}
+                    placeholder="20104567"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  />
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                    Kabupaten / Kota:
-                  </label>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700">Status Sekolah:</label>
+                  <select
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value as any)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  >
+                    <option value="Negeri">Negeri</option>
+                    <option value="Swasta">Swasta</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700">Kota / Kabupaten:</label>
                   <input
                     type="text"
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
-                    placeholder="Kota / Kabupaten"
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                    placeholder="Jakarta Pusat"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                   />
                 </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                    Provinsi:
-                  </label>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700">Provinsi:</label>
                   <input
                     type="text"
                     value={province}
                     onChange={(e) => setProvince(e.target.value)}
-                    placeholder="Provinsi"
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                    placeholder="DKI Jakarta"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                   />
+                </div>
+              </div>
+
+              {/* Data Pimpinan */}
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                <span className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                  Pimpinan Satuan Pendidikan:
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-slate-500">Nama Kepala Sekolah:</label>
+                    <input
+                      type="text"
+                      value={principalName}
+                      onChange={(e) => setPrincipalName(e.target.value)}
+                      placeholder="Dra. Hj. Nurjanah, M.Pd."
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-slate-500">NIP Kepala Sekolah:</label>
+                    <input
+                      type="text"
+                      value={principalNip}
+                      onChange={(e) => setPrincipalNip(e.target.value)}
+                      placeholder="197508122000032001"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* STEP 2: PEJABAT & PENGESAHAN */}
+          {/* STEP 2: PILIHAN SIKLUS TAGIHAN RESMI (TANPA TRIAL) */}
           {step === 2 && (
-            <div className="space-y-4">
-              <div className="bg-blue-50/70 border border-blue-200/80 rounded-2xl p-4 text-xs text-blue-900 leading-relaxed">
-                Data Kepala Sekolah akan digunakan secara otomatis pada dokumen <strong>Kop Surat Kedinasan</strong>, lembar pengesahan tanda tangan raport/SPJ, dan laporan rekapitulasi sekolah.
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                  Nama Lengkap Kepala Sekolah (Beserta Gelar):
-                </label>
-                <input
-                  type="text"
-                  value={principalName}
-                  onChange={(e) => setPrincipalName(e.target.value)}
-                  placeholder="Contoh: Dra. Hj. Nurjanah, M.Pd."
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                  NIP Kepala Sekolah:
-                </label>
-                <input
-                  type="text"
-                  value={principalNip}
-                  onChange={(e) => setPrincipalNip(e.target.value)}
-                  placeholder="NIP 18 Digit atau '-'"
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono font-medium"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                  Penanggung Jawab / Admin Sekolah:
-                </label>
-                <input
-                  type="text"
-                  value={adminName}
-                  onChange={(e) => setAdminName(e.target.value)}
-                  placeholder="Nama Akun Anda"
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* STEP 3: PILIHAN AKTIVASI */}
-          {step === 3 && (
             <div className="space-y-5">
+              <div className="p-3.5 bg-sky-50 border border-sky-200 rounded-2xl flex items-center gap-2 text-xs text-sky-900">
+                <ShieldCheck size={18} className="text-sky-600 shrink-0" />
+                <p>
+                  <strong>Paket Sekolah Resmi:</strong> Berbeda dengan ruang kerja individu guru, pendaftaran Ruang Kerja Sekolah <strong>tidak menyediakan masa uji coba/trial</strong> dan langsung diaktifkan dengan lisensi resmi institusi.
+                </p>
+              </div>
+
+              {/* Siklus Tagihan */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {/* Uji Coba 14 Hari Penuh */}
+                {/* Tahunan (Rekomendasi) */}
                 <div
-                  onClick={() => setPlanOption('trial')}
-                  className={`p-4 rounded-2xl border transition cursor-pointer flex flex-col justify-between ${
-                    planOption === 'trial'
+                  onClick={() => setBillingCycle('yearly')}
+                  className={`relative p-4 rounded-2xl border transition cursor-pointer flex flex-col justify-between ${
+                    billingCycle === 'yearly'
                       ? 'border-blue-500 bg-blue-50/60 ring-2 ring-blue-500/20'
                       : 'border-slate-200 hover:border-slate-300 bg-white'
                   }`}
                 >
+                  <span className="absolute -top-2.5 right-3 px-2 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-black uppercase tracking-wide shadow-2xs">
+                    Hemat 2 Bulan
+                  </span>
                   <div>
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-black text-slate-800 uppercase">Uji Coba 14 Hari Penuh</span>
-                      {planOption === 'trial' && (
+                      <span className="text-xs font-black text-slate-800 uppercase">Langganan 1 Tahun</span>
+                      {billingCycle === 'yearly' && (
                         <CheckCircle2 size={18} className="text-blue-600" />
-                      )}
-                    </div>
-                    <div className="mt-2">
-                      <span className="text-2xl font-black text-slate-900">Gratis</span>
-                      <span className="text-xs text-slate-500"> / 14 Hari</span>
-                    </div>
-                    <p className="text-[11px] text-blue-700 font-semibold mt-1">
-                      Coba seluruh 24 fitur sekolah tanpa biaya awal
-                    </p>
-                  </div>
-                </div>
-
-                {/* Lisensi Resmi Tahunan */}
-                <div
-                  onClick={() => setPlanOption('annual')}
-                  className={`p-4 rounded-2xl border transition cursor-pointer flex flex-col justify-between ${
-                    planOption === 'annual'
-                      ? 'border-indigo-500 bg-indigo-50/60 ring-2 ring-indigo-500/20'
-                      : 'border-slate-200 hover:border-slate-300 bg-white'
-                  }`}
-                >
-                  <div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-black text-slate-800 uppercase">Paket Sekolah Terpadu</span>
-                      {planOption === 'annual' && (
-                        <CheckCircle2 size={18} className="text-indigo-600" />
                       )}
                     </div>
                     <div className="mt-2">
                       <span className="text-2xl font-black text-slate-900">Rp 2.490.000</span>
                       <span className="text-xs text-slate-500"> / tahun</span>
                     </div>
+                    <p className="text-[11px] text-blue-700 font-semibold mt-1">
+                      Hanya ~Rp 207.500/bulan (Hemat Rp 498.000)
+                    </p>
+                  </div>
+                </div>
+
+                {/* Bulanan */}
+                <div
+                  onClick={() => setBillingCycle('monthly')}
+                  className={`p-4 rounded-2xl border transition cursor-pointer flex flex-col justify-between ${
+                    billingCycle === 'monthly'
+                      ? 'border-blue-500 bg-blue-50/60 ring-2 ring-blue-500/20'
+                      : 'border-slate-200 hover:border-slate-300 bg-white'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black text-slate-800 uppercase">Langganan Bulanan</span>
+                      {billingCycle === 'monthly' && (
+                        <CheckCircle2 size={18} className="text-blue-600" />
+                      )}
+                    </div>
+                    <div className="mt-2">
+                      <span className="text-2xl font-black text-slate-900">Rp 249.000</span>
+                      <span className="text-xs text-slate-500"> / bulan</span>
+                    </div>
                     <p className="text-[11px] text-slate-500 mt-1">
-                      Mencakup seluruh guru, staf, dan siswa sekolah
+                      Perpanjangan berkala per 30 hari
                     </p>
                   </div>
                 </div>
               </div>
 
-              {/* Rincian Fitur Ekosistem Sekolah */}
+              {/* Fasilitas Ruang Kerja Sekolah */}
               <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3">
                 <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                  Fasilitas Terpadu 1 Unit Sekolah Dasar:
+                  Fasilitas Lengkap Ruang Kerja Sekolah Terpadu:
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-700">
                   <div className="flex items-center gap-2">
                     <CheckCircle2 size={14} className="text-blue-600 shrink-0" />
-                    <span>Seluruh Kelas 1-6 Paralel Terhubung</span>
+                    <span>Hingga 25 Akun Guru & Wali Kelas</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <CheckCircle2 size={14} className="text-blue-600 shrink-0" />
-                    <span>Akun Kepala Sekolah & Supervisi</span>
+                    <span>Kapasitas hingga 500 Siswa SD</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <CheckCircle2 size={14} className="text-blue-600 shrink-0" />
-                    <span>Kop Surat Dinas & Stempel Otomatis</span>
+                    <span>Portal Khusus Administrator Sekolah</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <CheckCircle2 size={14} className="text-blue-600 shrink-0" />
-                    <span>Portal Siswa & Izin Sakit Online</span>
+                    <span>Presensi Mandiri Siswa via HP</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <CheckCircle2 size={14} className="text-blue-600 shrink-0" />
-                    <span>Rekapitulasi Kehadiran Tingkat Sekolah</span>
+                    <span>Kop Surat Kedinasan & Tanda Tangan KS</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <CheckCircle2 size={14} className="text-blue-600 shrink-0" />
-                    <span>Generator Akun Otomatis Massal</span>
+                    <span>Prioritas Bantuan Teknis WhatsApp</span>
                   </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* STEP 4: SUKSES & KODE UNDANGAN */}
+          {/* STEP 3: INTEGRASI MIDTRANS SNAP SEKOLAH */}
+          {step === 3 && paymentSession && (
+            <div className="space-y-5">
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                  <div>
+                    <span className="text-xs font-semibold text-slate-500">Nomor Order / Invoice Midtrans</span>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-sm font-mono font-bold text-slate-800">{paymentSession.orderId}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyInvoice(paymentSession.orderId)}
+                        className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                        title="Salin Nomor Faktur"
+                      >
+                        {copiedInvoice ? <Check size={14} className="text-blue-600" /> : <Copy size={14} />}
+                      </button>
+                    </div>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 text-[11px] font-bold flex items-center gap-1.5 animate-pulse">
+                    <Clock size={12} />
+                    Menunggu Pembayaran
+                  </span>
+                </div>
+
+                <div className="space-y-1.5 text-xs text-slate-600">
+                  <div className="flex justify-between">
+                    <span>Satuan Pendidikan:</span>
+                    <span className="font-bold text-slate-800">{schoolName} (NPSN: {npsn})</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Admin Penanggung Jawab:</span>
+                    <span className="font-bold text-slate-800">{adminName}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Produk:</span>
+                    <span className="font-bold text-slate-800">
+                      Paket Sekolah Pro ({billingCycle === 'yearly' ? '1 Tahun' : '1 Bulan'})
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Gateway:</span>
+                    <span className="font-semibold text-blue-700">Midtrans (QRIS, VA Bank, Transfer Instan)</span>
+                  </div>
+                  <div className="flex justify-between pt-2 border-t border-slate-200 text-sm font-black text-slate-900">
+                    <span>Total Tagihan:</span>
+                    <span className="text-blue-700">Rp {paymentSession.amount.toLocaleString('id-ID')}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Status Message */}
+              {paymentCheckMessage && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center gap-2 text-xs text-blue-800">
+                  <AlertCircle size={15} className="shrink-0 text-blue-600" />
+                  <span>{paymentCheckMessage}</span>
+                </div>
+              )}
+
+              {/* Tombol Snap & Cek Status */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {paymentSession.snapToken && (
+                  <button
+                    type="button"
+                    onClick={() => handleLaunchSnap(paymentSession.snapToken!)}
+                    className="p-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs transition flex items-center justify-center gap-2 shadow-sm cursor-pointer"
+                  >
+                    <CreditCard size={16} />
+                    <span>Buka Jendela Pembayaran Snap</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleCheckPaymentStatus}
+                  disabled={isCheckingPayment}
+                  className="p-3.5 rounded-xl border border-slate-300 hover:bg-slate-100 disabled:opacity-50 text-slate-700 font-black text-xs transition flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <RefreshCw size={14} className={isCheckingPayment ? 'animate-spin' : ''} />
+                  <span>{isCheckingPayment ? 'Memeriksa...' : 'Cek Status Pembayaran'}</span>
+                </button>
+              </div>
+
+              {/* Simulasi Verifikasi Instan untuk Pengujian Sandbox */}
+              <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                <span className="text-[11px] text-slate-400">
+                  Lingkungan Uji Coba Midtrans Sandbox
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleFinishPaymentActivation(paymentSession.orderId)}
+                  className="text-xs font-semibold text-blue-600 hover:text-blue-700 underline cursor-pointer"
+                >
+                  Simulasi Pembayaran Berhasil (Instan)
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 4: SUKSES AKTIVASI SEKOLAH & KODE SEKOLAH */}
           {step === 4 && (
-            <div className="text-center py-4 space-y-5">
+            <div className="text-center py-4 space-y-4">
               <div className="w-16 h-16 rounded-3xl bg-blue-100 text-blue-600 flex items-center justify-center mx-auto animate-bounce">
                 <CheckCircle2 size={36} />
               </div>
-
               <div>
                 <h4 className="text-xl font-black text-slate-800">
-                  Ruang Kerja Sekolah Telah Siap!
+                  Ruang Kerja Sekolah Berhasil Aktif!
                 </h4>
                 <p className="text-xs sm:text-sm text-slate-600 mt-1.5 max-w-md mx-auto">
-                  Ruang Kerja untuk <strong>{schoolName}</strong> (NPSN: {npsn}) telah aktif. Bagikan kode di bawah ini ke seluruh dewan guru dan siswa.
+                  Satuan Pendidikan <strong>{schoolName}</strong> kini resmi beroperasi di Kawacanaan dengan status <strong>Paket Sekolah</strong>.
                 </p>
               </div>
 
-              {/* Box Kode Undangan Sekolah */}
-              <div className="bg-slate-50 border-2 border-dashed border-blue-300 rounded-2xl p-4 max-w-md mx-auto space-y-2">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                  Kode Undangan Sekolah (School Invitation Code)
+              {/* Kartu Kode Sekolah untuk Bergabung */}
+              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4 text-center max-w-md mx-auto space-y-2">
+                <span className="text-xs font-bold text-blue-700 uppercase tracking-wider block">
+                  Kode Bergabung Sekolah (School Code):
                 </span>
-                <div className="flex items-center justify-center gap-3">
-                  <span className="text-2xl sm:text-3xl font-mono font-black text-blue-700 tracking-wider">
-                    {generatedSchoolCode}
+                <div className="flex items-center justify-center gap-2">
+                  <span className="text-2xl font-mono font-black text-blue-900 tracking-widest bg-white px-4 py-1.5 rounded-xl border border-blue-300 shadow-xs">
+                    {generatedSchoolCode || npsn}
                   </span>
                   <button
                     type="button"
                     onClick={handleCopyCode}
-                    className="p-2 rounded-xl bg-blue-100 text-blue-700 hover:bg-blue-200 transition cursor-pointer"
-                    title="Salin Kode Undangan"
+                    className="p-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition shadow-sm cursor-pointer"
+                    title="Salin Kode Sekolah"
                   >
-                    {copiedCode ? <Check size={18} className="text-emerald-600" /> : <Copy size={18} />}
+                    {copiedCode ? <Check size={16} /> : <Copy size={16} />}
                   </button>
                 </div>
-                <p className="text-[11px] text-slate-500">
-                  Guru dan siswa cukup memasukkan kode ini saat pendaftaran untuk otomatis terhubung ke sekolah.
+                <p className="text-[11px] text-blue-800 font-medium">
+                  Bagikan kode ini kepada para guru dan wali kelas agar mereka dapat langsung bergabung ke Ruang Kerja Sekolah ini.
                 </p>
+              </div>
+
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-left space-y-2.5 max-w-md mx-auto text-xs text-slate-700">
+                <p className="font-bold text-slate-800 uppercase tracking-wide text-[11px]">
+                  Hak Akses Anda sebagai Administrator Sekolah:
+                </p>
+                <div className="flex items-center gap-2">
+                  <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-[10px]">1</span>
+                  <span>Kelola seluruh data rombel, guru mapel, dan wali kelas di portal Admin.</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-[10px]">2</span>
+                  <span>Atur jam masuk, jam pulang, dan presensi mandiri siswa via HP.</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-[10px]">3</span>
+                  <span>Sekolah otomatis terdaftar dan terpantau di Super Admin platform.</span>
+                </div>
               </div>
             </div>
           )}
@@ -461,33 +772,33 @@ export const SchoolUpgradeModal: React.FC<SchoolUpgradeModalProps> = ({
           )}
 
           <div className="flex items-center gap-2">
-            {step < 3 && (
+            {step === 1 && (
               <button
                 type="button"
-                onClick={() => setStep((s) => (s + 1) as any)}
+                onClick={() => setStep(2)}
                 className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-xs font-black text-white transition shadow-sm flex items-center gap-1.5 cursor-pointer active:scale-95"
               >
-                <span>Lanjut Langkah Berikutnya</span>
+                <span>Lanjut Pilih Siklus</span>
                 <ArrowRight size={14} />
               </button>
             )}
 
-            {step === 3 && (
+            {step === 2 && (
               <button
                 type="button"
-                onClick={handleActivateSchool}
-                disabled={isProcessing}
+                onClick={handleProceedToPayment}
+                disabled={isSubmittingPayment}
                 className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-xs font-black text-white transition shadow-sm flex items-center gap-2 cursor-pointer active:scale-95"
               >
-                {isProcessing ? (
+                {isSubmittingPayment ? (
                   <>
                     <Loader2 size={16} className="animate-spin" />
-                    <span>Membentuk Ruang Kerja Sekolah...</span>
+                    <span>Menghubungkan Midtrans...</span>
                   </>
                 ) : (
                   <>
-                    <Zap size={15} />
-                    <span>Bentuk & Aktifkan Ruang Kerja Sekolah</span>
+                    <CreditCard size={15} />
+                    <span>Lanjut ke Pembayaran Midtrans</span>
                   </>
                 )}
               </button>

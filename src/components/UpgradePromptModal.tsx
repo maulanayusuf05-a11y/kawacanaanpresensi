@@ -13,6 +13,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { SYSTEM_FEATURES } from '../utils/featureRegistry';
+import { useApp } from '../context/AppContext';
 
 export interface UpgradePromptModalProps {
   isOpen: boolean;
@@ -35,6 +36,8 @@ export const UpgradePromptModal: React.FC<UpgradePromptModalProps> = ({
   onOpenTeacherUpgrade,
   onOpenSchoolUpgrade,
 }) => {
+  const { hasUsedTeacherTrial } = useApp();
+
   if (!isOpen) return null;
 
   const featureInfo = featureId
@@ -141,16 +144,22 @@ export const UpgradePromptModal: React.FC<UpgradePromptModalProps> = ({
                     <GraduationCap size={20} />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs font-black text-slate-800">
                         Paket Guru (Ruang Kerja Individu Pro)
                       </span>
-                      <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
-                        Rp 29.000/bln
-                      </span>
+                      {!hasUsedTeacherTrial ? (
+                        <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black uppercase">
+                          Trial 14 Hari Tersedia
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                          Rp 29.000/bln
+                        </span>
+                      )}
                     </div>
                     <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
-                      Kelola hingga 5 rombel, presensi per jam mata pelajaran, cetak format resmi PDF A4 siap supervisi & SPJ, kapasitas 150 siswa.
+                      Kelola hingga 5 rombel, presensi per jam mata pelajaran, cetak format resmi PDF A4 siap supervisi & SPJ, kapasitas 150 siswa. {!hasUsedTeacherTrial && 'Tersedia opsi uji coba 14 hari tanpa biaya.'}
                     </p>
                   </div>
                 </div>
@@ -181,12 +190,12 @@ export const UpgradePromptModal: React.FC<UpgradePromptModalProps> = ({
                     <School size={20} />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs font-black text-slate-800">
                         Paket Sekolah (Ruang Kerja Sekolah Terpadu)
                       </span>
                       <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-bold">
-                        Uji Coba 14 Hari Gratis
+                        Langganan Resmi Sekolah
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
