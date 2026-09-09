@@ -87,11 +87,18 @@ export const DataKelasView: React.FC = () => {
   const isPersonalWorkspace =
     activeWorkspace?.workspaceType === 'personal' ||
     activeWorkspace?.workspaceType === 'individu' ||
-    currentUser?.subscriptionPlan === 'mulai' ||
-    currentUser?.subscriptionPlan === 'free' ||
-    currentUser?.subscriptionPlan === 'guru' ||
-    currentUser?.subscriptionPlan === 'teacher' ||
     !currentUser?.schoolId;
+
+  const isGuruPro =
+    activeWorkspace?.subscriptionPlan === 'guru_pro' ||
+    currentUser?.subscriptionPlan === 'guru_pro' ||
+    activeWorkspace?.subscription?.plan === 'guru_pro' ||
+    activeWorkspace?.subscriptionPlan === 'sekolah_pro' ||
+    currentUser?.subscriptionPlan === 'sekolah_pro' ||
+    activeWorkspace?.subscription?.plan === 'sekolah_pro' ||
+    isAdmin;
+
+  const isFreePlan = !isGuruPro;
 
   // Active Tab: Rombel & Wali Kelas VS Penugasan Guru Mapel
   const [activeTab, setActiveTab] = useState<'rombel' | 'penugasan_mapel'>('rombel');
@@ -358,12 +365,12 @@ export const DataKelasView: React.FC = () => {
   }, [classStudents, studentSearchTerm]);
 
   const openAdd = () => {
-    if (isPersonalWorkspace && classes.length >= 1) {
+    if (isFreePlan && classes.length >= 1) {
       if (
         !requestFeatureAccess(
           'data_kelas',
-          'Kelola Multi-Rombel Kelas',
-          'Paket Gratis didesain khusus untuk mengelola 1 rombel binaan. Untuk mengelola beberapa kelas paralel atau lintas tingkat, silakan tingkatkan ke Paket Guru atau Paket Sekolah.'
+          'Tambah Kelas Binaan',
+          'Fitur ini tersedia di Paket Guru. Upgrade sekarang untuk akses penuh: tambah kelas, laporan lengkap, dan manajemen guru.'
         )
       ) {
         return;
@@ -395,8 +402,12 @@ export const DataKelasView: React.FC = () => {
     e.preventDefault();
     if (!name.trim()) return showToast('Nama kelas wajib diisi', 'error');
 
-    if (!editing && isPersonalWorkspace && isWaliKelas && classes.length >= 1) {
-      showToast('Ruang Kerja Individu dibatasi maksimal 1 kelas binaan.', 'error');
+    if (!editing && isFreePlan && classes.length >= 1) {
+      requestFeatureAccess(
+        'data_kelas',
+        'Tambah Kelas Binaan',
+        'Fitur ini tersedia di Paket Guru. Upgrade sekarang untuk akses penuh: tambah kelas, laporan lengkap, dan manajemen guru.'
+      );
       return;
     }
 

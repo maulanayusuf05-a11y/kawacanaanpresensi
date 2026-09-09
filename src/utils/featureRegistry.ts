@@ -48,7 +48,7 @@ export const SYSTEM_FEATURES: SystemFeatureItem[] = [
     name: 'Akses Data Dewan Guru',
     category: 'Data Referensi',
     description: 'Daftar pendidik, NIP, penugasan wali kelas, dan guru mata pelajaran sekolah.',
-    defaultChecked: { guru_gratis: false, guru_pro: false, sekolah_pro: true },
+    defaultChecked: { guru_gratis: false, guru_pro: true, sekolah_pro: true },
   },
   {
     id: 'data_mapel',
@@ -62,7 +62,7 @@ export const SYSTEM_FEATURES: SystemFeatureItem[] = [
     name: 'Akses Identitas Sekolah',
     category: 'Data Referensi',
     description: 'Profil legalitas sekolah ber-NPSN, alamat, akreditasi, dan identitas Kepala Sekolah.',
-    defaultChecked: { guru_gratis: false, guru_pro: false, sekolah_pro: true },
+    defaultChecked: { guru_gratis: false, guru_pro: true, sekolah_pro: true },
   },
 
   // 2. Presensi Siswa
@@ -138,21 +138,21 @@ export const SYSTEM_FEATURES: SystemFeatureItem[] = [
     name: 'Kop Surat Dinas Otomatis & Logo',
     category: 'Laporan & Cetak',
     description: 'Header resmi Dinas Pendidikan, logo lambang daerah / sekolah, dan garis ganda standar dinas.',
-    defaultChecked: { guru_gratis: false, guru_pro: false, sekolah_pro: true },
+    defaultChecked: { guru_gratis: false, guru_pro: true, sekolah_pro: true },
   },
   {
     id: 'stempel_digital',
     name: 'Stempel Digital & Pengesahan KS',
     category: 'Laporan & Cetak',
     description: 'Bubuhan stempel sekolah digital dan kolom pengesahan Kepala Sekolah lengkap dengan NIP.',
-    defaultChecked: { guru_gratis: false, guru_pro: false, sekolah_pro: true },
+    defaultChecked: { guru_gratis: false, guru_pro: true, sekolah_pro: true },
   },
   {
     id: 'laporan_kepsek',
     name: 'Laporan Supervisi Kepala Sekolah',
     category: 'Laporan & Cetak',
     description: 'Rekapitulasi komparasi kehadiran antar seluruh kelas, rekap semester, dan tahunan sekolah.',
-    defaultChecked: { guru_gratis: false, guru_pro: false, sekolah_pro: true },
+    defaultChecked: { guru_gratis: false, guru_pro: true, sekolah_pro: true },
   },
 
   // 5. Kalender & Jam
@@ -184,28 +184,28 @@ export const SYSTEM_FEATURES: SystemFeatureItem[] = [
     name: 'Portal Siswa & Orang Tua',
     category: 'Multi-User & Portal',
     description: 'Hak akses login mandiri bagi siswa atau orang tua untuk memantau kehadiran anak di sekolah.',
-    defaultChecked: { guru_gratis: false, guru_pro: false, sekolah_pro: true },
+    defaultChecked: { guru_gratis: false, guru_pro: true, sekolah_pro: true },
   },
   {
     id: 'izin_online',
     name: 'Pengajuan Izin / Sakit Online Siswa',
     category: 'Multi-User & Portal',
     description: 'Formulir digital pengajuan surat izin sakit mandiri dari wali murid langsung ke guru kelas.',
-    defaultChecked: { guru_gratis: false, guru_pro: false, sekolah_pro: true },
+    defaultChecked: { guru_gratis: false, guru_pro: true, sekolah_pro: true },
   },
   {
     id: 'generator_akun',
     name: 'Generator Akun Otomatis Massal',
     category: 'Multi-User & Portal',
     description: 'Pembuatan otomatis nama pengguna dan kata sandi untuk seluruh guru dan siswa dalam 1 klik.',
-    defaultChecked: { guru_gratis: false, guru_pro: false, sekolah_pro: true },
+    defaultChecked: { guru_gratis: false, guru_pro: true, sekolah_pro: true },
   },
   {
     id: 'manajemen_multiuser',
     name: 'Manajemen Multi-User & Hak Akses',
     category: 'Multi-User & Portal',
     description: 'Pengaturan peran terpadu (Admin Sekolah, Kepala Sekolah, Wali Kelas, Guru Mapel, Siswa).',
-    defaultChecked: { guru_gratis: false, guru_pro: false, sekolah_pro: true },
+    defaultChecked: { guru_gratis: false, guru_pro: true, sekolah_pro: true },
   },
 ];
 

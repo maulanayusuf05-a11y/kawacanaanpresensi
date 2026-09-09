@@ -7249,6 +7249,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     billingCycle: 'monthly' | 'yearly'
   ): Promise<any> => {
     try {
+      const targetSchoolId = currentUser?.schoolId || activeWorkspace?.workspaceId || null;
       const res = await fetch('/api/midtrans', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -7256,12 +7257,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           action: 'create_transaction',
           plan_id: 'teacher',
           billing_cycle: billingCycle,
+          school_id: targetSchoolId,
           contact_name:
             currentUser?.name || currentUser?.username || 'Bapak/Ibu Guru',
           email:
             currentUser?.email ||
             `${currentUser?.username || 'guru'}@kawacanaan.sch.id`,
-          school_name: `Ruang Kerja ${currentUser?.name || currentUser?.username || 'Individu'}`,
+          school_name: activeWorkspace?.workspaceName || `Ruang Kerja ${currentUser?.name || currentUser?.username || 'Individu'}`,
         }),
       });
 
@@ -7284,6 +7286,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     try {
       const days = billingCycle === 'yearly' ? 365 : 30;
       const expiresAt = new Date(Date.now() + days * 86400000).toISOString();
+      const targetSchoolId = activeWorkspace?.workspaceId || currentUser?.schoolId;
 
       setActiveWorkspace((prev) => {
         if (!prev) return prev;
@@ -7305,7 +7308,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         prev.map((ws) => {
           if (
             ws.workspaceType === 'personal' ||
-            ws.workspaceType === 'individu'
+            ws.workspaceType === 'individu' ||
+            ws.workspaceId === targetSchoolId
           ) {
             return {
               ...ws,
@@ -7357,6 +7361,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               subscription_expires_at: expiresAt,
             })
             .eq('id', currentUser.id);
+        }
+      } catch (_) {}
+
+      try {
+        if (targetSchoolId) {
+          await supabase
+            .from('schools')
+            .update({
+              plan: 'guru_pro',
+              status: 'active',
+              subscription_expires_at: expiresAt,
+            })
+            .eq('id', targetSchoolId);
         }
       } catch (_) {}
 

@@ -54,6 +54,7 @@ export const DataGuruView: React.FC = () => {
     showToast,
     activeWorkspace,
     loadData,
+    requestFeatureAccess,
   } = useApp();
 
   const isPersonalWorkspace =
@@ -64,6 +65,18 @@ export const DataGuruView: React.FC = () => {
   const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN';
   const isWaliKelas = currentUser?.role === 'WALI KELAS';
   const isGuruMapel = currentUser?.role === 'GURU MAPEL';
+
+  const isGuruPro =
+    activeWorkspace?.subscriptionPlan === 'guru_pro' ||
+    currentUser?.subscriptionPlan === 'guru_pro' ||
+    activeWorkspace?.subscription?.plan === 'guru_pro' ||
+    activeWorkspace?.subscriptionPlan === 'sekolah_pro' ||
+    currentUser?.subscriptionPlan === 'sekolah_pro' ||
+    activeWorkspace?.subscription?.plan === 'sekolah_pro' ||
+    isAdmin;
+
+  const isFreePlan = !isGuruPro;
+
   const canAdd = isAdmin || isPersonalWorkspace;
   const canEdit = isAdmin || isPersonalWorkspace;
   const canDelete = isAdmin || isPersonalWorkspace;
@@ -431,9 +444,16 @@ export const DataGuruView: React.FC = () => {
   };
 
   const openAdd = () => {
-    if (isPersonalWorkspace && baseTeacherList.length >= 1) {
-      showToast('Ruang Kerja Individu dikhususkan untuk 1 akun pendidik mandiri. Penambahan banyak akun/data guru hanya tersedia di Ruang Kerja Sekolah.', 'warning');
-      return;
+    if (isFreePlan && baseTeacherList.length >= 1) {
+      if (
+        !requestFeatureAccess(
+          'data_guru',
+          'Manajemen Dewan Guru',
+          'Fitur ini tersedia di Paket Guru. Upgrade sekarang untuk akses penuh: tambah kelas, laporan lengkap, dan manajemen guru.'
+        )
+      ) {
+        return;
+      }
     }
     setEditing(null);
     resetForm();
@@ -587,8 +607,12 @@ export const DataGuruView: React.FC = () => {
     e.preventDefault();
     if (!nama.trim()) return showToast('Nama guru wajib diisi', 'error');
 
-    if (!editing && isPersonalWorkspace && baseTeacherList.length >= 1) {
-      showToast('Batas Kuota Paket Guru Pro: Ruang Kerja Individu dibatasi maksimal 1 guru (1 Wali Kelas atau 1 Guru Mapel).', 'error');
+    if (!editing && isFreePlan && baseTeacherList.length >= 1) {
+      requestFeatureAccess(
+        'data_guru',
+        'Manajemen Dewan Guru',
+        'Fitur ini tersedia di Paket Guru. Upgrade sekarang untuk akses penuh: tambah kelas, laporan lengkap, dan manajemen guru.'
+      );
       return;
     }
 

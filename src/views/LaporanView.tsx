@@ -441,8 +441,8 @@ export const LaporanView: React.FC = () => {
     if (
       !requestFeatureAccess(
         'cetak_pdf',
-        'Cetak Dokumen PDF Resmi A4',
-        'Format cetak PDF resmi A4 siap SPJ lengkap dengan lembar tanda tangan tersedia di Paket Guru dan Paket Sekolah. Pada Paket Gratis, Anda tetap dapat mengekspor rekapitulasi data dalam format Spreadsheet (Excel).'
+        'Laporan Lengkap & Cetak PDF',
+        'Fitur ini tersedia di Paket Guru. Upgrade sekarang untuk akses penuh: tambah kelas, laporan lengkap, dan manajemen guru.'
       )
     ) {
       return;
