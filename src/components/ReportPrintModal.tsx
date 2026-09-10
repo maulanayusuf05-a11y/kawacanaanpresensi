@@ -656,10 +656,11 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
   const handlePrint = useCallback(() => {
     // Pada ruang kerja individu paket gratis, cetak dokumen resmi dibatasi dan diarahkan upgrade ke Paket Guru
     if (isPersonalWorkspace && !isTeacherPro) {
+      const featureTitle = reportType ? `Cetak ${reportType} (PDF)` : 'Cetak Dokumen Laporan (PDF)';
       const allowed = requestFeatureAccess(
         'cetak_pdf',
-        'Cetak Laporan Bulanan (PDF)',
-        'Fitur cetak laporan resmi dan ekspor PDF tersedia di Paket Guru. Upgrade sekarang untuk mengunduh dan mencetak laporan presensi kelas Anda tanpa batas.'
+        featureTitle,
+        'Fitur cetak dokumen resmi dan ekspor PDF tersedia di Paket Guru. Upgrade sekarang untuk mengunduh dan mencetak laporan presensi kelas Anda tanpa batas.'
       );
       if (!allowed) {
         return;

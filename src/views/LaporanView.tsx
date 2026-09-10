@@ -438,15 +438,7 @@ export const LaporanView: React.FC = () => {
 
   const handlePrintSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (
-      !requestFeatureAccess(
-        'cetak_pdf',
-        'Laporan Lengkap & Cetak PDF',
-        'Fitur ini tersedia di Paket Guru. Upgrade sekarang untuk akses penuh: tambah kelas, laporan lengkap, dan manajemen guru.'
-      )
-    ) {
-      return;
-    }
+    // Buka tampilan pratinjau laporan terlebih dahulu, sama seperti pada Rekapitulasi (Cetak Bulanan)
     setIsPrintModalOpen(true);
   };
 
@@ -1176,6 +1168,7 @@ export const LaporanView: React.FC = () => {
                 <button
                   type="submit"
                   id="btn-cetak-laporan-pdf"
+                  title="Buka pratinjau dokumen laporan untuk dicetak atau disimpan sebagai PDF"
                   className="w-full py-3.5 px-6 rounded-xl bg-[#1D82F5] hover:bg-blue-600 active:scale-98 text-white font-black text-xs sm:text-sm tracking-wider uppercase transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 min-h-[46px] cursor-pointer"
                 >
                   <Printer size={18} />
