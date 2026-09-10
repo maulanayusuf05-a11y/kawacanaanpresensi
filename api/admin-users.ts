@@ -137,9 +137,13 @@ export default async function handler(req: any, res: any) {
       .select('id, owner_id, is_personal, workspace_type')
       .eq('id', checkSchoolId)
       .maybeSingle();
-    if (sch && (sch.owner_id === caller.user.id || sch.is_personal === true || sch.workspace_type === 'personal')) {
+    if (sch && (sch.owner_id === caller.user.id || sch.is_personal === true || sch.workspace_type === 'personal' || sch.workspace_type === 'individu')) {
       isPersonalOwner = true;
     }
+  }
+
+  if (caller.user.user_metadata?.workspace_type === 'personal' || caller.user.user_metadata?.workspace_type === 'individu') {
+    isPersonalOwner = true;
   }
 
   const studentAndClassActions = [
@@ -1354,7 +1358,7 @@ export default async function handler(req: any, res: any) {
     }
 
     if (action === 'generate_all_accounts') {
-      if (!['ADMIN', 'SUPER_ADMIN'].includes(callerRole)) {
+      if (!['ADMIN', 'SUPER_ADMIN'].includes(callerRole) && !isPersonalOwner) {
         return json(res, 403, { error: 'Tidak berwenang mengenerate akun pengguna.' });
       }
 

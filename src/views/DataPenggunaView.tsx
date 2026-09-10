@@ -53,10 +53,28 @@ export const DataPenggunaView: React.FC = () => {
     updateUserPassword,
     setActiveView,
     showToast,
+    activeWorkspace,
+    openUpgradeModal,
+    isTeacherPro,
   } = useApp();
+
+  const isPersonalWorkspace =
+    activeWorkspace?.workspaceType === 'personal' ||
+    activeWorkspace?.workspaceType === 'individu' ||
+    currentUser?.subscriptionPlan === 'guru_uji_coba' ||
+    currentUser?.subscriptionPlan === 'teacher' ||
+    currentUser?.subscriptionPlan === 'guru_pro' ||
+    currentUser?.subscriptionPlan === 'mulai' ||
+    currentUser?.subscriptionPlan === 'guru_gratis' ||
+    (!currentUser?.schoolId && currentUser?.role !== 'SUPER_ADMIN');
 
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'administrator' | 'guru' | 'siswa'>('guru');
+
+  // Di Ruang Kerja Individu, hanya tab 'guru' (Guru & KS) dan 'siswa' yang diizinkan
+  const effectiveActiveTab = isPersonalWorkspace
+    ? (activeTab === 'siswa' ? 'siswa' : 'guru')
+    : activeTab;
   const [guruSubFilter, setGuruSubFilter] = useState<'ALL' | 'WALI_KELAS' | 'GURU_MAPEL' | 'KEPALA_SEKOLAH'>('ALL');
   const [siswaClassFilter, setSiswaClassFilter] = useState<string>('ALL');
   const [authFilter, setAuthFilter] = useState<'ALL' | 'GOOGLE' | 'PASSWORD'>('ALL');
@@ -386,18 +404,18 @@ export const DataPenggunaView: React.FC = () => {
       const isTeacherRole = u.role === 'WALI KELAS' || u.role === 'GURU MAPEL' || u.role === 'KEPALA SEKOLAH';
       
       let matchesTab = true;
-      if (activeTab === 'administrator') {
+      if (effectiveActiveTab === 'administrator') {
         matchesTab = u.role === 'ADMIN' || u.role === 'SUPER_ADMIN';
-      } else if (activeTab === 'guru') {
+      } else if (effectiveActiveTab === 'guru') {
         matchesTab = isTeacherRole;
-      } else if (activeTab === 'siswa') {
+      } else if (effectiveActiveTab === 'siswa') {
         matchesTab = u.role === 'SISWA';
       }
 
       if (!matchesTab) return false;
 
       // Sub-filter for Guru & KS tab
-      if (activeTab === 'guru' && guruSubFilter !== 'ALL') {
+      if (effectiveActiveTab === 'guru' && guruSubFilter !== 'ALL') {
         const details = getUserAssignmentDetails(u);
         if (guruSubFilter === 'WALI_KELAS' && details.type !== 'WALI_KELAS') return false;
         if (guruSubFilter === 'GURU_MAPEL' && details.type !== 'GURU_MAPEL') return false;
@@ -405,7 +423,7 @@ export const DataPenggunaView: React.FC = () => {
       }
 
       // Filter for Siswa tab by Class
-      if (activeTab === 'siswa' && siswaClassFilter !== 'ALL') {
+      if (effectiveActiveTab === 'siswa' && siswaClassFilter !== 'ALL') {
         const s = safeStudents.find((st) => st && (st.id === u.studentId || (st.nisn && u.username && String(st.nisn).trim().toLowerCase() === String(u.username).trim().toLowerCase())));
         const className = s?.className || (u.classIds && u.classIds.length > 0 ? (safeClasses.find(c => c && c.id === u.classIds![0])?.name || '') : '');
         if (className !== siswaClassFilter) return false;
@@ -429,7 +447,7 @@ export const DataPenggunaView: React.FC = () => {
 
       return nameMatch || usernameMatch || emailMatch || assignMatch || classMatch || subjectMatch;
     });
-  }, [users, searchTerm, activeTab, guruSubFilter, siswaClassFilter, authFilter, classes, subjects, teachers, students]);
+  }, [users, searchTerm, effectiveActiveTab, guruSubFilter, siswaClassFilter, authFilter, classes, subjects, teachers, students]);
 
   const totalPages = Math.ceil(filteredUsers.length / pageSize) || 1;
   const startIndex = (currentPage - 1) * pageSize;
@@ -612,7 +630,34 @@ export const DataPenggunaView: React.FC = () => {
     }
   };
 
+  const handleOpenGenerate = (resetExisting: boolean = true) => {
+    if (isPersonalWorkspace && !isTeacherPro) {
+      openUpgradeModal({
+        featureId: 'generator_akun',
+        customTitle: 'Upgrade ke Paket Guru Pro',
+        customMessage:
+          'Fitur Generate Akun & Password otomatis untuk Kepala Sekolah dan Siswa memerlukan Paket Guru. Silakan upgrade untuk mengaktifkan fitur ini.',
+        targetPackage: 'guru_pro',
+      });
+      return;
+    }
+    setGenerateResetExisting(resetExisting);
+    setIsGenerateModalOpen(true);
+  };
+
   const handleGenerateSubmit = async () => {
+    if (isPersonalWorkspace && !isTeacherPro) {
+      setIsGenerateModalOpen(false);
+      openUpgradeModal({
+        featureId: 'generator_akun',
+        customTitle: 'Upgrade ke Paket Guru Pro',
+        customMessage:
+          'Fitur Generate Akun & Password otomatis untuk Kepala Sekolah dan Siswa memerlukan Paket Guru. Silakan upgrade untuk mengaktifkan fitur ini.',
+        targetPackage: 'guru_pro',
+      });
+      return;
+    }
+
     setIsGenerating(true);
     setGenerateProgress(15);
     setGenerateStatusMessage('Membaca data referensi guru, tenaga pendidik, dan siswa...');
@@ -1015,13 +1060,22 @@ export const DataPenggunaView: React.FC = () => {
 
           {/* Generate Accounts Button */}
           <button
-            onClick={() => setIsGenerateModalOpen(true)}
+            onClick={() => handleOpenGenerate(true)}
             id="btn-generate-akun"
             className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-md shadow-amber-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
-            title="Generate semua akun otomatis dari data referensi Guru & Siswa dengan password yang diacak"
+            title={
+              isPersonalWorkspace && !isTeacherPro
+                ? 'Upgrade ke Paket Guru untuk mengaktifkan fitur Generate Akun & Password otomatis'
+                : 'Generate semua akun otomatis dari data referensi Guru & Siswa dengan password yang diacak'
+            }
           >
             <Sparkles size={15} />
             <span>Generate Akun & Password</span>
+            {isPersonalWorkspace && !isTeacherPro && (
+              <span className="px-1.5 py-0.5 rounded bg-amber-700/80 text-[10px] font-black uppercase tracking-wider">
+                PRO
+              </span>
+            )}
           </button>
         </div>
       </div>
@@ -1052,14 +1106,16 @@ export const DataPenggunaView: React.FC = () => {
           </div>
           <button
             type="button"
-            onClick={() => {
-              setGenerateResetExisting(false);
-              setIsGenerateModalOpen(true);
-            }}
+            onClick={() => handleOpenGenerate(false)}
             className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
           >
             <Sparkles size={14} />
             <span>Generate Pengguna yang Tersisa</span>
+            {isPersonalWorkspace && !isTeacherPro && (
+              <span className="px-1.5 py-0.5 rounded bg-amber-800 text-[9px] font-black">
+                PRO
+              </span>
+            )}
           </button>
         </div>
       ) : (teachers.length > 0 || students.length > 0) ? (
@@ -1082,47 +1138,78 @@ export const DataPenggunaView: React.FC = () => {
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-100">
           {/* Main Tabs */}
           <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl w-fit border border-slate-200 overflow-x-auto">
-            <button
-              type="button"
-              onClick={() => { setActiveTab('all'); setCurrentPage(1); }}
-              className={`px-4 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
-                activeTab === 'all' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              Semua ({stats.total})
-            </button>
-            <button
-              type="button"
-              onClick={() => { setActiveTab('administrator'); setCurrentPage(1); }}
-              className={`px-4 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
-                activeTab === 'administrator' ? 'bg-white text-purple-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              Administrator ({stats.admin})
-            </button>
-            <button
-              type="button"
-              onClick={() => { setActiveTab('guru'); setCurrentPage(1); }}
-              className={`px-4 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
-                activeTab === 'guru' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              Guru & KS ({stats.guruKsTotal})
-            </button>
-            <button
-              type="button"
-              onClick={() => { setActiveTab('siswa'); setCurrentPage(1); }}
-              className={`px-4 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
-                activeTab === 'siswa' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              Siswa ({stats.siswa})
-            </button>
+            {isPersonalWorkspace ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => { setActiveTab('guru'); setCurrentPage(1); }}
+                  className={`px-4 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
+                    effectiveActiveTab === 'guru' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                  id="tab-guru-ks"
+                >
+                  Guru & KS ({stats.guruKsTotal})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setActiveTab('siswa'); setCurrentPage(1); }}
+                  className={`px-4 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
+                    effectiveActiveTab === 'siswa' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                  id="tab-siswa"
+                >
+                  Siswa ({stats.siswa})
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => { setActiveTab('all'); setCurrentPage(1); }}
+                  className={`px-4 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
+                    activeTab === 'all' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                  id="tab-all"
+                >
+                  Semua ({stats.total})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setActiveTab('administrator'); setCurrentPage(1); }}
+                  className={`px-4 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
+                    activeTab === 'administrator' ? 'bg-white text-purple-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                  id="tab-admin"
+                >
+                  Administrator ({stats.admin})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setActiveTab('guru'); setCurrentPage(1); }}
+                  className={`px-4 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
+                    activeTab === 'guru' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                  id="tab-guru-ks"
+                >
+                  Guru & KS ({stats.guruKsTotal})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setActiveTab('siswa'); setCurrentPage(1); }}
+                  className={`px-4 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
+                    activeTab === 'siswa' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                  id="tab-siswa"
+                >
+                  Siswa ({stats.siswa})
+                </button>
+              </>
+            )}
           </div>
 
           {/* Sub Filters for Guru or Siswa */}
           <div className="flex flex-wrap items-center gap-2">
-            {activeTab === 'guru' && (
+            {effectiveActiveTab === 'guru' && (
               <div className="flex items-center gap-1 p-1 bg-slate-50 rounded-xl border border-slate-200 text-xs overflow-x-auto">
                 <button
                   type="button"
@@ -1163,7 +1250,7 @@ export const DataPenggunaView: React.FC = () => {
               </div>
             )}
 
-            {activeTab === 'siswa' && (
+            {effectiveActiveTab === 'siswa' && (
               <div className="flex items-center gap-2 text-xs">
                 <span className="font-bold text-slate-500">Rombel:</span>
                 <select
@@ -2038,9 +2125,17 @@ export const DataPenggunaView: React.FC = () => {
                   Bagaimana Proses Generate Bekerja?
                 </p>
                 <ul className="list-disc list-inside space-y-0.5 text-amber-800 text-[11px]">
-                  <li>Membaca semua data Guru dan Siswa yang telah tersimpan di Data Referensi.</li>
+                  <li>
+                    {isPersonalWorkspace
+                      ? 'Sistem akan membuatkan akun dan password acak aman untuk Kepala Sekolah dan Siswa sesuai dengan data yang telah Anda inputkan.'
+                      : 'Membaca semua data Guru dan Siswa yang telah tersimpan di Data Referensi.'}
+                  </li>
                   <li>Membuatkan akun login dan <b>men-generate password acak 8 karakter</b> untuk masing-masing pengguna.</li>
-                  <li>Menyimpan dan menghubungkan pembagian kelas bagi Guru Wali Kelas dan Guru Mapel secara otomatis.</li>
+                  <li>
+                    {isPersonalWorkspace
+                      ? 'Menghubungkan akun Kepala Sekolah dan Siswa ke ruang kerja individu Anda secara otomatis.'
+                      : 'Menyimpan dan menghubungkan pembagian kelas bagi Guru Wali Kelas dan Guru Mapel secara otomatis.'}
+                  </li>
                 </ul>
               </div>
 

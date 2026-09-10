@@ -632,7 +632,7 @@ export const VIEW_ROLE_PERMISSIONS: Record<ActiveView, UserRole[] | "all"> = {
   dashboard: ["ADMIN", "KEPALA SEKOLAH", "WALI KELAS", "GURU MAPEL"],
   superadmin: ["SUPER_ADMIN"],
   "data-referensi": ["ADMIN", "KEPALA SEKOLAH", "WALI KELAS", "GURU MAPEL"],
-  "data-pengguna": ["ADMIN"],
+  "data-pengguna": ["ADMIN", "WALI KELAS", "GURU MAPEL", "KEPALA SEKOLAH"],
   "kalender-akademik": ["ADMIN", "KEPALA SEKOLAH", "WALI KELAS", "GURU MAPEL"],
   absensi: ["ADMIN", "WALI KELAS", "GURU MAPEL"],
   rekapitulasi: ["ADMIN", "KEPALA SEKOLAH", "WALI KELAS", "GURU MAPEL"],

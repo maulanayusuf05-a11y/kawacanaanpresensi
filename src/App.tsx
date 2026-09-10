@@ -296,6 +296,12 @@ const MainAppContent: React.FC = () => {
   const allowedRoles = VIEW_ACCESS[activeView];
   let isAllowed = allowedRoles === 'all' || allowedRoles.includes(currentUser.role);
 
+  // Akses menu Data Pengguna:
+  // Di Ruang Kerja Individu, izinkan semua pendidik (Wali Kelas, Guru Mapel, Guru) mengakses Data Pengguna.
+  if (activeView === 'data-pengguna' && isPersonalWs) {
+    isAllowed = true;
+  }
+
   // Aturan akses khusus Pengaturan Sistem di Ruang Kerja Sekolah:
   // Hanya dapat diakses oleh Admin dan Kepala Sekolah.
   // Sembunyikan & tolak akses untuk Wali Kelas dan Guru Mapel di Ruang Kerja Sekolah.

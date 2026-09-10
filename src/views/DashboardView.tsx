@@ -609,6 +609,14 @@ export const DashboardView: React.FC = () => {
       if (!currentUser) return false;
       if (currentUser.role === 'ADMIN' || currentUser.role === 'SUPER_ADMIN') return true;
 
+      // Aturan menu 'data-pengguna' (Data Pengguna & Hak Akses):
+      if (item.id === 'data-pengguna') {
+        // Ruang kerja individu: munculkan di dashboard untuk semua pendidik/pengguna
+        if (isPersonalWorkspace) return true;
+        // Ruang kerja sekolah: hanya muncul di role admin dan super admin
+        return currentUser.role === 'ADMIN' || currentUser.role === 'SUPER_ADMIN';
+      }
+
       // Aturan menu 'pengaturan' (Pengaturan Sistem):
       if (item.id === 'pengaturan') {
         // Ruang kerja individu: tetap pertahankan di dashboard untuk semua pengguna
