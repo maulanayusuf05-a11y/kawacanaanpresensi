@@ -100,18 +100,42 @@ export const PengaturanView: React.FC = () => {
     currentUser,
     activeWorkspace,
     requestFeatureAccess,
+    isTeacherPro,
   } = useApp();
 
   const isPersonalWorkspace =
     activeWorkspace?.workspaceType === 'personal' ||
     activeWorkspace?.workspaceType === 'individu' ||
-    (currentUser?.subscriptionPlan === 'mulai' && !currentUser?.schoolId);
+    currentUser?.subscriptionPlan === 'guru_uji_coba' ||
+    currentUser?.subscriptionPlan === 'teacher' ||
+    currentUser?.subscriptionPlan === 'guru_pro' ||
+    currentUser?.subscriptionPlan === 'mulai' ||
+    currentUser?.subscriptionPlan === 'guru_gratis' ||
+    (!currentUser?.schoolId && currentUser?.role !== 'SUPER_ADMIN');
 
   const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN';
 
-  const [formData, setFormData] = useState<SystemConfig>({
-    ...systemConfig,
-    studentSelfAttendanceEnabled: Boolean(systemConfig.studentSelfAttendanceEnabled),
+  const [formData, setFormData] = useState<SystemConfig>(() => {
+    // Pada ruang kerja individu, sistem menetapkan setelan default adalah Mati (Off)
+    const isPersonal =
+      activeWorkspace?.workspaceType === 'personal' ||
+      activeWorkspace?.workspaceType === 'individu' ||
+      currentUser?.subscriptionPlan === 'guru_uji_coba' ||
+      currentUser?.subscriptionPlan === 'teacher' ||
+      currentUser?.subscriptionPlan === 'guru_pro' ||
+      currentUser?.subscriptionPlan === 'mulai' ||
+      currentUser?.subscriptionPlan === 'guru_gratis' ||
+      (!currentUser?.schoolId && currentUser?.role !== 'SUPER_ADMIN');
+
+    let initialSelfAttendance = Boolean(systemConfig.studentSelfAttendanceEnabled);
+    if (isPersonal && !isTeacherPro) {
+      initialSelfAttendance = false;
+    }
+
+    return {
+      ...systemConfig,
+      studentSelfAttendanceEnabled: initialSelfAttendance,
+    };
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const kopInputRef = useRef<HTMLInputElement>(null);
@@ -124,21 +148,6 @@ export const PengaturanView: React.FC = () => {
     } else {
       setFormData((prev) => ({ ...prev, [name]: value }));
     }
-  };
-
-  const handleToggleSelfAttendance = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const willEnable = e.target.checked;
-    if (willEnable) {
-      const allowed = requestFeatureAccess(
-        'portal_siswa',
-        'Presensi Mandiri Siswa (Portal Siswa HP)',
-        'Fitur ini tersedia di Paket Guru. Upgrade sekarang untuk akses penuh: tambah kelas, laporan lengkap, dan manajemen guru.'
-      );
-      if (!allowed) {
-        return;
-      }
-    }
-    setFormData((prev) => ({ ...prev, studentSelfAttendanceEnabled: willEnable }));
   };
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -324,17 +333,36 @@ export const PengaturanView: React.FC = () => {
                 Sistem memberikan setelan bawaan <strong>Mati (Off)</strong>. Jika diaktifkan, siswa yang login dengan NISN dapat menekan tombol Masuk dan Pulang secara mandiri.
               </p>
             </div>
-            <label className="relative inline-flex items-center cursor-pointer select-none shrink-0" id="label-toggle-self-attendance">
-              <input
-                type="checkbox"
-                name="studentSelfAttendanceEnabled"
-                checked={Boolean(formData.studentSelfAttendanceEnabled)}
-                onChange={handleToggleSelfAttendance}
-                className="sr-only peer"
-                id="toggle-student-self-attendance"
+            <button
+              type="button"
+              role="switch"
+              aria-checked={Boolean(formData.studentSelfAttendanceEnabled)}
+              onClick={() => {
+                const willEnable = !formData.studentSelfAttendanceEnabled;
+                if (willEnable) {
+                  const allowed = requestFeatureAccess(
+                    'portal_siswa',
+                    'Presensi Mandiri Siswa (Portal Siswa HP)',
+                    'Fitur ini tersedia di Paket Guru. Upgrade sekarang untuk akses penuh: presensi mandiri siswa lewat HP, tambah kelas, dan rekapitulasi lengkap.'
+                  );
+                  if (!allowed) {
+                    return;
+                  }
+                }
+                setFormData((prev) => ({ ...prev, studentSelfAttendanceEnabled: willEnable }));
+              }}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 ${
+                formData.studentSelfAttendanceEnabled ? 'bg-emerald-600' : 'bg-slate-300'
+              }`}
+              id="toggle-student-self-attendance"
+            >
+              <span
+                aria-hidden="true"
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                  formData.studentSelfAttendanceEnabled ? 'translate-x-5' : 'translate-x-0'
+                }`}
               />
-              <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
-            </label>
+            </button>
           </div>
 
           {/* Pengaturan Jam Real-time Siswa */}

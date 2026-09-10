@@ -896,53 +896,58 @@ export const DataPenggunaView: React.FC = () => {
   }, [generatedResults, resultFilterTab, resultSearchTerm]);
 
   return (
-    <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 animate-in fade-in duration-200">
+    <div className="w-full max-w-7xl mx-auto px-3.5 sm:px-6 lg:px-8 py-4 sm:py-5 space-y-3.5 sm:space-y-4 animate-in fade-in duration-200">
       {/* Top Bar Navigation */}
       <div className="flex items-center justify-between">
         <button
           onClick={() => setActiveView('dashboard')}
-          className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-xs cursor-pointer"
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-xs cursor-pointer min-h-[34px]"
           id="btn-back-dashboard"
         >
           <ArrowLeft size={14} />
           <span>Dashboard</span>
         </button>
 
-        <div className="text-xs font-bold text-slate-500 flex items-center gap-2">
-          <School size={14} className="text-blue-600" />
+        <div className="text-xs font-bold text-slate-500 flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-xs">
+          <School size={13} className="text-blue-600" />
           <span>{schoolProfile?.namaSekolah || 'Sistem Sekolah'}</span>
         </div>
       </div>
 
       {/* Header & Main Actions */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
-        <div className="flex items-center gap-3.5">
-          <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20 shrink-0">
-            <UserCheck size={26} />
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3.5 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20 shrink-0">
+            <UserCheck size={22} />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Data Pengguna & Hak Akses</h1>
-              <span className="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 text-xs font-extrabold">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">Data Pengguna & Hak Akses</h1>
+              <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs font-extrabold border border-blue-200/60">
                 {stats.total} Akun
               </span>
+              {isPersonalWorkspace && (
+                <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[11px] font-semibold border border-slate-200/60">
+                  Ruang Kerja Individu
+                </span>
+              )}
             </div>
-            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-              Kelola kredensial login, hak akses rombel, dan cetak dokumen kredensial resmi.
+            <p className="text-xs text-slate-500 mt-0.5">
+              Kelola kredensial login, hak akses akun, dan cetak dokumen kredensial resmi.
             </p>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2">
           {/* Add User Manual Button */}
           <button
             type="button"
             onClick={openAddUser}
             id="btn-add-user"
-            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-md shadow-blue-500/20 transition-all flex items-center gap-2 cursor-pointer"
+            className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer min-h-[36px]"
             title="Tambah akun pengguna baru secara manual"
           >
-            <Plus size={16} />
+            <Plus size={15} />
             <span>Tambah Pengguna</span>
           </button>
 
@@ -952,17 +957,17 @@ export const DataPenggunaView: React.FC = () => {
               type="button"
               onClick={() => setShowMainExportMenu((prev) => !prev)}
               disabled={isExportingPdf}
-              className="px-3.5 py-2.5 bg-white hover:bg-slate-50 active:scale-95 text-slate-700 font-extrabold text-xs rounded-xl border border-slate-200 shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              className="px-3 py-2 bg-white hover:bg-slate-50 active:scale-95 text-slate-700 font-extrabold text-xs rounded-xl border border-slate-200 shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 min-h-[36px]"
               title="Export atau Cetak Dokumen PDF / Spreadsheet CSV"
               id="btn-main-export-menu"
             >
               {isExportingPdf ? (
                 <div className="w-3.5 h-3.5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
               ) : (
-                <Download size={15} className="text-slate-600" />
+                <Download size={14} className="text-slate-600" />
               )}
               <span>Export & Cetak</span>
-              <ChevronDown size={13} className={`transition-transform duration-200 ${showMainExportMenu ? 'rotate-180' : ''}`} />
+              <ChevronDown size={12} className={`transition-transform duration-200 ${showMainExportMenu ? 'rotate-180' : ''}`} />
             </button>
 
             {showMainExportMenu && (
@@ -971,7 +976,7 @@ export const DataPenggunaView: React.FC = () => {
                   className="fixed inset-0 z-40"
                   onClick={() => setShowMainExportMenu(false)}
                 />
-                <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-slate-200 py-2 z-50 animate-in fade-in zoom-in-95 text-slate-800">
+                <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-slate-200 py-1.5 z-50 animate-in fade-in zoom-in-95 text-slate-800">
                   <div className="px-3.5 py-1.5 border-b border-slate-100 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
                     Pilihan Ekspor & Cetak Resmi
                   </div>
@@ -979,18 +984,18 @@ export const DataPenggunaView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleExportPDF('ALL')}
-                    className="w-full px-3.5 py-2.5 text-left hover:bg-slate-50 flex items-center gap-3 transition-colors cursor-pointer group"
+                    className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center gap-2.5 transition-colors cursor-pointer group"
                     id="btn-main-export-pdf-all"
                   >
-                    <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0 group-hover:bg-purple-600 group-hover:text-white transition-colors shadow-xs">
-                      <Printer size={16} />
+                    <div className="w-7 h-7 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center shrink-0 group-hover:bg-purple-600 group-hover:text-white transition-colors shadow-2xs">
+                      <Printer size={14} />
                     </div>
                     <div>
                       <div className="text-xs font-bold text-slate-900 group-hover:text-purple-700">
                         Cetak PDF Rekapitulasi Semua Akun
                       </div>
                       <div className="text-[10px] text-slate-500 font-medium">
-                        Rekapitulasi lengkap Guru, KS, & Siswa ({stats.total} akun)
+                        Rekapitulasi lengkap ({stats.total} akun)
                       </div>
                     </div>
                   </button>
@@ -998,11 +1003,11 @@ export const DataPenggunaView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleExportPDF('GURU')}
-                    className="w-full px-3.5 py-2.5 text-left hover:bg-blue-50/80 flex items-center gap-3 transition-colors cursor-pointer group"
+                    className="w-full px-3 py-2 text-left hover:bg-blue-50/80 flex items-center gap-2.5 transition-colors cursor-pointer group"
                     id="btn-main-export-pdf-guru"
                   >
-                    <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors shadow-xs">
-                      <GraduationCap size={16} />
+                    <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors shadow-2xs">
+                      <GraduationCap size={14} />
                     </div>
                     <div>
                       <div className="text-xs font-bold text-slate-900 group-hover:text-blue-700">
@@ -1017,11 +1022,11 @@ export const DataPenggunaView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleExportPDF('SISWA')}
-                    className="w-full px-3.5 py-2.5 text-left hover:bg-emerald-50/80 flex items-center gap-3 transition-colors cursor-pointer group"
+                    className="w-full px-3 py-2 text-left hover:bg-emerald-50/80 flex items-center gap-2.5 transition-colors cursor-pointer group"
                     id="btn-main-export-pdf-siswa"
                   >
-                    <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 group-hover:bg-emerald-600 group-hover:text-white transition-colors shadow-xs">
-                      <Users size={16} />
+                    <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 group-hover:bg-emerald-600 group-hover:text-white transition-colors shadow-2xs">
+                      <Users size={14} />
                     </div>
                     <div>
                       <div className="text-xs font-bold text-slate-900 group-hover:text-emerald-700">
@@ -1038,18 +1043,18 @@ export const DataPenggunaView: React.FC = () => {
                   <button
                     type="button"
                     onClick={handleExportCSV}
-                    className="w-full px-3.5 py-2.5 text-left hover:bg-slate-100 flex items-center gap-3 transition-colors cursor-pointer group"
+                    className="w-full px-3 py-2 text-left hover:bg-slate-100 flex items-center gap-2.5 transition-colors cursor-pointer group"
                     id="btn-main-export-csv"
                   >
-                    <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center shrink-0 group-hover:bg-slate-700 group-hover:text-white transition-colors shadow-xs">
-                      <FileText size={16} />
+                    <div className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center shrink-0 group-hover:bg-slate-700 group-hover:text-white transition-colors shadow-2xs">
+                      <FileText size={14} />
                     </div>
                     <div>
                       <div className="text-xs font-bold text-slate-900 group-hover:text-slate-900">
                         Download CSV / Spreadsheet
                       </div>
                       <div className="text-[10px] text-slate-500 font-medium">
-                        Seluruh akun yang sedang difilter ({filteredUsers.length} baris)
+                        Akun terfilter ({filteredUsers.length} baris)
                       </div>
                     </div>
                   </button>
@@ -1062,17 +1067,17 @@ export const DataPenggunaView: React.FC = () => {
           <button
             onClick={() => handleOpenGenerate(true)}
             id="btn-generate-akun"
-            className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-md shadow-amber-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+            className="px-3.5 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer min-h-[36px]"
             title={
               isPersonalWorkspace && !isTeacherPro
                 ? 'Upgrade ke Paket Guru untuk mengaktifkan fitur Generate Akun & Password otomatis'
                 : 'Generate semua akun otomatis dari data referensi Guru & Siswa dengan password yang diacak'
             }
           >
-            <Sparkles size={15} />
+            <Sparkles size={14} />
             <span>Generate Akun & Password</span>
             {isPersonalWorkspace && !isTeacherPro && (
-              <span className="px-1.5 py-0.5 rounded bg-amber-700/80 text-[10px] font-black uppercase tracking-wider">
+              <span className="px-1.5 py-0.5 rounded bg-amber-700/80 text-[9px] font-black uppercase tracking-wider">
                 PRO
               </span>
             )}
@@ -1082,13 +1087,13 @@ export const DataPenggunaView: React.FC = () => {
 
       {/* Sync Status Banner */}
       {stats.unlinkedTeachersCount > 0 || stats.unlinkedStudentsCount > 0 ? (
-        <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
-              <AlertTriangle size={20} />
+        <div className="bg-amber-50/90 border border-amber-200/80 rounded-xl p-3 sm:p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 shadow-2xs">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+              <AlertTriangle size={17} />
             </div>
             <div>
-              <h4 className="text-xs font-black text-amber-900">
+              <h4 className="text-xs font-bold text-amber-900">
                 Data Pengguna Belum Tersinkronkan Sepenuhnya
               </h4>
               <p className="text-[11px] text-amber-700 mt-0.5">
@@ -1100,30 +1105,30 @@ export const DataPenggunaView: React.FC = () => {
                 {stats.unlinkedStudentsCount > 0 && (
                   <span className="font-bold">{stats.unlinkedStudentsCount} Siswa </span>
                 )}
-                dari data referensi yang belum memiliki akun pengguna aktif.
+                dari data referensi yang belum memiliki akun aktif.
               </p>
             </div>
           </div>
           <button
             type="button"
             onClick={() => handleOpenGenerate(false)}
-            className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
+            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold text-xs rounded-lg shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
           >
-            <Sparkles size={14} />
-            <span>Generate Pengguna yang Tersisa</span>
+            <Sparkles size={13} />
+            <span>Generate Tersisa</span>
             {isPersonalWorkspace && !isTeacherPro && (
-              <span className="px-1.5 py-0.5 rounded bg-amber-800 text-[9px] font-black">
+              <span className="px-1 py-0.2 rounded bg-amber-800 text-[9px] font-black">
                 PRO
               </span>
             )}
           </button>
         </div>
       ) : (teachers.length > 0 || students.length > 0) ? (
-        <div className="bg-emerald-50/70 border border-emerald-200/60 rounded-2xl px-4 py-3 flex items-center justify-between gap-3 shadow-2xs">
-          <div className="flex items-center gap-2.5">
-            <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+        <div className="bg-emerald-50/70 border border-emerald-200/60 rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-3 shadow-2xs">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
             <span className="text-xs font-bold text-emerald-900">
-              100% Seluruh data guru & siswa referensi telah memiliki akun pengguna aktif.
+              100% Data referensi telah memiliki akun pengguna aktif.
             </span>
           </div>
           <span className="text-[10px] font-semibold text-emerald-700 hidden md:inline">
@@ -1133,9 +1138,9 @@ export const DataPenggunaView: React.FC = () => {
       ) : null}
 
       {/* Main Table Container Card */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-6 space-y-6">
-        {/* Navigation Tabs & Subfilters */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-3.5 sm:p-5 space-y-3.5">
+        {/* Navigation Tabs & Subfilters Toolbar */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-slate-100">
           {/* Main Tabs */}
           <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl w-fit border border-slate-200 overflow-x-auto">
             {isPersonalWorkspace ? (
@@ -1143,7 +1148,7 @@ export const DataPenggunaView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => { setActiveTab('guru'); setCurrentPage(1); }}
-                  className={`px-4 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
                     effectiveActiveTab === 'guru' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'
                   }`}
                   id="tab-guru-ks"
@@ -1153,7 +1158,7 @@ export const DataPenggunaView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => { setActiveTab('siswa'); setCurrentPage(1); }}
-                  className={`px-4 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
                     effectiveActiveTab === 'siswa' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'
                   }`}
                   id="tab-siswa"
@@ -1166,7 +1171,7 @@ export const DataPenggunaView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => { setActiveTab('all'); setCurrentPage(1); }}
-                  className={`px-4 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
                     activeTab === 'all' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
                   }`}
                   id="tab-all"
@@ -1176,7 +1181,7 @@ export const DataPenggunaView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => { setActiveTab('administrator'); setCurrentPage(1); }}
-                  className={`px-4 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
                     activeTab === 'administrator' ? 'bg-white text-purple-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'
                   }`}
                   id="tab-admin"
@@ -1186,7 +1191,7 @@ export const DataPenggunaView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => { setActiveTab('guru'); setCurrentPage(1); }}
-                  className={`px-4 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
                     activeTab === 'guru' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'
                   }`}
                   id="tab-guru-ks"
@@ -1196,7 +1201,7 @@ export const DataPenggunaView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => { setActiveTab('siswa'); setCurrentPage(1); }}
-                  className={`px-4 py-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
                     activeTab === 'siswa' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'
                   }`}
                   id="tab-siswa"
@@ -1210,20 +1215,20 @@ export const DataPenggunaView: React.FC = () => {
           {/* Sub Filters for Guru or Siswa */}
           <div className="flex flex-wrap items-center gap-2">
             {effectiveActiveTab === 'guru' && (
-              <div className="flex items-center gap-1 p-1 bg-slate-50 rounded-xl border border-slate-200 text-xs overflow-x-auto">
+              <div className="flex items-center gap-1 p-0.5 bg-slate-50 rounded-lg border border-slate-200 text-xs overflow-x-auto">
                 <button
                   type="button"
                   onClick={() => { setGuruSubFilter('ALL'); setCurrentPage(1); }}
-                  className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
                     guruSubFilter === 'ALL' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-200/60'
                   }`}
                 >
-                  Semua Guru ({stats.guruKsTotal})
+                  Semua ({stats.guruKsTotal})
                 </button>
                 <button
                   type="button"
                   onClick={() => { setGuruSubFilter('WALI_KELAS'); setCurrentPage(1); }}
-                  className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
                     guruSubFilter === 'WALI_KELAS' ? 'bg-emerald-600 text-white shadow-xs' : 'text-emerald-800 hover:bg-emerald-50'
                   }`}
                 >
@@ -1232,7 +1237,7 @@ export const DataPenggunaView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => { setGuruSubFilter('GURU_MAPEL'); setCurrentPage(1); }}
-                  className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
                     guruSubFilter === 'GURU_MAPEL' ? 'bg-indigo-600 text-white shadow-xs' : 'text-indigo-800 hover:bg-indigo-50'
                   }`}
                 >
@@ -1241,7 +1246,7 @@ export const DataPenggunaView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => { setGuruSubFilter('KEPALA_SEKOLAH'); setCurrentPage(1); }}
-                  className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
                     guruSubFilter === 'KEPALA_SEKOLAH' ? 'bg-sky-600 text-white shadow-xs' : 'text-sky-800 hover:bg-sky-50'
                   }`}
                 >
@@ -1251,12 +1256,12 @@ export const DataPenggunaView: React.FC = () => {
             )}
 
             {effectiveActiveTab === 'siswa' && (
-              <div className="flex items-center gap-2 text-xs">
-                <span className="font-bold text-slate-500">Rombel:</span>
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="font-bold text-slate-500 text-[11px]">Rombel:</span>
                 <select
                   value={siswaClassFilter}
                   onChange={(e) => { setSiswaClassFilter(e.target.value); setCurrentPage(1); }}
-                  className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-600 cursor-pointer"
+                  className="px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-600 cursor-pointer"
                 >
                   <option value="ALL">Semua Rombel ({stats.siswa})</option>
                   {classes.map((c) => (
@@ -1270,11 +1275,11 @@ export const DataPenggunaView: React.FC = () => {
 
             {/* Auth Filter */}
             <div className="flex items-center gap-1.5 text-xs">
-              <span className="font-bold text-slate-500">Auth:</span>
+              <span className="font-bold text-slate-500 text-[11px]">Auth:</span>
               <select
                 value={authFilter}
                 onChange={(e) => { setAuthFilter(e.target.value as any); setCurrentPage(1); }}
-                className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-600 cursor-pointer"
+                className="px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-600 cursor-pointer"
               >
                 <option value="ALL">Semua Metode</option>
                 <option value="PASSWORD">Password Sistem</option>
@@ -1285,9 +1290,9 @@ export const DataPenggunaView: React.FC = () => {
         </div>
 
         {/* Controls: Search & Per Page */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="relative w-full sm:w-80">
-            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="relative w-full sm:w-72">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               value={searchTerm}
@@ -1296,11 +1301,11 @@ export const DataPenggunaView: React.FC = () => {
                 setCurrentPage(1);
               }}
               placeholder="Cari Nama, Username, Kelas, NIP/NISN..."
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-500/10 transition-all"
+              className="w-full pl-9 pr-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-500/10 transition-all"
             />
           </div>
 
-          <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end text-xs font-semibold text-slate-500">
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end text-[11px] font-semibold text-slate-500">
             <span>TAMPILKAN:</span>
             <select
               value={pageSize}
@@ -1308,7 +1313,7 @@ export const DataPenggunaView: React.FC = () => {
                 setPageSize(Number(e.target.value));
                 setCurrentPage(1);
               }}
-              className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:outline-none focus:border-blue-600 cursor-pointer"
+              className="px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:outline-none focus:border-blue-600 cursor-pointer"
             >
               <option value={10}>10</option>
               <option value={25}>25</option>
@@ -1319,16 +1324,16 @@ export const DataPenggunaView: React.FC = () => {
         </div>
 
         {/* Users Table */}
-        <div className="overflow-x-auto border border-slate-100 rounded-xl">
+        <div className="overflow-x-auto border border-slate-200/80 rounded-xl shadow-2xs">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-200 text-[10px] font-bold text-blue-700 uppercase tracking-widest bg-blue-50/60">
-                <th className="py-3.5 px-4 w-12 rounded-l-xl">NO</th>
-                <th className="py-3.5 px-4 min-w-48">NAMA PENGGUNA</th>
-                <th className="py-3.5 px-4 w-40">USERNAME</th>
-                <th className="py-3.5 px-4 text-center w-36">AUTH / PASSWORD</th>
-                <th className="py-3.5 px-4 min-w-44">HAK AKSES</th>
-                <th className="py-3.5 px-4 text-center w-32 rounded-r-xl">AKSI</th>
+                <th className="py-2.5 px-3 sm:px-3.5 w-12 rounded-l-xl">NO</th>
+                <th className="py-2.5 px-3 sm:px-3.5 min-w-44">NAMA PENGGUNA</th>
+                <th className="py-2.5 px-3 sm:px-3.5 w-36">USERNAME</th>
+                <th className="py-2.5 px-3 sm:px-3.5 text-center w-32">AUTH / STATUS</th>
+                <th className="py-2.5 px-3 sm:px-3.5 min-w-40">HAK AKSES</th>
+                <th className="py-2.5 px-3 sm:px-3.5 text-center w-28 rounded-r-xl">AKSI</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
@@ -1336,15 +1341,15 @@ export const DataPenggunaView: React.FC = () => {
                 currentUsers.map((u, idx) => {
                   const details = getUserAssignmentDetails(u);
                   return (
-                    <tr key={u.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="py-3.5 px-4 font-semibold text-slate-400">
+                    <tr key={u.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="py-2.5 px-3 sm:px-3.5 font-semibold text-slate-400">
                         {startIndex + idx + 1}
                       </td>
-                      <td className="py-3.5 px-4">
-                        <div className="font-bold text-slate-900 flex items-center gap-2">
+                      <td className="py-2.5 px-3 sm:px-3.5">
+                        <div className="font-bold text-slate-900 flex items-center gap-1.5">
                           <span>{u.name}</span>
                           {currentUser && currentUser.id === u.id && (
-                            <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-blue-100 text-blue-800">
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-blue-100 text-blue-800">
                               SAYA
                             </span>
                           )}
@@ -1353,13 +1358,13 @@ export const DataPenggunaView: React.FC = () => {
                           <div className="text-[11px] text-slate-400 font-normal">{u.email}</div>
                         )}
                       </td>
-                      <td className="py-3.5 px-4 font-mono font-bold text-blue-600 text-xs">
+                      <td className="py-2.5 px-3 sm:px-3.5 font-mono font-bold text-blue-600 text-xs">
                         {u.username}
                       </td>
-                      <td className="py-3.5 px-4 text-center">
+                      <td className="py-2.5 px-3 sm:px-3.5 text-center">
                         {isGoogleUser(u) ? (
                           <span
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 text-slate-800 text-xs font-bold shadow-2xs select-none"
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-800 text-[11px] font-bold select-none"
                             title="Autentikasi Akun Google (SSO)"
                           >
                             <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24">
@@ -1372,54 +1377,54 @@ export const DataPenggunaView: React.FC = () => {
                           </span>
                         ) : (
                           <span
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50/90 border border-emerald-200/80 text-emerald-900 text-xs font-bold shadow-2xs select-none"
-                            title="Autentikasi Supabase (Password Terenkripsi)"
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-50/90 border border-emerald-200/80 text-emerald-900 text-[11px] font-bold select-none"
+                            title="Autentikasi Sistem Terenkripsi"
                           >
-                            <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 109 113" fill="none">
+                            <svg className="w-3 h-3 shrink-0" viewBox="0 0 109 113" fill="none">
                               <path d="M63.7076 110.284C60.848 113.885 55.0243 111.972 54.8437 107.382L51.8131 30.3957H99.4136C105.794 30.3957 109.314 37.8447 105.247 42.7364L63.7076 110.284Z" fill="#3ECF8E"/>
                               <path d="M45.617 2.71633C48.4766 -0.884572 54.3003 1.02847 54.4809 5.61836L57.5115 82.6043H9.91097C3.53073 82.6043 0.0108376 75.1553 4.07765 70.2636L45.617 2.71633Z" fill="#3ECF8E"/>
                             </svg>
-                            <span className="font-extrabold text-[11px] text-emerald-950 tracking-tight">Terenkripsi</span>
+                            <span className="font-extrabold text-[10px] text-emerald-950 tracking-tight">Terenkripsi</span>
                           </span>
                         )}
                       </td>
-                      <td className="py-3.5 px-4">
-                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${details.badgeColor}`}>
+                      <td className="py-2.5 px-3 sm:px-3.5">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold border ${details.badgeColor}`}>
                           {details.type === 'WALI_KELAS' ? (
-                            <GraduationCap size={13} className="text-emerald-700 shrink-0" />
+                            <GraduationCap size={12} className="text-emerald-700 shrink-0" />
                           ) : details.type === 'GURU_MAPEL' ? (
-                            <BookOpen size={13} className="text-indigo-700 shrink-0" />
+                            <BookOpen size={12} className="text-indigo-700 shrink-0" />
                           ) : details.type === 'KEPALA_SEKOLAH' ? (
-                            <ShieldCheck size={13} className="text-sky-700 shrink-0" />
+                            <ShieldCheck size={12} className="text-sky-700 shrink-0" />
                           ) : details.type === 'ADMIN' ? (
-                            <ShieldCheck size={13} className="text-purple-700 shrink-0" />
+                            <ShieldCheck size={12} className="text-purple-700 shrink-0" />
                           ) : (
-                            <Users size={13} className="text-slate-600 shrink-0" />
+                            <Users size={12} className="text-slate-600 shrink-0" />
                           )}
-                          <span>{details.roleLabel}</span>
+                          <span className="text-[11px]">{details.roleLabel}</span>
                         </span>
                       </td>
-                      <td className="py-3.5 px-4 text-center">
-                        <div className="flex items-center justify-center gap-1">
+                      <td className="py-2.5 px-3 sm:px-3.5 text-center">
+                        <div className="flex items-center justify-center gap-0.5">
                           {/* Copy Credential Format */}
                           <button
                             type="button"
                             onClick={() => handleCopyCredentialMessage(u)}
-                            className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                            className="p-1 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
                             title="Salin Pesan Kredensial Login (Username & Password)"
                             id={`btn-copy-credential-${u.id}`}
                           >
-                            {copiedUserId === u.id ? <Check size={14} className="text-emerald-600 stroke-[3]" /> : <Share2 size={14} />}
+                            {copiedUserId === u.id ? <Check size={13} className="text-emerald-600 stroke-[3]" /> : <Share2 size={13} />}
                           </button>
 
                           {/* Edit User */}
                           <button
                             onClick={() => openEditUser(u)}
-                            className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                            className="p-1 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
                             title="Edit Data & Username Pengguna"
                             id={`btn-edit-user-${u.id}`}
                           >
-                            <Edit2 size={14} />
+                            <Edit2 size={13} />
                           </button>
 
                           {/* Change Password */}
@@ -1429,22 +1434,22 @@ export const DataPenggunaView: React.FC = () => {
                               setNewPassword(u.password || '');
                               setShowModalPassword(true);
                             }}
-                            className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                            className="p-1 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
                             title="Ubah Password"
                             id={`btn-change-password-${u.id}`}
                           >
-                            <Key size={14} />
+                            <Key size={13} />
                           </button>
 
                           {/* Delete User */}
                           <button
                             onClick={() => setUserToDelete(u)}
                             disabled={currentUser?.id === u.id}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                             title={currentUser?.id === u.id ? 'Tidak dapat menghapus akun Anda sendiri' : 'Hapus Akun'}
                             id={`btn-delete-user-${u.id}`}
                           >
-                            <Trash2 size={14} />
+                            <Trash2 size={13} />
                           </button>
                         </div>
                       </td>
@@ -1453,7 +1458,7 @@ export const DataPenggunaView: React.FC = () => {
                 })
               ) : (
                 <tr>
-                  <td colSpan={6} className="text-center py-12 text-slate-400 font-medium">
+                  <td colSpan={6} className="text-center py-8 text-slate-400 font-medium">
                     Tidak ada akun pengguna yang terdaftar atau sesuai filter pencarian.
                   </td>
                 </tr>
@@ -1463,7 +1468,7 @@ export const DataPenggunaView: React.FC = () => {
         </div>
 
         {/* Pagination & Status Footer */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4 border-t border-slate-100 text-xs font-semibold text-slate-500">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-3 border-t border-slate-100 text-xs font-semibold text-slate-500">
           <div>
             MENAMPILKAN {Math.min(startIndex + 1, filteredUsers.length)} - {Math.min(startIndex + pageSize, filteredUsers.length)} DARI {filteredUsers.length} PENGGUNA
           </div>
@@ -1471,17 +1476,17 @@ export const DataPenggunaView: React.FC = () => {
             <button
               onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
               disabled={currentPage === 1}
-              className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              className="px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer text-xs"
             >
               Sebelumnya
             </button>
-            <span className="px-3 py-1.5 font-bold text-slate-800">
+            <span className="px-2.5 py-1 font-bold text-slate-800 text-xs">
               {currentPage} / {totalPages}
             </span>
             <button
               onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
               disabled={currentPage === totalPages}
-              className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              className="px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer text-xs"
             >
               Selanjutnya
             </button>

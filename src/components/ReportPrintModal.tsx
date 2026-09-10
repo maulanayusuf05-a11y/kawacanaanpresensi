@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { AttendanceType } from '../types';
 import { SchoolLogo } from './SchoolLogo';
@@ -39,7 +39,30 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
   classId = null,
   className = null,
 }) => {
-  const { schoolProfile, systemConfig, students, attendanceRecords, getEffectiveDaysForMonth, currentUser, classes, teachers, subjects } = useApp();
+  const {
+    schoolProfile,
+    systemConfig,
+    students,
+    attendanceRecords,
+    getEffectiveDaysForMonth,
+    currentUser,
+    classes,
+    teachers,
+    subjects,
+    requestFeatureAccess,
+    isTeacherPro,
+    activeWorkspace,
+  } = useApp();
+
+  const isPersonalWorkspace =
+    activeWorkspace?.workspaceType === 'personal' ||
+    activeWorkspace?.workspaceType === 'individu' ||
+    currentUser?.subscriptionPlan === 'guru_uji_coba' ||
+    currentUser?.subscriptionPlan === 'teacher' ||
+    currentUser?.subscriptionPlan === 'guru_pro' ||
+    currentUser?.subscriptionPlan === 'mulai' ||
+    currentUser?.subscriptionPlan === 'guru_gratis' ||
+    (!currentUser?.schoolId && currentUser?.role !== 'SUPER_ADMIN');
 
   if (!isOpen) return null;
 
@@ -630,7 +653,19 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
     };
   }, [kepsekClassRows, kepsekPeriodInfo.totalEffectiveDays]);
 
-  const handlePrint = () => {
+  const handlePrint = useCallback(() => {
+    // Pada ruang kerja individu paket gratis, cetak dokumen resmi dibatasi dan diarahkan upgrade ke Paket Guru
+    if (isPersonalWorkspace && !isTeacherPro) {
+      const allowed = requestFeatureAccess(
+        'cetak_pdf',
+        'Cetak Laporan Bulanan (PDF)',
+        'Fitur cetak laporan resmi dan ekspor PDF tersedia di Paket Guru. Upgrade sekarang untuk mengunduh dan mencetak laporan presensi kelas Anda tanpa batas.'
+      );
+      if (!allowed) {
+        return;
+      }
+    }
+
     const printContent = document.getElementById('printable-report');
     if (!printContent) {
       window.print();
@@ -750,7 +785,25 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
       console.error('Error opening print window:', err);
       window.print();
     }
-  };
+  }, [isPersonalWorkspace, isTeacherPro, requestFeatureAccess, reportType, schoolProfile.namaSekolah]);
+
+  // Tangani shortcut keyboard Ctrl+P / Cmd+P saat pratinjau aktif
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P')) {
+        e.preventDefault();
+        e.stopPropagation();
+        handlePrint();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [isOpen, handlePrint]);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-y-auto print:p-0 print:bg-white">
@@ -774,9 +827,15 @@ export const ReportPrintModal: React.FC<ReportPrintModalProps> = ({
               onClick={handlePrint}
               id="btn-trigger-print"
               className="px-3.5 sm:px-4 py-2 bg-[#C5A059] hover:bg-[#D4B475] active:scale-95 text-black font-extrabold text-xs rounded-lg flex items-center gap-1.5 shadow-sm transition-all min-h-[36px] cursor-pointer"
+              title={isPersonalWorkspace && !isTeacherPro ? 'Upgrade ke Paket Guru untuk mencetak dokumen resmi' : 'Cetak dokumen langsung atau simpan sebagai file PDF'}
             >
               <Printer size={14} />
               <span>Cetak Sekarang (Buka Jendela Baru)</span>
+              {isPersonalWorkspace && !isTeacherPro && (
+                <span className="ml-1 px-1.5 py-0.5 rounded bg-amber-950 text-[#C5A059] text-[9px] font-black uppercase tracking-wider">
+                  PRO
+                </span>
+              )}
             </button>
             <button
               onClick={onClose}

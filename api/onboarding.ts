@@ -2406,7 +2406,7 @@ export default async function handler(req: any, res: any) {
         report_place: body.reportPlace !== undefined ? body.reportPlace : (body.report_place || ''),
         report_date: body.reportDate !== undefined ? body.reportDate : (body.report_date || ''),
         active_study_days: Array.isArray(body.activeStudyDays) ? body.activeStudyDays : (Array.isArray(body.active_study_days) ? body.active_study_days : [1, 2, 3, 4, 5]),
-        student_self_attendance_enabled: body.studentSelfAttendanceEnabled !== undefined ? body.studentSelfAttendanceEnabled : (body.student_self_attendance_enabled !== undefined ? body.student_self_attendance_enabled : true),
+        student_self_attendance_enabled: body.studentSelfAttendanceEnabled !== undefined ? body.studentSelfAttendanceEnabled : (body.student_self_attendance_enabled !== undefined ? body.student_self_attendance_enabled : false),
         check_in_start_time: body.checkInStartTime || body.check_in_start_time || '06:00',
         check_in_deadline_time: body.checkInDeadlineTime || body.check_in_deadline_time || '07:00',
         check_out_start_time: body.checkOutStartTime || body.check_out_start_time || '12:30',
