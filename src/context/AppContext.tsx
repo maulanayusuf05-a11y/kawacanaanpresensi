@@ -266,6 +266,8 @@ const emptyUser = (p: any): UserAccount => {
     maxTeachers: p.max_teachers,
     maxStudents: p.max_students,
     maxClasses: p.max_classes,
+    jenisKelamin: p.jenis_kelamin || p.jenisKelamin || p.gender || undefined,
+    gender: p.gender || p.jenis_kelamin || p.jenisKelamin || undefined,
   };
 };
 const dbStudent = (s: any): Student => ({
@@ -1571,6 +1573,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 
     if (myMatchedTeacher) {
       me.teacherId = myMatchedTeacher.id;
+      me.jenisKelamin = myMatchedTeacher.jenisKelamin || (myMatchedTeacher as any).jenis_kelamin || 'L';
+      me.gender = me.jenisKelamin;
       if (myMatchedTeacher.nip && (!me.nip || me.nip === "-")) {
         me.nip = myMatchedTeacher.nip;
       }

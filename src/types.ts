@@ -172,6 +172,8 @@ export interface UserAccount {
   classNames?: string[];
   subjectId?: string | null;
   subjectName?: string | null;
+  jenisKelamin?: 'L' | 'P';
+  gender?: 'L' | 'P';
   impersonatedFrom?: UserAccount | null;
 }
 

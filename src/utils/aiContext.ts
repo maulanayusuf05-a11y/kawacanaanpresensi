@@ -235,9 +235,35 @@ export function buildAIAttendanceContext(options: AIContextOptions): string {
   const totalAllDays = allStatsList.reduce((sum, s) => sum + s.totalHari, 0);
   const overallPercentage = totalAllDays > 0 ? Math.round((totalAllHadir / totalAllDays) * 100) : 0;
 
+  const matchedTeacher = teachers.find(
+    (t) =>
+      t.id === currentUser.teacherId ||
+      (currentUser.nip && t.nip === currentUser.nip) ||
+      (currentUser.name && t.nama && t.nama.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
+  );
+  const userGender: 'L' | 'P' =
+    currentUser.jenisKelamin ||
+    currentUser.gender ||
+    matchedTeacher?.jenisKelamin ||
+    (matchedTeacher as any)?.jenis_kelamin ||
+    'L';
+  const honorific = userGender === 'P' ? 'Ibu' : 'Bapak';
+  const currentHour = new Date().getHours();
+  const timeGreeting =
+    currentHour >= 4 && currentHour < 11
+      ? 'Selamat Pagi'
+      : currentHour >= 11 && currentHour < 15
+      ? 'Selamat Siang'
+      : currentHour >= 15 && currentHour < 18
+      ? 'Selamat Sore'
+      : 'Selamat Malam';
+
   // 7. Format Teks Konteks
   let context = `[PROFIL PENGGUNA & RUANG KERJA]
 Nama Guru: ${currentUser.name || 'Pendidik'}
+Panggilan Resmi: ${honorific} ${currentUser.name || 'Guru'} (Wajib sapa dengan "${honorific} ${currentUser.name ? currentUser.name.split(' ')[0] : 'Guru'}")
+Jenis Kelamin: ${userGender === 'P' ? 'Perempuan (P)' : 'Laki-laki (L)'}
+Sapaan Waktu Saat Ini: ${timeGreeting}
 Peran: ${role} (${scopeTitle})
 Ruang Kerja: ${activeWorkspace?.name || 'Sekolah'}
 Tanggal Sistem Hari Ini: ${todayStr}

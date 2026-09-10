@@ -281,3 +281,32 @@
   animation: radialAuraBreath 2.6s ease-in-out infinite;
 }
 
+@keyframes kokaFloat {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-6px) rotate(1.5deg);
+  }
+}
+
+.animate-koka-float {
+  animation: kokaFloat 3.2s ease-in-out infinite;
+}
+
+@keyframes kokaThruster {
+  0%, 100% {
+    opacity: 0.55;
+    transform: scaleX(0.85);
+  }
+  50% {
+    opacity: 0.95;
+    transform: scaleX(1.2);
+  }
+}
+
+.animate-koka-thruster {
+  animation: kokaThruster 1.4s ease-in-out infinite;
+}
+
+

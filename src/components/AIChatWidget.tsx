@@ -115,11 +115,11 @@ const THEMES: Record<ChatTheme, ThemeConfig> = {
 
 const DEFAULT_SUGGESTIONS = [
   'Tolong input absensi hari ini yang sakit Andi',
-  'Catat Budi sebagai izin hari ini',
-  'Tandai Citra hadir',
-  'Catat Andi terlambat masuk jam 07.18',
-  'Siapa saja yang belum memiliki absensi hari ini?',
-  'Siapa yang sakit hari ini?',
+  'Siapa saja siswa yang belum diabsen hari ini?',
+  'Catat Budi izin dan Citra sakit hari ini',
+  'Catat Doni terlambat masuk jam 07.18',
+  'Berapa persen kehadiran kelas saya hari ini?',
+  'Tandai semua siswa hadir hari ini',
 ];
 
 function getStatusBadgeClass(status?: string | null): string {
@@ -174,12 +174,258 @@ export const AIChatWidget: React.FC = () => {
   const inputRef = useRef<HTMLInputElement>(null);
   const channelRef = useRef<any>(null);
 
-  const storageKey = `kawa_ai_chat_${currentUser.id}_${activeWorkspace?.id || 'default'}`;
+  const storageKey = `koka_ai_chat_${currentUser.id}_${activeWorkspace?.id || 'default'}`;
+  const legacyStorageKey = `kawa_ai_chat_${currentUser.id}_${activeWorkspace?.id || 'default'}`;
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
   const userScope = useMemo(
     () => getUserRoleScope(currentUser, classes, subjects, teachers),
     [currentUser, classes, subjects, teachers]
   );
+
+  // 1. Identifikasi Jenis Kelamin Guru & Panggilan Hormat Santun (Supabase Database)
+  const userGender: 'L' | 'P' = useMemo(() => {
+    if (currentUser.jenisKelamin === 'P' || currentUser.gender === 'P') return 'P';
+    if (currentUser.jenisKelamin === 'L' || currentUser.gender === 'L') return 'L';
+    const matchedT = teachers.find(
+      (t) =>
+        t.id === currentUser.teacherId ||
+        (currentUser.nip && t.nip && t.nip === currentUser.nip) ||
+        (currentUser.name && t.nama && t.nama.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
+    );
+    if (matchedT?.jenisKelamin === 'P' || (matchedT as any)?.jenis_kelamin === 'P') return 'P';
+    if (matchedT?.jenisKelamin === 'L' || (matchedT as any)?.jenis_kelamin === 'L') return 'L';
+    return 'L';
+  }, [currentUser, teachers]);
+
+  const honorific = userGender === 'P' ? 'Ibu' : 'Bapak';
+  const teacherShortName = useMemo(() => {
+    const raw = (currentUser.name || 'Guru').trim();
+    const parts = raw.split(' ');
+    return `${honorific} ${parts[0] || 'Guru'}`;
+  }, [currentUser.name, honorific]);
+
+  const teacherFullName = useMemo(() => {
+    return `${honorific} ${currentUser.name || 'Guru'}`;
+  }, [currentUser.name, honorific]);
+
+  const getTimeGreeting = () => {
+    const h = new Date().getHours();
+    if (h >= 4 && h < 11) return 'Selamat pagi';
+    if (h >= 11 && h < 15) return 'Selamat siang';
+    if (h >= 15 && h < 18) return 'Selamat sore';
+    return 'Selamat malam';
+  };
+
+  // 2. Analisis Proaktif Status Presensi Hari Ini Berdasarkan Database
+  const attendanceStatus = useMemo(() => {
+    const today = todayStr;
+
+    if (userScope.isWaliKelas && userScope.assignedWaliClassId) {
+      const classId = userScope.assignedWaliClassId;
+      const className = userScope.assignedWaliClassName || 'Kelas Binaan';
+      const classStudents = students.filter((s) => s.classId === classId);
+      const todayRecords = attendanceRecords.filter(
+        (r) => r.classId === classId && r.date === today && (!r.subjectId || r.subjectId === 'daily')
+      );
+      const recordedStudentIds = new Set(todayRecords.map((r) => r.studentId));
+      const unrecordedStudents = classStudents.filter((s) => !recordedStudentIds.has(s.id));
+      const hadirCount = todayRecords.filter((r) => r.status === 'Hadir').length;
+      const sakitCount = todayRecords.filter((r) => r.status === 'Sakit').length;
+      const izinCount = todayRecords.filter((r) => r.status === 'Izin').length;
+      const alfaCount = todayRecords.filter((r) => r.status === 'Alfa').length;
+      const isComplete = classStudents.length > 0 && unrecordedStudents.length === 0;
+
+      return {
+        roleType: 'WALI_KELAS' as const,
+        className,
+        classId,
+        totalStudents: classStudents.length,
+        recordedCount: recordedStudentIds.size,
+        unrecordedCount: unrecordedStudents.length,
+        unrecordedStudents,
+        isComplete,
+        hadirCount,
+        sakitCount,
+        izinCount,
+        alfaCount,
+      };
+    }
+
+    if (userScope.isGuruMapel) {
+      const assignedSubjects = userScope.assignedSubjects;
+      const todayMapelRecords = attendanceRecords.filter(
+        (r) => r.date === today && r.subjectId && assignedSubjects.some((s) => s.id === r.subjectId)
+      );
+      return {
+        roleType: 'GURU_MAPEL' as const,
+        subjects: assignedSubjects,
+        recordedCount: todayMapelRecords.length,
+        isComplete: todayMapelRecords.length > 0,
+      };
+    }
+
+    const todayRecords = attendanceRecords.filter((r) => r.date === today);
+    return {
+      roleType: 'STAFF' as const,
+      totalStudents: students.length,
+      recordedCount: todayRecords.length,
+      isComplete: todayRecords.length > 0,
+    };
+  }, [userScope, students, attendanceRecords, todayStr]);
+
+  // Ringkasan sapaan proaktif untuk speech bubble
+  const greetingSummaryText = useMemo(() => {
+    if (attendanceStatus.roleType === 'WALI_KELAS') {
+      if (!attendanceStatus.isComplete) {
+        return `Presensi harian untuk ${attendanceStatus.className} belum dicatat hari ini (${attendanceStatus.unrecordedCount} dari ${attendanceStatus.totalStudents} siswa belum terabsen). Mau Koka bantu absenkan sekarang?`;
+      }
+      return `Presensi harian ${attendanceStatus.className} hari ini sudah lengkap (${attendanceStatus.hadirCount} Hadir${attendanceStatus.sakitCount > 0 ? `, ${attendanceStatus.sakitCount} Sakit` : ''}${attendanceStatus.izinCount > 0 ? `, ${attendanceStatus.izinCount} Izin` : ''}${attendanceStatus.alfaCount > 0 ? `, ${attendanceStatus.alfaCount} Alfa` : ''}). Selamat mengajar!`;
+    }
+    if (attendanceStatus.roleType === 'GURU_MAPEL') {
+      const subNames = (attendanceStatus.subjects || []).map((s: any) => s.name).join(', ') || 'Mata Pelajaran';
+      if (!attendanceStatus.isComplete) {
+        return `Ada agenda mengajar ${subNames} hari ini. Koka siap membantu mencatat siswa yang hadir, izin, atau sakit.`;
+      }
+      return `Presensi mata pelajaran ${subNames} sudah mulai tersimpan dengan baik hari ini.`;
+    }
+    return `Koka siap mendampingi kelancaran presensi dan rekapitulasi data sekolah hari ini. Ada yang perlu dibantu?`;
+  }, [attendanceStatus]);
+
+  // 3. Posisi Terbang Koka di Layar (Draggable bebas ke mana saja)
+  const [position, setPosition] = useState<{ x: number; y: number }>(() => {
+    if (typeof window === 'undefined') return { x: 300, y: 500 };
+    try {
+      const saved = localStorage.getItem('koka_flight_pos_v2');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
+          return {
+            x: Math.max(16, Math.min(window.innerWidth - 80, parsed.x)),
+            y: Math.max(16, Math.min(window.innerHeight - 80, parsed.y)),
+          };
+        }
+      }
+    } catch (_) {}
+    return {
+      x: window.innerWidth - 88,
+      y: window.innerHeight - 96,
+    };
+  });
+
+  const [isDragging, setIsDragging] = useState(false);
+  const [flightTilt, setFlightTilt] = useState(0);
+  const dragStartRef = useRef<{ startX: number; startY: number; posX: number; posY: number; hasMoved: boolean }>({
+    startX: 0,
+    startY: 0,
+    posX: 0,
+    posY: 0,
+    hasMoved: false,
+  });
+
+  // Jaga posisi tetap dalam viewport saat layar di-resize
+  useEffect(() => {
+    const handleResize = () => {
+      setPosition((prev) => ({
+        x: Math.max(16, Math.min(window.innerWidth - 80, prev.x)),
+        y: Math.max(16, Math.min(window.innerHeight - 80, prev.y)),
+      }));
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const resetPositionToDefault = () => {
+    const defaultPos = {
+      x: window.innerWidth - 88,
+      y: window.innerHeight - 96,
+    };
+    setPosition(defaultPos);
+    try {
+      localStorage.setItem('koka_flight_pos_v2', JSON.stringify(defaultPos));
+    } catch (_) {}
+    if (showToast) {
+      showToast('Posisi Koka dikembalikan ke sudut layar', 'info');
+    }
+  };
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    dragStartRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      posX: position.x,
+      posY: position.y,
+      hasMoved: false,
+    };
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch (_) {}
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!dragStartRef.current.startX) return;
+    const dx = e.clientX - dragStartRef.current.startX;
+    const dy = e.clientY - dragStartRef.current.startY;
+
+    if (!dragStartRef.current.hasMoved && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
+      dragStartRef.current.hasMoved = true;
+      setIsDragging(true);
+    }
+
+    if (dragStartRef.current.hasMoved) {
+      const newX = Math.max(16, Math.min(window.innerWidth - 80, dragStartRef.current.posX + dx));
+      const newY = Math.max(16, Math.min(window.innerHeight - 80, dragStartRef.current.posY + dy));
+      setPosition({ x: newX, y: newY });
+      const tilt = Math.max(-18, Math.min(18, dx * 0.4));
+      setFlightTilt(tilt);
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch (_) {}
+
+    if (!dragStartRef.current.hasMoved) {
+      // Klik murni: toggle buka/tutup chat Koka
+      setIsOpen((prev) => !prev);
+      setShowGreetingBubble(false);
+    } else {
+      // Selesai drag: simpan posisi terbang Koka
+      try {
+        localStorage.setItem('koka_flight_pos_v2', JSON.stringify(position));
+      } catch (_) {}
+    }
+
+    dragStartRef.current = { startX: 0, startY: 0, posX: 0, posY: 0, hasMoved: false };
+    setIsDragging(false);
+    setFlightTilt(0);
+  };
+
+  // 4. Proactive Greeting Bubble Saat Pertama Kali Masuk Aplikasi
+  const [showGreetingBubble, setShowGreetingBubble] = useState(false);
+
+  useEffect(() => {
+    const sessionGreetingKey = `koka_welcomed_${currentUser.id}_${todayStr}`;
+    const alreadyGreeted = sessionStorage.getItem(sessionGreetingKey);
+
+    if (!alreadyGreeted) {
+      const timer = setTimeout(() => {
+        setShowGreetingBubble(true);
+        playNotificationSound('message');
+        sessionStorage.setItem(sessionGreetingKey, 'true');
+      }, 750);
+
+      const autoDismiss = setTimeout(() => {
+        setShowGreetingBubble(false);
+      }, 12000);
+
+      return () => {
+        clearTimeout(timer);
+        clearTimeout(autoDismiss);
+      };
+    }
+  }, [currentUser.id, todayStr]);
 
   // Soft notification sound using Web Audio API
   const playNotificationSound = (type: 'message' | 'success' = 'message') => {
@@ -216,10 +462,13 @@ export const AIChatWidget: React.FC = () => {
     } catch (_) {}
   };
 
-  // 1. Inisialisasi Riwayat Percakapan dari LocalStorage
+  // 5. Inisialisasi Riwayat Percakapan dari LocalStorage
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(storageKey);
+      let saved = localStorage.getItem(storageKey);
+      if (!saved) {
+        saved = localStorage.getItem(legacyStorageKey);
+      }
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
@@ -229,16 +478,30 @@ export const AIChatWidget: React.FC = () => {
       }
     } catch (_) {}
 
-    // Initial greeting if no messages yet
+    // Sapaan awal ramah & santun dari Koka dengan info presensi
+    let reminderText = '';
+    if (attendanceStatus.roleType === 'WALI_KELAS') {
+      if (!attendanceStatus.isComplete) {
+        reminderText = `\n\n📌 **Pengingat Hari Ini**: Presensi harian untuk **${attendanceStatus.className}** belum diisi (${attendanceStatus.unrecordedCount} dari ${attendanceStatus.totalStudents} siswa belum terabsen). Anda dapat meminta saya: *"Tolong bantu absenkan ${attendanceStatus.className} hari ini"* atau sebutkan siswa yang berhalangan hadir.`;
+      } else {
+        reminderText = `\n\n✅ **Catatan Presensi**: Presensi **${attendanceStatus.className}** hari ini sudah lengkap (${attendanceStatus.hadirCount} Hadir${attendanceStatus.sakitCount > 0 ? `, ${attendanceStatus.sakitCount} Sakit` : ''}${attendanceStatus.izinCount > 0 ? `, ${attendanceStatus.izinCount} Izin` : ''}${attendanceStatus.alfaCount > 0 ? `, ${attendanceStatus.alfaCount} Alfa` : ''}). Selamat mendidik generasi penerus, ${teacherShortName}!`;
+      }
+    } else if (attendanceStatus.roleType === 'GURU_MAPEL') {
+      const subNames = (attendanceStatus.subjects || []).map((s: any) => s.name).join(', ') || 'Mata Pelajaran';
+      if (!attendanceStatus.isComplete) {
+        reminderText = `\n\n📌 **Pengingat Mengajar**: Jangan lupa mencatat kehadiran sesi kelas mapel **${subNames}** hari ini. Koka siap membantu mencatat siswa yang hadir atau izin.`;
+      }
+    }
+
     const initialGreeting: ChatMessage = {
       id: `welcome-${Date.now()}`,
       role: 'assistant',
       type: 'text',
-      content: `Halo Bapak/Ibu ${currentUser.name || 'Guru'}! 👋 Saya **Kawa AI**, asisten digital absensi Anda. Anda dapat bertanya seputar data kehadiran atau memberi perintah langsung (misal: *"Tolong input absensi hari ini yang sakit Andi"*).`,
+      content: `Halo ${teacherFullName}! 👋 ${getTimeGreeting()}.\n\nSaya **Koka**, asisten guru digital dan agen cerdas absensi Anda di Kawacanaan. Saya siap membantu mempermudah dan memperlancar segala urusan pencatatan kehadiran siswa.${reminderText}`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
     setMessages([initialGreeting]);
-  }, [storageKey, currentUser.name]);
+  }, [storageKey, legacyStorageKey, currentUser.name, teacherFullName, teacherShortName, attendanceStatus]);
 
   // Simpan riwayat chat ke LocalStorage setiap ada perubahan pesan
   const persistMessages = (updated: ChatMessage[]) => {
@@ -315,8 +578,10 @@ export const AIChatWidget: React.FC = () => {
       }
     };
 
+    window.addEventListener('open-koka-ai-chat', handleOpenChat);
     window.addEventListener('open-kawa-ai-chat', handleOpenChat);
     return () => {
+      window.removeEventListener('open-koka-ai-chat', handleOpenChat);
       window.removeEventListener('open-kawa-ai-chat', handleOpenChat);
     };
   }, [currentUser, activeWorkspace, students, classes, teachers, subjects, attendanceRecords]);
@@ -776,48 +1041,155 @@ export const AIChatWidget: React.FC = () => {
 
   return (
     <>
-      {/* 1. FLOATING CHAT BUBBLE (IKON CHAT DI POJOK BAWAH) */}
-      <div className="fixed bottom-5 right-5 sm:bottom-6 sm:right-6 z-40">
-        <button
-          type="button"
-          onClick={() => setIsOpen((prev) => !prev)}
-          className={`group relative h-14 w-14 sm:h-15 sm:w-15 rounded-full shadow-xl hover:shadow-2xl transition-all duration-300 flex items-center justify-center cursor-pointer border-2 border-white focus:outline-none focus:ring-4 focus:ring-indigo-300/50 ${
-            isOpen
-              ? 'bg-slate-800 hover:bg-slate-900 text-white rotate-90'
-              : 'bg-gradient-to-tr from-blue-700 via-indigo-600 to-indigo-800 text-white hover:scale-105 active:scale-95'
-          }`}
-          aria-label={isOpen ? 'Tutup obrolan AI' : 'Buka Asisten Absensi AI'}
-          id="btn-floating-ai-chat"
-        >
-          {isOpen ? (
-            <X size={26} className="transition-transform duration-200" />
-          ) : (
-            <>
-              <div className="relative">
-                <Bot size={28} className="text-white drop-shadow-xs" />
-                <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 border-2 border-white"></span>
+      {/* 1. FLOATING DRAGGABLE KOKA MASCOT ("Bisa terbang ke mana saja di layar") */}
+      <div
+        style={{
+          transform: `translate3d(${position.x}px, ${position.y}px, 0px)`,
+        }}
+        className="fixed top-0 left-0 z-40 touch-none select-none transition-[transform] duration-75 ease-out"
+        id="koka-flying-mascot-container"
+      >
+        {/* Proactive Speech Bubble Saat Pertama Masuk Aplikasi */}
+        {showGreetingBubble && !isOpen && (
+          <div
+            className={`absolute z-50 w-72 sm:w-80 p-3.5 bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-sky-200 text-slate-800 animate-in fade-in zoom-in-95 duration-200 ${
+              position.x > (typeof window !== 'undefined' ? window.innerWidth / 2 : 400)
+                ? 'right-full mr-3.5 origin-bottom-right'
+                : 'left-full ml-3.5 origin-bottom-left'
+            } ${
+              position.y > (typeof window !== 'undefined' ? window.innerHeight / 2 : 400)
+                ? 'bottom-0'
+                : 'top-0'
+            }`}
+          >
+            <div className="flex items-start justify-between gap-2 mb-1.5">
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm">👋</span>
+                <span className="text-xs font-black text-sky-900">
+                  {getTimeGreeting()}, {teacherShortName}!
                 </span>
               </div>
-            </>
-          )}
+              <button
+                type="button"
+                onClick={() => setShowGreetingBubble(false)}
+                className="text-slate-400 hover:text-slate-600 p-0.5 rounded-md cursor-pointer"
+                title="Tutup sapaan"
+              >
+                <X size={14} />
+              </button>
+            </div>
 
-          {/* Tooltip Hover di Desktop */}
-          {!isOpen && (
-            <span className="hidden sm:group-hover:flex absolute right-16 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xs text-white text-xs font-bold whitespace-nowrap shadow-lg border border-slate-700 items-center gap-1.5 transition-all">
-              <Sparkles size={12} className="text-yellow-400" />
-              Tanya / Input via Kawa AI
-            </span>
-          )}
-        </button>
+            <p className="text-[11.5px] text-slate-600 leading-relaxed">
+              {greetingSummaryText}
+            </p>
+
+            <div className="mt-2.5 pt-2 border-t border-sky-100 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowGreetingBubble(false);
+                  setIsOpen(true);
+                  if (!attendanceStatus.isComplete && attendanceStatus.roleType === 'WALI_KELAS') {
+                    handleSendMessage(`Tolong bantu cek dan input presensi kelas ${attendanceStatus.className} hari ini`);
+                  }
+                }}
+                className="px-2.5 py-1 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 text-white text-[11px] font-bold shadow-xs hover:shadow-md hover:from-sky-600 hover:to-blue-700 transition-all flex items-center gap-1 cursor-pointer"
+              >
+                <Sparkles size={11} className="text-amber-200" />
+                <span>Buka Koka</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowGreetingBubble(false)}
+                className="text-[11px] font-medium text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                Nanti saja
+              </button>
+            </div>
+
+            {/* Bubble pointer triangle beak */}
+            <div
+              className={`absolute w-3 h-3 bg-white border-sky-200 transform rotate-45 pointer-events-none ${
+                position.x > (typeof window !== 'undefined' ? window.innerWidth / 2 : 400)
+                  ? '-right-1.5 border-t border-r'
+                  : '-left-1.5 border-b border-l'
+              } ${
+                position.y > (typeof window !== 'undefined' ? window.innerHeight / 2 : 400)
+                  ? 'bottom-5'
+                  : 'top-5'
+              }`}
+            />
+          </div>
+        )}
+
+        {/* Karakter Terbang Koka Avatar */}
+        <div
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+          className="group relative cursor-grab active:cursor-grabbing select-none"
+          style={{
+            transform: `rotate(${flightTilt}deg)`,
+            transition: isDragging ? 'none' : 'transform 0.25s ease-out',
+          }}
+          title={isOpen ? 'Tutup obrolan Koka' : 'Koka - Tarik untuk menerbangkan ke mana saja'}
+        >
+          <div className={`relative ${isDragging ? 'scale-110' : 'animate-koka-float'}`}>
+            <div
+              className={`relative w-15 h-15 sm:w-16 sm:h-16 rounded-full p-1 shadow-2xl flex items-center justify-center transition-all ${
+                isOpen
+                  ? 'bg-gradient-to-tr from-slate-700 to-slate-900 ring-4 ring-sky-300/40'
+                  : 'bg-gradient-to-tr from-sky-400 via-blue-500 to-indigo-600 ring-4 ring-sky-400/30 hover:ring-sky-400/50'
+              }`}
+            >
+              {isOpen ? (
+                <div className="w-full h-full rounded-full bg-slate-900 flex items-center justify-center text-white">
+                  <X size={24} />
+                </div>
+              ) : (
+                <div className="w-full h-full rounded-full overflow-hidden bg-white/95 border-2 border-white flex items-center justify-center shadow-inner relative">
+                  <img
+                    src="/koka.png"
+                    alt="Koka Asisten Guru"
+                    className="w-full h-full object-contain pointer-events-none select-none scale-105"
+                    draggable={false}
+                  />
+                </div>
+              )}
+
+              {/* Status Online Ping Dot */}
+              {!isOpen && (
+                <span className="absolute -top-0.5 -right-0.5 flex h-3.5 w-3.5 pointer-events-none">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500 border-2 border-white" />
+                </span>
+              )}
+
+              {/* Jet Thruster glow beneath Koka */}
+              {!isOpen && (
+                <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-8 h-2 bg-cyan-400/80 rounded-full blur-xs animate-koka-thruster pointer-events-none" />
+              )}
+            </div>
+
+            {/* Drag Flight Pill on Desktop Hover */}
+            {!isOpen && !isDragging && (
+              <div
+                className={`hidden sm:group-hover:flex absolute -bottom-7 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full bg-slate-900/90 text-[10px] text-white font-medium whitespace-nowrap shadow-lg border border-slate-700 items-center gap-1 pointer-events-none`}
+              >
+                <Sparkles size={10} className="text-yellow-400" />
+                <span>Koka • Tarik untuk terbang</span>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* 2. JENDELA CHAT (POPUP LIVE CHAT WINDOW) */}
       {isOpen && (
         <div
           id="window-ai-live-chat"
-          className="fixed bottom-22 sm:bottom-24 right-3 sm:right-6 z-40 w-[calc(100vw-24px)] sm:w-[440px] h-[600px] max-h-[82vh] bg-white rounded-3xl shadow-2xl border border-slate-200/90 flex flex-col overflow-hidden animate-in slide-in-from-bottom-5 zoom-in-95 duration-200"
+          className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 w-[calc(100vw-24px)] sm:w-[440px] h-[610px] max-h-[84vh] bg-white rounded-3xl shadow-2xl border border-slate-200/90 flex flex-col overflow-hidden animate-in slide-in-from-bottom-5 zoom-in-95 duration-200"
         >
           {/* HEADER JENDELA CHAT */}
           <div
@@ -827,31 +1199,45 @@ export const AIChatWidget: React.FC = () => {
             <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full blur-2xl pointer-events-none" />
 
             <div className="flex items-center gap-3 relative z-10">
-              {/* Avatar Asisten di Header */}
+              {/* Avatar Koka di Header */}
               <div className="relative">
-                <div className="w-10 h-10 rounded-2xl bg-white/15 border border-white/30 backdrop-blur-xs flex items-center justify-center text-yellow-300 shadow-xs">
-                  <Bot size={22} />
+                <div className="w-10 h-10 rounded-2xl bg-white/20 border border-white/40 backdrop-blur-xs flex items-center justify-center p-0.5 shadow-xs overflow-hidden">
+                  <img
+                    src="/koka.png"
+                    alt="Koka"
+                    className="w-full h-full object-contain"
+                  />
                 </div>
-                <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-indigo-900 animate-pulse" />
+                <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-400 border-2 border-indigo-900 animate-pulse" />
               </div>
 
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-black text-white tracking-tight">Kawa AI</h3>
+                  <h3 className="text-sm font-black text-white tracking-tight">Koka</h3>
                   <span className="px-2 py-0.5 rounded-full bg-white/20 text-[9px] font-extrabold uppercase tracking-wider text-blue-100 flex items-center gap-1">
                     <Sparkles size={9} className="text-yellow-300" />
-                    Asisten Absensi
+                    Asisten Guru
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5 text-[11px] text-blue-100/90 font-medium">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                  <span>Online • Tool Calling Aktif</span>
+                  <span>Online • Siap Membantu</span>
                 </div>
               </div>
             </div>
 
             {/* Header Control Buttons */}
             <div className="flex items-center gap-1 relative z-10">
+              {/* Reset Posisi Terbang Koka */}
+              <button
+                type="button"
+                onClick={resetPositionToDefault}
+                title="Kembalikan posisi Koka ke sudut layar"
+                className="p-1.5 rounded-lg text-white/80 hover:text-white hover:bg-white/15 transition-colors cursor-pointer"
+              >
+                <RotateCcw size={15} />
+              </button>
+
               {/* Sound Toggle */}
               <button
                 type="button"
@@ -943,12 +1329,12 @@ export const AIChatWidget: React.FC = () => {
                   key={msg.id}
                   className={`flex items-end gap-2.5 ${isAssistant ? 'justify-start' : 'justify-end'}`}
                 >
-                  {/* Avatar Asisten di Sebelah Kiri */}
+                  {/* Avatar Koka di Sebelah Kiri */}
                   {isAssistant && (
                     <div
-                      className={`w-7 h-7 rounded-xl ${activeTheme.avatarBg} flex items-center justify-center shrink-0 shadow-2xs text-yellow-300 border border-white self-start mt-1`}
+                      className="w-7 h-7 rounded-xl overflow-hidden bg-white border border-sky-300 flex items-center justify-center shrink-0 shadow-2xs self-start mt-1 p-0.5"
                     >
-                      <Bot size={15} />
+                      <img src="/koka.png" alt="Koka" className="w-full h-full object-contain" />
                     </div>
                   )}
 
@@ -963,7 +1349,7 @@ export const AIChatWidget: React.FC = () => {
                     {/* Header Label Bubble */}
                     <div className="flex items-center justify-between gap-3 mb-1 text-[10px] opacity-75">
                       <span className="font-bold tracking-tight">
-                        {isAssistant ? 'Kawa AI' : 'Anda'}
+                        {isAssistant ? 'Koka' : 'Anda'}
                       </span>
                       <span>{msg.timestamp}</span>
                     </div>
@@ -1243,17 +1629,17 @@ export const AIChatWidget: React.FC = () => {
             {/* ANIMASI INDIKATOR "SEDANG MENGETIK..." (TYPING INDICATOR) */}
             {isTyping && (
               <div className="flex items-end gap-2.5 justify-start animate-in fade-in duration-200">
-                {/* Avatar Asisten di Sebelah Kiri */}
+                {/* Avatar Koka di Sebelah Kiri */}
                 <div
-                  className={`w-7 h-7 rounded-xl ${activeTheme.avatarBg} flex items-center justify-center shrink-0 shadow-2xs text-yellow-300 border border-white`}
+                  className="w-7 h-7 rounded-xl overflow-hidden bg-white border border-sky-300 flex items-center justify-center shrink-0 shadow-2xs p-0.5"
                 >
-                  <Bot size={15} />
+                  <img src="/koka.png" alt="Koka" className="w-full h-full object-contain" />
                 </div>
 
                 {/* Bubble Typing dengan 3 Titik Animasi */}
                 <div className="bg-white border border-slate-200/90 rounded-2xl rounded-bl-xs px-3.5 py-2.5 shadow-2xs flex items-center gap-2 text-slate-500">
                   <span className="text-[11px] font-semibold text-slate-600">
-                    Kawa AI sedang memproses
+                    Koka sedang memproses
                   </span>
                   <div className="flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-bounce [animation-delay:-0.3s]" />
@@ -1362,7 +1748,7 @@ export const AIChatWidget: React.FC = () => {
             </form>
             <div className="mt-1.5 flex items-center justify-between text-[10px] text-slate-400 px-1">
               <span>Tekan Enter untuk mengirim</span>
-              <span>Kawa AI Function Calling</span>
+              <span>Koka Function Calling</span>
             </div>
           </div>
         </div>
