@@ -70,6 +70,7 @@ export const DataKelasView: React.FC = () => {
     students,
     subjects,
     schoolProfile,
+    systemConfig,
     addClass,
     updateClass,
     deleteClass,
@@ -832,6 +833,19 @@ export const DataKelasView: React.FC = () => {
               </button>
             )}
 
+            {classes.length > 0 && (
+              <button
+                type="button"
+                id="btn-qr-presensi-rombel-header"
+                onClick={() => setQrModalClass(classes[0])}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-xl border border-indigo-200 transition-all cursor-pointer shadow-xs"
+                title="Tampilkan / Cetak QR Code Presensi Rombel"
+              >
+                <QrCode size={15} />
+                <span>QR Code Rombel</span>
+              </button>
+            )}
+
             {canAddClass && (
               <button
                 onClick={openAdd}
@@ -1043,9 +1057,10 @@ export const DataKelasView: React.FC = () => {
                             <div className="flex items-center justify-center gap-1.5">
                               <button
                                 type="button"
+                                id={`btn-qr-class-${c.id}`}
                                 onClick={() => setQrModalClass(c)}
-                                className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
-                                title="QR Code Presensi Rombel (Cetak / Tampilkan)"
+                                className="p-1.5 text-indigo-700 bg-indigo-50/80 hover:bg-indigo-100 rounded-lg transition-colors cursor-pointer border border-indigo-200/60 shadow-2xs"
+                                title={`QR Code Presensi ${c.name} (Cetak / Tampilkan)`}
                               >
                                 <QrCode size={15} />
                               </button>
@@ -1936,7 +1951,10 @@ export const DataKelasView: React.FC = () => {
           isOpen={Boolean(qrModalClass)}
           onClose={() => setQrModalClass(null)}
           schoolClass={qrModalClass}
+          classItem={qrModalClass}
           schoolProfile={schoolProfile}
+          systemConfig={systemConfig}
+          classList={classes}
         />
       )}
     </div>

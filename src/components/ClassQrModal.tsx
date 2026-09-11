@@ -9,46 +9,77 @@ import {
   Smartphone,
   Copy,
   Check,
-  GraduationCap,
-  School,
-  Maximize2
+  Maximize2,
+  ChevronDown
 } from 'lucide-react';
 import { SchoolClass, SchoolProfile, SystemConfig } from '../types';
 import { generateClassQrDataUrl, generateClassQrPayload } from '../utils/classQr';
 import { getFaseByGrade } from '../utils/faseKurikulum';
+import { useApp } from '../context/AppContext';
 
-interface ClassQrModalProps {
+export interface ClassQrModalProps {
   isOpen: boolean;
   onClose: () => void;
-  classItem: SchoolClass;
-  schoolProfile: SchoolProfile;
-  systemConfig: SystemConfig;
+  classItem?: SchoolClass | null;
+  schoolClass?: SchoolClass | null;
+  schoolProfile?: SchoolProfile | null;
+  systemConfig?: SystemConfig | null;
   schoolId?: string | null;
+  classList?: SchoolClass[];
 }
 
 export const ClassQrModal: React.FC<ClassQrModalProps> = ({
   isOpen,
   onClose,
   classItem,
-  schoolProfile,
-  systemConfig,
-  schoolId,
+  schoolClass,
+  schoolProfile: propSchoolProfile,
+  systemConfig: propSystemConfig,
+  schoolId: propSchoolId,
+  classList: propClassList,
 }) => {
+  const {
+    schoolProfile: contextSchoolProfile,
+    systemConfig: contextSystemConfig,
+    classes: contextClasses,
+    currentUser,
+  } = useApp();
+
+  const allAvailableClasses = propClassList || contextClasses || [];
+  const initialClass = classItem || schoolClass || allAvailableClasses[0] || null;
+  
+  const [selectedClassId, setSelectedClassId] = useState<string>(initialClass?.id || '');
+
+  // Keep selectedClassId synced when initialClass changes
+  useEffect(() => {
+    if (initialClass?.id) {
+      setSelectedClassId(initialClass.id);
+    }
+  }, [initialClass?.id]);
+
+  const activeClass =
+    allAvailableClasses.find((c) => c.id === selectedClassId) ||
+    initialClass;
+
+  const schoolProfile = propSchoolProfile || contextSchoolProfile;
+  const systemConfig = propSystemConfig || contextSystemConfig;
+  const schoolId = propSchoolId ?? currentUser?.schoolId;
+
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [copied, setCopied] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
   useEffect(() => {
-    if (isOpen && classItem) {
-      generateClassQrDataUrl(classItem, schoolId, 600)
+    if (isOpen && activeClass) {
+      generateClassQrDataUrl(activeClass, schoolId, 600)
         .then(setQrDataUrl)
         .catch((err) => console.error('Error generating QR:', err));
     }
-  }, [isOpen, classItem, schoolId]);
+  }, [isOpen, activeClass, schoolId]);
 
-  if (!isOpen || !classItem) return null;
+  if (!isOpen || !activeClass) return null;
 
-  const fase = getFaseByGrade(classItem.grade);
+  const fase = getFaseByGrade(activeClass.grade);
 
   const handlePrint = () => {
     window.print();
@@ -58,12 +89,12 @@ export const ClassQrModal: React.FC<ClassQrModalProps> = ({
     if (!qrDataUrl) return;
     const a = document.createElement('a');
     a.href = qrDataUrl;
-    a.download = `QR-Presensi-${classItem.name.replace(/\s+/g, '_')}.png`;
+    a.download = `QR-Presensi-${activeClass.name.replace(/\s+/g, '_')}.png`;
     a.click();
   };
 
   const handleCopyPayload = () => {
-    const payload = generateClassQrPayload(classItem, schoolId);
+    const payload = generateClassQrPayload(activeClass, schoolId);
     navigator.clipboard.writeText(payload);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -78,7 +109,7 @@ export const ClassQrModal: React.FC<ClassQrModalProps> = ({
           {/* Header */}
           <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-indigo-950 text-white p-4 sm:p-5 flex items-center justify-between border-b border-slate-800">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-blue-600 flex items-center justify-center text-white font-black shadow-inner">
+              <div className="w-10 h-10 rounded-2xl bg-blue-600 flex items-center justify-center text-white font-black shadow-inner shrink-0">
                 <QrCode className="w-5 h-5" />
               </div>
               <div>
@@ -86,9 +117,27 @@ export const ClassQrModal: React.FC<ClassQrModalProps> = ({
                   <Sparkles className="w-3 h-3 text-amber-400" />
                   QR Code Tetap Rombel
                 </div>
-                <h3 className="font-black text-white text-base sm:text-lg tracking-tight mt-0.5">
-                  Presensi Mandiri {classItem.name}
-                </h3>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <h3 className="font-black text-white text-base sm:text-lg tracking-tight">
+                    Presensi {activeClass.name}
+                  </h3>
+                  {allAvailableClasses.length > 1 && (
+                    <div className="relative inline-block">
+                      <select
+                        value={selectedClassId}
+                        onChange={(e) => setSelectedClassId(e.target.value)}
+                        className="bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-xs rounded-lg px-2.5 py-1 pr-6 appearance-none outline-none cursor-pointer transition"
+                      >
+                        {allAvailableClasses.map((c) => (
+                          <option key={c.id} value={c.id} className="bg-slate-900 text-white">
+                            Ganti: {c.name}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="w-3 h-3 text-white/70 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -118,17 +167,17 @@ export const ClassQrModal: React.FC<ClassQrModalProps> = ({
             <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-xl bg-blue-100 text-blue-800 flex items-center justify-center font-black text-xl shrink-0">
-                  {classItem.grade || 'K'}
+                  {activeClass.grade || 'K'}
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h4 className="font-black text-slate-900 text-base">{classItem.name}</h4>
+                    <h4 className="font-black text-slate-900 text-base">{activeClass.name}</h4>
                     <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 text-[11px] font-bold">
                       {fase}
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Wali Kelas: <strong className="text-slate-700">{classItem.waliKelasName || 'Belum Ditetapkan'}</strong>
+                    Wali Kelas: <strong className="text-slate-700">{activeClass.waliKelasName || 'Belum Ditetapkan'}</strong>
                   </p>
                 </div>
               </div>
@@ -153,7 +202,7 @@ export const ClassQrModal: React.FC<ClassQrModalProps> = ({
                 {qrDataUrl ? (
                   <img
                     src={qrDataUrl}
-                    alt={`QR Presensi ${classItem.name}`}
+                    alt={`QR Presensi ${activeClass.name}`}
                     className={`${isFullscreen ? 'w-64 h-64 sm:w-72 sm:h-72' : 'w-48 h-48 sm:w-56 sm:h-56'} object-contain`}
                   />
                 ) : (
@@ -164,7 +213,7 @@ export const ClassQrModal: React.FC<ClassQrModalProps> = ({
               </div>
 
               <p className="text-xs font-extrabold text-slate-800 mt-3">
-                QR Code Permanen • {classItem.name}
+                QR Code Permanen • {activeClass.name}
               </p>
               <p className="text-[11px] text-slate-500 max-w-sm mt-1 leading-relaxed">
                 Kode ini tetap dan tidak berubah setiap hari maupun saat pergantian mata pelajaran. Cukup dicetak atau ditempel di pintu / meja kelas.
@@ -260,13 +309,13 @@ export const ClassQrModal: React.FC<ClassQrModalProps> = ({
           {/* Class Title Badge */}
           <div className="py-2">
             <span className="inline-block px-6 py-2 rounded-2xl bg-slate-900 text-white font-black text-2xl uppercase tracking-wider">
-              {classItem.name}
+              {activeClass.name}
             </span>
             <div className="mt-2 text-sm font-bold text-slate-700">
-              {fase} • Tingkat Kelas {classItem.grade}
+              {fase} • Tingkat Kelas {activeClass.grade}
             </div>
             <div className="text-xs text-slate-600 mt-1">
-              Wali Kelas: <strong>{classItem.waliKelasName || '—'}</strong>
+              Wali Kelas: <strong>{activeClass.waliKelasName || '—'}</strong>
             </div>
           </div>
 
@@ -276,7 +325,7 @@ export const ClassQrModal: React.FC<ClassQrModalProps> = ({
               {qrDataUrl && (
                 <img
                   src={qrDataUrl}
-                  alt={`QR Presensi ${classItem.name}`}
+                  alt={`QR Presensi ${activeClass.name}`}
                   className="w-72 h-72 mx-auto object-contain"
                 />
               )}
