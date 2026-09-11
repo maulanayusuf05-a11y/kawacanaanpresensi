@@ -25,6 +25,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { StudentQrScannerModal } from '../components/StudentQrScannerModal';
+import type { Student } from '../types';
 
 export const PortalSiswaView: React.FC = () => {
   const {
@@ -50,13 +51,6 @@ export const PortalSiswaView: React.FC = () => {
 
   // Current real-time clock state
   const [timeNow, setTimeNow] = useState<Date>(new Date());
-  const [selectedStudentId, setSelectedStudentId] = useState<string>(() => {
-    if (currentUser?.role === 'SISWA') {
-      const matched = students.find((s) => s.nisn === currentUser.username || s.nama === currentUser.name);
-      return matched ? matched.id : students[0]?.id || '1';
-    }
-    return students[0]?.id || '1';
-  });
 
   // Filters for Rekap Bulanan
   const [rekapMonth, setRekapMonth] = useState<string>(() => String(new Date().getMonth() + 1).padStart(2, '0'));
@@ -78,8 +72,87 @@ export const PortalSiswaView: React.FC = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // Selected student object
-  const activeStudent = students.find((s) => s.id === selectedStudentId) || students[0];
+  // Mode simulasi khusus untuk pengujian oleh Admin / Kepala Sekolah / Guru
+  const [selectedSimulatedStudentId, setSelectedSimulatedStudentId] = useState<string>('');
+
+  // Sinkronisasi otomatis id siswa simulasi ketika daftar siswa dimuat
+  useEffect(() => {
+    if (currentUser?.role !== 'SISWA' && students.length > 0 && !selectedSimulatedStudentId) {
+      setSelectedSimulatedStudentId(students[0].id);
+    }
+  }, [currentUser?.role, students, selectedSimulatedStudentId]);
+
+  // Resolusi akun siswa yang definitif & kebal terhadap refresh halaman:
+  // Untuk akun dengan role SISWA, profil siswa SELALU terikat 100% pada currentUser yang sedang login.
+  // Tidak akan pernah mengambil data siswa lain (seperti students[0]) meskipun browser di-refresh.
+  const activeStudent: Student = useMemo(() => {
+    if (currentUser?.role === 'SISWA') {
+      // 1. Cocokkan berdasarkan studentId akun pengguna jika ada
+      if (currentUser.studentId) {
+        const byId = students.find((s) => s.id === currentUser.studentId);
+        if (byId) return byId;
+      }
+
+      // 2. Cocokkan berdasarkan NISN (dari username atau nip akun)
+      const uNisn = (currentUser.username || '').trim().toLowerCase();
+      const uNip = (currentUser.nip || '').trim().toLowerCase();
+      if (uNisn) {
+        const byNisn = students.find(
+          (s) => s.nisn && String(s.nisn).trim().toLowerCase() === uNisn
+        );
+        if (byNisn) return byNisn;
+      }
+      if (uNip) {
+        const byNip = students.find(
+          (s) => s.nisn && String(s.nisn).trim().toLowerCase() === uNip
+        );
+        if (byNip) return byNip;
+      }
+
+      // 3. Cocokkan berdasarkan nama siswa
+      if (currentUser.name && currentUser.name !== 'Pengguna' && currentUser.name !== 'Siswa') {
+        const uName = currentUser.name.trim().toLowerCase();
+        const byName = students.find(
+          (s) => s.nama && s.nama.trim().toLowerCase() === uName
+        );
+        if (byName) return byName;
+      }
+
+      // 4. Jika data `students` dari server masih dalam proses pemuatan di awal refresh halaman,
+      // bangun representasi Student resmi LANGSUNG dari data currentUser yang sudah terverifikasi.
+      // DILARANG KERAS menggunakan students[0] atau data siswa lain!
+      const userClassId = (currentUser.classIds && currentUser.classIds[0]) || null;
+      const userClassName =
+        (currentUser.classNames && currentUser.classNames[0]) ||
+        (userClassId ? classes.find((c) => c.id === userClassId)?.name : '') ||
+        '';
+
+      return {
+        id: currentUser.studentId || currentUser.id,
+        nisn: currentUser.username || currentUser.nip || '-',
+        nama: currentUser.name || 'Siswa',
+        gender: (currentUser.gender || currentUser.jenisKelamin || 'L') as 'L' | 'P',
+        classId: userClassId,
+        className: userClassName,
+      };
+    }
+
+    // Untuk Admin / Guru yang sedang melihat Portal Siswa dalam Mode Simulasi:
+    if (selectedSimulatedStudentId) {
+      const selected = students.find((s) => s.id === selectedSimulatedStudentId);
+      if (selected) return selected;
+    }
+    return (
+      students[0] || {
+        id: 'simulasi-default',
+        nisn: '-',
+        nama: 'Siswa Contoh',
+        gender: 'L',
+        classId: null,
+        className: '',
+      }
+    );
+  }, [currentUser, students, classes, selectedSimulatedStudentId]);
 
   // Indonesian Day & Month names
   const daysIndonesia = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
@@ -317,8 +390,8 @@ export const PortalSiswaView: React.FC = () => {
             </div>
           </div>
           <select
-            value={selectedStudentId}
-            onChange={(e) => setSelectedStudentId(e.target.value)}
+            value={selectedSimulatedStudentId || activeStudent.id}
+            onChange={(e) => setSelectedSimulatedStudentId(e.target.value)}
             className="w-full sm:w-auto px-2.5 py-1.5 bg-white border border-amber-300 rounded-lg text-xs font-bold text-slate-800 outline-none cursor-pointer"
           >
             {students.map((s) => (
@@ -341,7 +414,7 @@ export const PortalSiswaView: React.FC = () => {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 font-extrabold text-[10px] uppercase border border-blue-100">
-                Kelas {schoolProfile.kelas || '6A'}
+                Kelas {activeStudent?.className || (activeStudent?.classId && classes.find(c => c.id === activeStudent.classId)?.name) || schoolProfile.kelas || '-'}
               </span>
               <span className="text-[10px] text-slate-400 font-semibold">
                 {activeStudent?.gender === 'L' ? 'Putra' : 'Putri'}

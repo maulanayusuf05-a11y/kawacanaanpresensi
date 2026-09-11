@@ -79,8 +79,13 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   const userInitials = getInitials(currentUser.name, currentUser.username);
 
   // Derive extra details
-  const myStudent = currentUser.role === 'SISWA' && currentUser.studentId
-    ? students.find(s => s.id === currentUser.studentId)
+  const myStudent = currentUser.role === 'SISWA'
+    ? (students.find(s => 
+        (currentUser.studentId && s.id === currentUser.studentId) ||
+        (currentUser.username && s.nisn && String(s.nisn).trim().toLowerCase() === currentUser.username.trim().toLowerCase()) ||
+        (currentUser.nip && s.nisn && String(s.nisn).trim().toLowerCase() === currentUser.nip.trim().toLowerCase()) ||
+        (currentUser.name && s.nama && s.nama.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
+      ) || null)
     : null;
 
   const myTeacher = (currentUser.role === 'WALI KELAS' || currentUser.role === 'GURU MAPEL')

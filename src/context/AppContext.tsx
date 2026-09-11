@@ -1529,6 +1529,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         ids = [...unique];
       }
 
+      if (u.role === "SISWA") {
+        const matchedStu = ss.find(
+          (s: any) =>
+            (u.studentId && s.id === u.studentId) ||
+            (u.username && s.nisn && String(s.nisn).trim().toLowerCase() === String(u.username).trim().toLowerCase()) ||
+            (u.nip && s.nisn && String(s.nisn).trim().toLowerCase() === String(u.nip).trim().toLowerCase()) ||
+            (u.name && s.nama && s.nama.trim().toLowerCase() === u.name.trim().toLowerCase())
+        );
+        if (matchedStu) {
+          if (!u.studentId) u.studentId = matchedStu.id;
+          if (matchedStu.classId && ids.length === 0) {
+            ids = [matchedStu.classId];
+          }
+          if (matchedStu.gender && !u.gender) {
+            u.gender = matchedStu.gender;
+            u.jenisKelamin = matchedStu.gender;
+          }
+        }
+      }
+
       const cachedPwd = cachedPasswordMap[u.id] || (u.username ? cachedPasswordMap[u.username.toLowerCase()] : undefined);
 
       return {
@@ -1640,6 +1660,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       }
       me.classIds = Array.from(targetClassIds);
       me.classNames = me.classIds.map((cid: string) => classList.find((c: any) => c.id === cid)?.name || "").filter(Boolean);
+    } else if (me.role === "SISWA") {
+      let myMatchedStudent = ss.find((s: any) => me.studentId && s.id === me.studentId);
+      if (!myMatchedStudent) {
+        const uNisn = (me.username || "").trim().toLowerCase();
+        const uNip = (me.nip || "").trim().toLowerCase();
+        if (uNisn) {
+          myMatchedStudent = ss.find(
+            (s: any) => s.nisn && String(s.nisn).trim().toLowerCase() === uNisn
+          );
+        }
+        if (!myMatchedStudent && uNip) {
+          myMatchedStudent = ss.find(
+            (s: any) => s.nisn && String(s.nisn).trim().toLowerCase() === uNip
+          );
+        }
+      }
+      if (!myMatchedStudent && me.name && me.name !== "Pengguna" && me.name !== "Siswa") {
+        const cleanMeName = me.name.trim().toLowerCase();
+        myMatchedStudent = ss.find(
+          (s: any) => s.nama && s.nama.trim().toLowerCase() === cleanMeName
+        );
+      }
+
+      if (myMatchedStudent) {
+        me.studentId = myMatchedStudent.id;
+        if (myMatchedStudent.classId) {
+          me.classIds = [myMatchedStudent.classId];
+          me.classNames = [myMatchedStudent.className || classList.find((c: any) => c.id === myMatchedStudent.classId)?.name || ""];
+        }
+        if (myMatchedStudent.gender) {
+          me.gender = myMatchedStudent.gender;
+          me.jenisKelamin = myMatchedStudent.gender;
+        }
+        if (myMatchedStudent.nama && (!me.name || me.name === "Pengguna" || me.name === "Siswa")) {
+          me.name = myMatchedStudent.nama;
+        }
+        if (!baseProfile.student_id && myMatchedStudent.id) {
+          Promise.resolve(
+            supabase
+              .from("profiles")
+              .update({ student_id: myMatchedStudent.id })
+              .eq("id", baseProfile.id)
+          ).catch(() => {});
+        }
+      }
     }
 
     if (
@@ -6710,11 +6775,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           message: "Hanya akun SISWA (atau simulasi portal siswa) yang dapat menggunakan presensi mandiri.",
         };
       }
-      if (isStudent && currentUser.studentId && studentId !== currentUser.studentId) {
-        return {
-          success: false,
-          message: "Akses presensi tidak valid untuk akun ini.",
-        };
+      if (isStudent) {
+        let validStudentId = currentUser.studentId;
+        if (!validStudentId) {
+          const uNisn = (currentUser.username || "").trim().toLowerCase();
+          const uNip = (currentUser.nip || "").trim().toLowerCase();
+          const matched = students.find(
+            (s) =>
+              (uNisn && s.nisn && String(s.nisn).trim().toLowerCase() === uNisn) ||
+              (uNip && s.nisn && String(s.nisn).trim().toLowerCase() === uNip) ||
+              (currentUser.name && s.nama && s.nama.trim().toLowerCase() === currentUser.name.trim().toLowerCase())
+          );
+          if (matched) validStudentId = matched.id;
+        }
+        if (validStudentId && studentId !== validStudentId) {
+          return {
+            success: false,
+            message: "Akses presensi tidak valid untuk akun ini.",
+          };
+        }
       }
       const target = customDate || currentAttendanceDate;
       const dateStatus = getDateStatus(target);
