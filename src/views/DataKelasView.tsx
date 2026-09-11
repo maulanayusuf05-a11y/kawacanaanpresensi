@@ -82,12 +82,47 @@ export const DataKelasView: React.FC = () => {
   } = useApp();
 
   const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN';
-  const isWaliKelas = currentUser?.role === 'WALI KELAS';
   const isGuru = currentUser?.role === 'GURU MAPEL';
   const isPersonalWorkspace =
     activeWorkspace?.workspaceType === 'personal' ||
     activeWorkspace?.workspaceType === 'individu' ||
     !currentUser?.schoolId;
+
+  // Deteksi peran Wali Kelas secara komprehensif (Role User, Workspace Role, Data Guru, maupun Session)
+  const isTeacherWaliKelas = useMemo(() => {
+    if (currentUser?.role === 'WALI KELAS') return true;
+    if ((activeWorkspace as any)?.role === 'WALI KELAS' || (activeWorkspace as any)?.roleKey === 'wali_kelas') return true;
+    if ((currentUser as any)?.teacherRole === 'wali_kelas' || (currentUser as any)?.teacherRole === 'WALI KELAS') return true;
+
+    // Cek tugas utama pada data guru yang terhubung
+    const cleanUserName = normalizeTeacherName(currentUser?.name);
+    const userNip = normalizeNip(currentUser?.nip);
+    const matched = (teachers || []).find((t) => {
+      if (currentUser?.teacherId && t.id === currentUser.teacherId) return true;
+      if (userNip && normalizeNip(t.nip) === userNip) return true;
+      if (cleanUserName && normalizeTeacherName(t.nama) === cleanUserName) return true;
+      return false;
+    });
+
+    if (matched) {
+      const tugas = (matched.tugasUtama || (matched as any).tugas_utama || '').trim().toLowerCase();
+      if (tugas.includes('wali') && !tugas.includes('mapel')) return true;
+    }
+
+    if (typeof window !== 'undefined') {
+      const savedRegRole = localStorage.getItem('kawacanaan_last_registered_role');
+      if (savedRegRole === 'WALI KELAS') return true;
+    }
+
+    // Di ruang kerja individu jika bukan Admin dan bukan Guru Mapel, default peran adalah Wali Kelas
+    if (isPersonalWorkspace && !isAdmin && currentUser?.role !== 'GURU MAPEL') {
+      return true;
+    }
+
+    return false;
+  }, [currentUser, activeWorkspace, teachers, isPersonalWorkspace, isAdmin]);
+
+  const isWaliKelas = isTeacherWaliKelas;
 
   const isGuruPro =
     activeWorkspace?.subscriptionPlan === 'guru_pro' ||
@@ -238,6 +273,8 @@ export const DataKelasView: React.FC = () => {
 
   // Import Kelas Modal State
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  // Notifikasi batas kelas untuk Wali Kelas (cukup 1 kelas yang dibina)
+  const [waliLimitNoticeOpen, setWaliLimitNoticeOpen] = useState(false);
   const [importTab, setImportTab] = useState<'upload' | 'paste'>('upload');
   const [fileName, setFileName] = useState('');
   const [pasteText, setPasteText] = useState('');
@@ -365,6 +402,13 @@ export const DataKelasView: React.FC = () => {
   }, [classStudents, studentSearchTerm]);
 
   const openAdd = () => {
+    // Di Ruang Kerja Individu, pengguna berperan sebagai Wali Kelas dibatasi cukup membina 1 kelas
+    if (isPersonalWorkspace && isTeacherWaliKelas && classes.length >= 1) {
+      showToast('Wali kelas itu cukup 1 kelas saja yang dibinanya. Silakan edit kelas yang sudah ada jika ingin mengubah nama atau tingkat kelas.', 'info');
+      setWaliLimitNoticeOpen(true);
+      return;
+    }
+
     if (isFreePlan && classes.length >= 1) {
       if (
         !requestFeatureAccess(
@@ -401,6 +445,12 @@ export const DataKelasView: React.FC = () => {
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return showToast('Nama kelas wajib diisi', 'error');
+
+    if (!editing && isPersonalWorkspace && isTeacherWaliKelas && classes.length >= 1) {
+      showToast('Wali kelas itu cukup 1 kelas saja yang dibinanya.', 'warning');
+      setWaliLimitNoticeOpen(true);
+      return;
+    }
 
     if (!editing && isFreePlan && classes.length >= 1) {
       requestFeatureAccess(
@@ -727,14 +777,22 @@ export const DataKelasView: React.FC = () => {
                   : 'Kelola data rombel kelas, penetapan wali kelas, dan penugasan guru mata pelajaran terintegrasi.'}
               </p>
               {isPersonalWorkspace ? (
-                <div className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-800 border border-blue-200 text-[11px] font-bold">
-                  <ShieldCheck size={13} className="text-blue-600" />
-                  <span>
-                    Ruang Kerja Individu:{' '}
-                    {myAssignedClasses.length > 0
-                      ? `Menampilkan kelas binaan Anda (${myAssignedClasses.map((c) => c.name).join(', ')})`
-                      : 'Belum ada kelas yang didaftarkan. Silakan klik Tambah Kelas untuk menginput rombel binaan Anda.'}
-                  </span>
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-800 border border-blue-200 text-[11px] font-bold">
+                    <ShieldCheck size={13} className="text-blue-600" />
+                    <span>
+                      Ruang Kerja Individu:{' '}
+                      {myAssignedClasses.length > 0
+                        ? `Menampilkan kelas binaan Anda (${myAssignedClasses.map((c) => c.name).join(', ')})`
+                        : 'Belum ada kelas yang didaftarkan. Silakan klik Tambah Kelas untuk menginput rombel binaan Anda.'}
+                    </span>
+                  </div>
+                  {isTeacherWaliKelas && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 text-[11px] font-bold">
+                      <GraduationCap size={13} className="text-amber-600" />
+                      <span>Wali Kelas: 1 Kelas Binaan</span>
+                    </span>
+                  )}
                 </div>
               ) : !isAdmin && (isWaliKelas || isGuru) ? (
                 <div className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-800 border border-indigo-200 text-[11px] font-bold">
@@ -1774,6 +1832,77 @@ export const DataKelasView: React.FC = () => {
                 className="px-5 py-2.5 text-xs font-extrabold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-md transition-all cursor-pointer disabled:opacity-50"
               >
                 {isDeletingClass ? 'Menghapus...' : 'Ya, Hapus'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Notifikasi Batas Kelas Wali Kelas */}
+      {waliLimitNoticeOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 text-slate-800 animate-in fade-in zoom-in-95">
+            <div className="flex items-start gap-3.5 mb-4">
+              <div className="w-11 h-11 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 flex items-center justify-center shrink-0 shadow-2xs">
+                <GraduationCap size={22} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-black text-slate-900 text-base">
+                    Informasi Rombel Wali Kelas
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setWaliLimitNoticeOpen(false)}
+                    className="text-slate-400 hover:text-slate-600 cursor-pointer -mt-1 -mr-1 p-1"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+                <p className="text-[11px] font-bold text-blue-700 uppercase tracking-wider mt-0.5">
+                  Ruang Kerja Individu • Peran Wali Kelas
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3 text-xs leading-relaxed text-slate-600">
+              <div className="p-3.5 bg-blue-50/80 border border-blue-200 rounded-xl text-blue-900 font-semibold text-xs flex items-start gap-2.5">
+                <AlertCircle size={17} className="text-blue-700 shrink-0 mt-0.5" />
+                <span>
+                  Wali kelas itu <strong>cukup 1 kelas saja</strong> yang dibinanya.
+                </span>
+              </div>
+
+              <p>
+                Sebagai <strong>Wali Kelas</strong>, seluruh fokus pencatatan presensi harian, jurnal kelas, hingga administrasi format dinas terpusat pada 1 rombongan belajar binaan Anda.
+              </p>
+
+              {classes.length > 0 && (
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                    Kelas Binaan Aktif Saat Ini:
+                  </span>
+                  <div className="flex items-center justify-between font-bold text-slate-900">
+                    <span>{classes[0]?.name}</span>
+                    <span className="text-[11px] text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded font-mono">
+                      Fase {classes[0]?.grade ? getFaseByGrade(classes[0].grade) : '-'} • Tingkat {classes[0]?.grade}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <p className="text-[11px] text-slate-500 italic">
+                *Jika terdapat penyesuaian nama rombel atau tingkat kelas, silakan klik tombol <strong>Edit</strong> (ikon pensil) pada baris kelas di atas.
+              </p>
+            </div>
+
+            <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => setWaliLimitNoticeOpen(false)}
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md shadow-blue-600/20 transition-all cursor-pointer"
+              >
+                Mengerti
               </button>
             </div>
           </div>
