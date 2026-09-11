@@ -243,16 +243,16 @@ export const FeaturesSection: React.FC<FeaturesSectionProps> = ({ lang }) => {
             <School className="w-3.5 h-3.5 text-blue-700 shrink-0" />
             <span>{lang === 'ID' ? 'FITUR UTAMA SEKOLAH DASAR' : 'PRIMARY SCHOOL CORE FEATURES'}</span>
           </div>
-          <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-[#0B2F64] tracking-tight uppercase leading-[1.05]">
+          <h2 className="text-xl sm:text-3xl lg:text-5xl font-black text-[#0B2F64] tracking-tight uppercase leading-[1.08]">
             {lang === 'ID' ? (
               <>
                 SISTEM LENGKAP<br />
-                <span className="text-blue-600">PRESENSI SEKOLAH DASAR</span>
+                <span className="text-blue-600 whitespace-nowrap">PRESENSI SEKOLAH DASAR</span>
               </>
             ) : (
               <>
                 COMPREHENSIVE<br />
-                <span className="text-blue-600">PRIMARY ATTENDANCE PLATFORM</span>
+                <span className="text-blue-600 whitespace-nowrap">PRIMARY ATTENDANCE PLATFORM</span>
               </>
             )}
           </h2>

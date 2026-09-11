@@ -42,16 +42,16 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
               </div>
 
               {/* Main Headline - Authoritative Blue Display Typography */}
-              <h1 className="text-2xl sm:text-4xl md:text-5xl lg:text-5xl xl:text-[56px] leading-[1.1] sm:leading-[1.05] font-black tracking-tight text-[#0B2F64] uppercase">
+              <h1 className="text-[20px] min-[360px]:text-[22px] min-[420px]:text-2xl sm:text-3xl md:text-4xl lg:text-[42px] xl:text-[50px] leading-[1.12] sm:leading-[1.08] font-black tracking-tight text-[#0B2F64] uppercase">
                 {lang === 'ID' ? (
                   <>
-                    PRESENSI SEKOLAH DASAR<br />
-                    <span className="text-blue-600">LEBIH TERTIB & AKURAT</span>
+                    <span className="block whitespace-nowrap">PRESENSI SEKOLAH DASAR</span>
+                    <span className="block text-blue-600">LEBIH TERTIB & AKURAT</span>
                   </>
                 ) : (
                   <>
-                    PRIMARY ATTENDANCE<br />
-                    <span className="text-blue-600">STRUCTURED & PRECISE</span>
+                    <span className="block whitespace-nowrap">PRIMARY ATTENDANCE</span>
+                    <span className="block text-blue-600">STRUCTURED & PRECISE</span>
                   </>
                 )}
               </h1>

@@ -38,16 +38,16 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ lang, onOpenRegi
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-blue-50 border border-blue-200 text-blue-800 text-[10px] font-bold uppercase tracking-wider font-mono">
             <span>{lang === 'ID' ? 'HUBUNGI KAMI' : 'CONTACT US'}</span>
           </div>
-          <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-[#0B2F64] tracking-tight uppercase leading-[1.05]">
+          <h2 className="text-xl sm:text-3xl lg:text-5xl font-black text-[#0B2F64] tracking-tight uppercase leading-[1.08]">
             {lang === 'ID' ? (
               <>
                 KONSULTASI & ADOPSI<br />
-                <span className="text-blue-600">PRESENSI SEKOLAH DASAR</span>
+                <span className="text-blue-600 whitespace-nowrap">PRESENSI SEKOLAH DASAR</span>
               </>
             ) : (
               <>
                 CONSULTATION & ADOPTION<br />
-                <span className="text-blue-600">PRIMARY ATTENDANCE</span>
+                <span className="text-blue-600 whitespace-nowrap">PRIMARY ATTENDANCE</span>
               </>
             )}
           </h2>
