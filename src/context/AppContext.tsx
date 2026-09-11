@@ -27,6 +27,7 @@ import {
 } from "../data/initialData";
 import { normalizeTeacherName, normalizeNip } from "../utils/userScope";
 import { isFeatureAccessibleInPackage } from "../utils/featureRegistry";
+import { getServerNow, formatServerTimeString } from "../utils/serverTime";
 
 interface Toast {
   id: string;
@@ -170,6 +171,7 @@ interface AppContextType {
     type: "masuk" | "pulang" | "izin" | "sakit",
     notes?: string,
     customDate?: string,
+    exactTimeStr?: string,
   ) => Promise<{ success: boolean; message: string }>;
   changeOwnPassword: (
     newPassword: string,
@@ -6691,15 +6693,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     type: "masuk" | "pulang" | "izin" | "sakit",
     notes?: string,
     customDate?: string,
+    exactTimeStr?: string,
   ) => {
     try {
-      if (!currentUser || currentUser.role !== "SISWA") {
+      if (!currentUser) {
         return {
           success: false,
-          message: "Hanya akun SISWA yang dapat menggunakan presensi mandiri.",
+          message: "Pengguna belum login.",
         };
       }
-      if (studentId !== currentUser.studentId) {
+      const isStudent = currentUser.role === "SISWA";
+      const isSimulator = ["ADMIN", "SUPER_ADMIN", "WALI KELAS", "GURU MAPEL"].includes(currentUser.role);
+      if (!isStudent && !isSimulator) {
+        return {
+          success: false,
+          message: "Hanya akun SISWA (atau simulasi portal siswa) yang dapat menggunakan presensi mandiri.",
+        };
+      }
+      if (isStudent && currentUser.studentId && studentId !== currentUser.studentId) {
         return {
           success: false,
           message: "Akses presensi tidak valid untuk akun ini.",
@@ -6719,11 +6730,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         return { success: false, message: msg };
       }
 
-      const now = new Date();
+      const now = getServerNow();
       const currentH = now.getHours();
       const currentM = now.getMinutes();
+      const currentS = now.getSeconds();
       const currentMinutes = currentH * 60 + currentM;
-      const currentTimeStr = `${String(currentH).padStart(2, "0")}:${String(currentM).padStart(2, "0")}`;
+      const currentTimeStr = exactTimeStr || `${String(currentH).padStart(2, "0")}:${String(currentM).padStart(2, "0")}:${String(currentS).padStart(2, "0")}`;
 
       let finalNotes = notes || "";
 

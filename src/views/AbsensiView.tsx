@@ -22,7 +22,9 @@ import {
   Lock,
   ShieldCheck,
   Loader2,
+  QrCode,
 } from 'lucide-react';
+import { ClassQrModal } from '../components/ClassQrModal';
 
 export const AbsensiView: React.FC = () => {
   const {
@@ -76,6 +78,7 @@ export const AbsensiView: React.FC = () => {
 
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isClassQrOpen, setIsClassQrOpen] = useState<boolean>(false);
   const [isDirty, setIsDirty] = useState<boolean>(false);
   const isDirtyRef = React.useRef<boolean>(false);
   const prevContextKeyRef = React.useRef<string>('');
@@ -847,6 +850,18 @@ export const AbsensiView: React.FC = () => {
 
         <button
           type="button"
+          onClick={() => setIsClassQrOpen(true)}
+          disabled={!selectedClassId}
+          id="btn-qr-presensi-rombel"
+          className="py-3 px-4 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 active:scale-98 text-indigo-700 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-xs min-h-[44px] cursor-pointer"
+          title="Tampilkan / Cetak QR Code Presensi Rombel Kelas"
+        >
+          <QrCode size={16} />
+          <span>QR Presensi Rombel</span>
+        </button>
+
+        <button
+          type="button"
           onClick={handleReset}
           disabled={isDateLocked || isSaving}
           id="btn-reset-absensi"
@@ -927,7 +942,37 @@ export const AbsensiView: React.FC = () => {
 
                     {/* Nama Siswa */}
                     <td className="py-3 px-4 sm:px-5 font-bold text-slate-900 tracking-tight">
-                      {r.studentName}
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                        <span>{r.studentName}</span>
+                        {attendanceMode === 'SUBJECT' && (() => {
+                          const dailyRec = attendanceRecords.find(
+                            (ar) => ar.studentId === r.studentId && ar.date === date && (!ar.type || ar.type === 'DAILY')
+                          );
+                          if (dailyRec?.status === 'Hadir') {
+                            return (
+                              <span
+                                className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md self-start sm:self-auto"
+                                title={`Siswa hadir di sekolah (dicatat Wali Kelas pukul ${dailyRec.checkInTime || '06:53'})`}
+                              >
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                Hadir ({dailyRec.checkInTime || 'Sekolah'})
+                              </span>
+                            );
+                          }
+                          if (dailyRec?.status === 'Sakit' || dailyRec?.status === 'Izin') {
+                            return (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md self-start sm:self-auto">
+                                {dailyRec.status} (Wali)
+                              </span>
+                            );
+                          }
+                          return (
+                            <span className="inline-flex items-center text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md self-start sm:self-auto">
+                              Belum Masuk Harian
+                            </span>
+                          );
+                        })()}
+                      </div>
                     </td>
 
                     {/* Status Dropdown */}
@@ -1117,6 +1162,19 @@ export const AbsensiView: React.FC = () => {
           </span>
         </button>
       </div>
+      {/* Class QR Attendance Code Modal */}
+      {isClassQrOpen && selectedClassId && (() => {
+        const targetClass = classes.find((c) => c.id === selectedClassId);
+        if (!targetClass) return null;
+        return (
+          <ClassQrModal
+            isOpen={isClassQrOpen}
+            onClose={() => setIsClassQrOpen(false)}
+            schoolClass={targetClass}
+            schoolProfile={schoolProfile}
+          />
+        );
+      })()}
     </div>
   );
 };

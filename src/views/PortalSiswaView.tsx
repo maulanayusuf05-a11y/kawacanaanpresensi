@@ -20,12 +20,17 @@ import {
   Award,
   TrendingUp,
   BarChart3,
+  QrCode,
+  Camera,
+  ShieldCheck,
 } from 'lucide-react';
+import { StudentQrScannerModal } from '../components/StudentQrScannerModal';
 
 export const PortalSiswaView: React.FC = () => {
   const {
     currentUser,
     students,
+    classes,
     schoolProfile,
     systemConfig,
     attendanceRecords,
@@ -36,6 +41,9 @@ export const PortalSiswaView: React.FC = () => {
     setActiveView,
     showToast,
   } = useApp();
+
+  // QR Scanner Modal State
+  const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
 
   // Active Tab: 'hari-ini' | 'rekap-bulanan' | 'rekap-semester'
   const [activeTab, setActiveTab] = useState<'hari-ini' | 'rekap-bulanan' | 'rekap-semester'>('hari-ini');
@@ -464,32 +472,44 @@ export const PortalSiswaView: React.FC = () => {
             </div>
           )}
 
-          {/* Today's Status Banner */}
+          {/* Today's Status Banner with Clear Indicators */}
           <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                STATUS HARI INI
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                <ShieldCheck size={14} className="text-blue-600" />
+                Status Presensi Hari Ini
               </span>
-              {todayRecord?.status === 'Hadir' ? (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
-                  <CheckCircle2 size={13} />
-                  HADIR
-                </span>
-              ) : todayRecord?.status === 'Sakit' ? (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-sky-100 text-sky-800 border border-sky-300">
-                  SAKIT
+              {isLockedForHoliday ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-slate-100 text-slate-600 border border-slate-300">
+                  <Lock size={12} />
+                  🔒 Presensi Libur / Terkunci
                 </span>
               ) : todayRecord?.status === 'Izin' ? (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-amber-100 text-amber-800 border border-amber-300">
-                  IZIN
+                  🟡 Izin ({todayRecord.notes || 'Disetujui Wali Kelas'})
+                </span>
+              ) : todayRecord?.status === 'Sakit' ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-sky-100 text-sky-800 border border-sky-300">
+                  🟡 Sakit ({todayRecord.notes || 'Surat Dokter / Wali'})
                 </span>
               ) : todayRecord?.status === 'Alfa' ? (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-rose-100 text-rose-800 border border-rose-300">
-                  ALFA
+                  ⚠️ Alfa (Tidak Hadir)
+                </span>
+              ) : hasCheckedIn && hasCheckedOut ? (
+                <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-black bg-slate-900 text-emerald-400 border border-slate-700 shadow-sm">
+                  <Lock size={12} />
+                  🔒 Presensi Hari Ini Selesai
+                </span>
+              ) : hasCheckedIn ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                  <CheckCircle2 size={13} />
+                  🟢 Sudah Masuk — {todayRecord?.checkInTime} WIB
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                  {isLockedForHoliday ? 'LIBUR' : 'BELUM PRESENSI'}
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-amber-50 text-amber-800 border border-amber-300">
+                  <Clock size={12} className="text-amber-600" />
+                  🟡 Belum Presensi
                 </span>
               )}
             </div>
@@ -498,8 +518,15 @@ export const PortalSiswaView: React.FC = () => {
             <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-slate-100 text-xs">
               <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
                 <span className="text-[10px] text-slate-400 block font-bold uppercase">Jam Masuk</span>
-                <span className="font-extrabold text-slate-800 text-sm">
-                  {todayRecord?.checkInTime && todayRecord.checkInTime !== '-' ? `${todayRecord.checkInTime} WIB` : '—'}
+                <span className="font-extrabold text-slate-800 text-sm flex items-center gap-1.5">
+                  {todayRecord?.checkInTime && todayRecord.checkInTime !== '-' ? (
+                    <>
+                      <span className="text-emerald-600 font-black">🟢</span>
+                      {todayRecord.checkInTime} WIB
+                    </>
+                  ) : (
+                    '—'
+                  )}
                 </span>
                 {todayRecord?.notes && todayRecord.notes.includes('Terlambat') && (
                   <span className="inline-block mt-0.5 text-[9px] font-bold text-amber-600">
@@ -509,10 +536,90 @@ export const PortalSiswaView: React.FC = () => {
               </div>
               <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
                 <span className="text-[10px] text-slate-400 block font-bold uppercase">Jam Pulang</span>
-                <span className="font-extrabold text-slate-800 text-sm">
-                  {todayRecord?.checkOutTime && todayRecord.checkOutTime !== '-' ? `${todayRecord.checkOutTime} WIB` : '—'}
+                <span className="font-extrabold text-slate-800 text-sm flex items-center gap-1.5">
+                  {todayRecord?.checkOutTime && todayRecord.checkOutTime !== '-' ? (
+                    <>
+                      <span className="text-blue-600 font-black">🔵</span>
+                      {todayRecord.checkOutTime} WIB
+                    </>
+                  ) : (
+                    '—'
+                  )}
                 </span>
               </div>
+            </div>
+          </div>
+
+          {/* Hero Scan QR Rombel Section */}
+          <div className="bg-gradient-to-br from-blue-900 via-indigo-900 to-slate-900 text-white rounded-3xl p-4 sm:p-5 shadow-lg border border-blue-800/60 relative overflow-hidden">
+            <div className="relative z-10 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center text-blue-200 border border-white/10 shrink-0">
+                    <QrCode size={22} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm sm:text-base font-black tracking-tight text-white flex items-center gap-1.5">
+                      Scan QR Presensi Rombel
+                    </h3>
+                    <p className="text-[11px] text-blue-200/90 font-medium">
+                      QR Code rombel tetap & sinkron dengan Wali Kelas & Guru Mapel
+                    </p>
+                  </div>
+                </div>
+                <span className="hidden sm:inline-flex text-[10px] font-black uppercase px-2.5 py-1 rounded-full bg-blue-500/20 text-blue-200 border border-blue-400/30 shrink-0">
+                  Waktu Server Valid
+                </span>
+              </div>
+
+              <button
+                type="button"
+                id="btn-scan-qr-rombel"
+                onClick={() => setIsQrScannerOpen(true)}
+                disabled={isLockedForHoliday}
+                className={`w-full py-4 px-5 rounded-2xl font-black text-sm sm:text-base flex items-center justify-between gap-3 transition-all cursor-pointer shadow-md active:scale-98 ${
+                  isLockedForHoliday
+                    ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
+                    : hasCheckedIn && hasCheckedOut
+                    ? 'bg-slate-800/90 hover:bg-slate-800 text-emerald-300 border border-slate-700'
+                    : hasCheckedIn
+                    ? isBeforeCheckOutOpen
+                      ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-amber-500/30'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/30'
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/30'
+                }`}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                    <Camera size={22} />
+                  </div>
+                  <div className="text-left min-w-0">
+                    <div className="text-sm sm:text-base font-black truncate">
+                      {isLockedForHoliday
+                        ? 'Presensi Libur'
+                        : hasCheckedIn && hasCheckedOut
+                        ? '🔒 Presensi Hari Ini Sudah Lengkap'
+                        : hasCheckedIn
+                        ? isBeforeCheckOutOpen
+                          ? `🟢 Sudah Masuk (${todayRecord?.checkInTime} WIB)`
+                          : '🔵 Scan QR Presensi Pulang'
+                        : '🟢 Scan QR Presensi Masuk'}
+                    </div>
+                    <div className="text-[11px] font-normal opacity-90 truncate">
+                      {isLockedForHoliday
+                        ? 'Bukan hari belajar efektif'
+                        : hasCheckedIn && hasCheckedOut
+                        ? 'Klik untuk lihat status ringkasan presensi'
+                        : hasCheckedIn
+                        ? isBeforeCheckOutOpen
+                          ? `Presensi pulang dibuka pukul ${systemConfig.checkOutStartTime || '12:30'} WIB`
+                          : 'Arahkan kamera ke QR Code kelas untuk pulang'
+                        : 'Arahkan kamera siswa ke QR Code rombel kelas'}
+                    </div>
+                  </div>
+                </div>
+                <ChevronRight size={20} className="shrink-0 opacity-80" />
+              </button>
             </div>
           </div>
 
@@ -1144,6 +1251,20 @@ export const PortalSiswaView: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Student QR Scanner Modal */}
+      {activeStudent && (
+        <StudentQrScannerModal
+          isOpen={isQrScannerOpen}
+          onClose={() => setIsQrScannerOpen(false)}
+          activeStudent={activeStudent}
+          classes={classes}
+          todayRecord={todayRecord}
+          systemConfig={systemConfig}
+          onSubmitAttendance={submitStudentAttendance}
+          targetDate={targetDate}
+        />
       )}
     </div>
   );

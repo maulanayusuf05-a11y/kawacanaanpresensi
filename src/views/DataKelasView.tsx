@@ -26,8 +26,10 @@ import {
   BookOpen,
   Layers,
   BookmarkCheck,
-  Sparkles
+  Sparkles,
+  QrCode
 } from 'lucide-react';
+import { ClassQrModal } from '../components/ClassQrModal';
 import { validateTeacherRoleAssignment } from '../utils/packageSystem';
 import { getFaseByClassName, getFaseByGrade, getFaseBadgeColor, getGradeFromClassName, formatClassDisplay } from '../utils/faseKurikulum';
 import { BookLoadingModal } from '../components/BookLoader';
@@ -83,6 +85,7 @@ export const DataKelasView: React.FC = () => {
 
   const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN';
   const isGuru = currentUser?.role === 'GURU MAPEL';
+  const [qrModalClass, setQrModalClass] = useState<SchoolClass | null>(null);
   const isPersonalWorkspace =
     activeWorkspace?.workspaceType === 'personal' ||
     activeWorkspace?.workspaceType === 'individu' ||
@@ -1038,6 +1041,14 @@ export const DataKelasView: React.FC = () => {
                           </td>
                           <td className="py-3.5 px-4 text-center">
                             <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setQrModalClass(c)}
+                                className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                                title="QR Code Presensi Rombel (Cetak / Tampilkan)"
+                              >
+                                <QrCode size={15} />
+                              </button>
                               {canEditClass && (
                                 <button
                                   type="button"
@@ -1918,6 +1929,16 @@ export const DataKelasView: React.FC = () => {
         progress={importProgress}
         statusMessage={importStatusMessage}
       />
+
+      {/* Class QR Attendance Code Modal */}
+      {qrModalClass && (
+        <ClassQrModal
+          isOpen={Boolean(qrModalClass)}
+          onClose={() => setQrModalClass(null)}
+          schoolClass={qrModalClass}
+          schoolProfile={schoolProfile}
+        />
+      )}
     </div>
   );
 };
