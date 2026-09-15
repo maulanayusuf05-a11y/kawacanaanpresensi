@@ -1,0 +1,183 @@
+import tailwindcss from '@tailwindcss/vite';
+import react from '@vitejs/plugin-react';
+import path from 'path';
+import { pathToFileURL } from 'url';
+import { defineConfig, Plugin } from 'vite';
+
+function validateMidtransStartupConfig() {
+  const isProd = process.env.MIDTRANS_IS_PRODUCTION;
+  const clientKey = process.env.MIDTRANS_CLIENT_KEY;
+  const serverKey = process.env.MIDTRANS_SERVER_KEY;
+
+  console.log('[Midtrans Startup Audit]');
+  console.log(`- Mode Sandbox: ${isProd === 'true' ? 'WARNING: MIDTRANS_IS_PRODUCTION is set to true, but application forces sandbox mode' : 'Active (MIDTRANS_IS_PRODUCTION=false)'}`);
+  if (clientKey) {
+    console.log('✓ MIDTRANS_CLIENT_KEY configured via environment variable');
+  } else {
+    console.log('ℹ MIDTRANS_CLIENT_KEY not in environment variable; will use database settings if configured');
+  }
+  if (serverKey) {
+    console.log('✓ MIDTRANS_SERVER_KEY configured via environment variable (server-side only, never sent to browser)');
+  } else {
+    console.log('ℹ MIDTRANS_SERVER_KEY not in environment variable; will use database settings if configured');
+  }
+}
+
+function apiDevMiddleware(): Plugin {
+  return {
+    name: 'api-dev-middleware',
+    configureServer(server) {
+      validateMidtransStartupConfig();
+      server.middlewares.use(async (req, res, next) => {
+        const url = req.url || '';
+        if (url.startsWith('/api/')) {
+          try {
+            const pathname = (url.split('?')[0] || '').replace(/^\/api\//, '').replace(/\/+$/, '');
+            const safeRoutes: Record<string, string> = {
+              'superadmin': './api/superadmin.ts',
+              'admin-users': './api/admin-users.ts',
+              'school-lookup': './api/school-lookup.ts',
+              'register-school': './api/register-school.ts',
+              'payments': './api/midtrans.ts',
+              'resolve-login': './api/resolve-login.ts',
+              'setup-superadmin': './api/setup-superadmin.ts',
+              'onboarding': './api/onboarding.ts',
+              'sync-teacher-assignments': './api/sync-teacher-assignments.ts',
+              'sync-wali-kelas': './api/sync-wali-kelas.ts',
+              'attendance': './api/attendance.ts',
+              'ai': './api/ai.ts',
+              'teacher-subject': './api/sync-teacher-assignments.ts',
+              'midtrans': './api/midtrans.ts',
+              'midtrans-webhook': './api/midtrans.ts',
+            };
+            const targetModule = safeRoutes[pathname];
+            if (!targetModule) {
+              return next();
+            }
+            const absPath = path.resolve(__dirname, targetModule);
+            let handlerModule: any;
+            try {
+              handlerModule = await server.ssrLoadModule(absPath);
+            } catch {
+              handlerModule = await import(pathToFileURL(absPath).href);
+            }
+            const handler = handlerModule?.default || handlerModule;
+
+            const processRequest = async (bodyStr: string) => {
+              try {
+                (req as any).body = bodyStr ? JSON.parse(bodyStr) : {};
+              } catch {
+                (req as any).body = {};
+              }
+              // Parse URL query params
+              try {
+                const parsedUrl = new URL(req.url || '', 'http://localhost:3000');
+                const queryObj: Record<string, string> = {};
+                parsedUrl.searchParams.forEach((val, key) => {
+                  queryObj[key] = val;
+                });
+                (req as any).query = queryObj;
+              } catch {
+                (req as any).query = {};
+              }
+
+              (res as any).status = (code: number) => {
+                res.statusCode = code;
+                return res;
+              };
+              (res as any).json = (data: any) => {
+                if (!res.headersSent) {
+                  res.setHeader('Content-Type', 'application/json');
+                }
+                res.end(JSON.stringify(data));
+                return res;
+              };
+
+              try {
+                await handler(req, res);
+              } catch (err: any) {
+                if (!res.writableEnded) {
+                  res.statusCode = 500;
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify({ error: err?.message || 'Server error' }));
+                }
+              }
+            };
+
+            if (req.method === 'GET' || req.method === 'HEAD') {
+              await processRequest('');
+            } else {
+              let bodyStr = '';
+              req.on('data', (chunk: Buffer) => {
+                bodyStr += chunk;
+              });
+              req.on('end', async () => {
+                await processRequest(bodyStr);
+              });
+            }
+            return;
+          } catch (err: any) {
+            if (!res.writableEnded) {
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: err?.message || 'Failed to load API route' }));
+            }
+            return;
+          }
+        }
+        next();
+      });
+    },
+  };
+}
+
+export default defineConfig(() => {
+  return {
+    plugins: [react(), tailwindcss(), apiDevMiddleware()],
+    // Only VITE_* may be embedded into browser code. Never expose SUPABASE_SERVICE_ROLE_KEY.
+    envPrefix: ['VITE_'],
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, '.'),
+      },
+    },
+    build: {
+      chunkSizeWarningLimit: 2500,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              if (id.includes('pdfjs-dist') || id.includes('jspdf')) {
+                return 'vendor-pdf';
+              }
+              if (id.includes('xlsx') || id.includes('mammoth')) {
+                return 'vendor-docs';
+              }
+              if (id.includes('html5-qrcode') || id.includes('qrcode')) {
+                return 'vendor-qrcode';
+              }
+              if (id.includes('motion') || id.includes('lucide-react')) {
+                return 'vendor-ui';
+              }
+              if (id.includes('@supabase')) {
+                return 'vendor-supabase';
+              }
+              if (id.includes('react') || id.includes('react-dom')) {
+                return 'vendor-react';
+              }
+            }
+          },
+        },
+      },
+    },
+    server: {
+      host: '0.0.0.0',
+      port: 3000,
+      allowedHosts: true as const,
+      // HMR is disabled in AI Studio via DISABLE_HMR env var.
+      hmr: process.env.DISABLE_HMR !== 'true',
+      // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
+      watch: process.env.DISABLE_HMR === 'true' ? null : {},
+    },
+  };
+});

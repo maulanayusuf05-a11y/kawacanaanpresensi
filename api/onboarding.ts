@@ -1,0 +1,2830 @@
+import { createClient } from '@supabase/supabase-js';
+
+const json = (res: any, status: number, body: unknown) =>
+  res.status(status).setHeader('Content-Type', 'application/json').end(JSON.stringify(body));
+
+/**
+ * Menghasilkan 8 karakter alfanumerik huruf besar tanpa awalan SCH- (contoh: 9B3366AB)
+ */
+function generateSchoolInviteCode(): string {
+  const chars = '0123456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  let code = '';
+  for (let i = 0; i < 8; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
+/**
+ * Menghitung masa aktif trial Guru Pro untuk ruang kerja individu baru.
+ * Aturan: Jika mendaftar di bulan X pada tanggal berapa pun, masa aktif trial
+ * berlaku sampai dengan akhir tanggal di bulan (X + 1).
+ * Contoh: Daftar di bulan Agustus pada tanggal berapa pun -> masa aktif sampai 30 September.
+ */
+function calculateGuruProTrialPeriod(now: Date = new Date()) {
+  const startedAt = now.toISOString().slice(0, 10);
+
+  return {
+    plan: 'free', // Paket Mulai / Guru Gratis
+    status: 'active',
+    startedAt,
+    expiresAt: null, // Tanpa batas kedaluwarsa (Seumur Hidup)
+    notes: `[Akun Guru Gratis: Aktif tanpa batas waktu kedaluwarsa]`,
+    maxTeachers: 1,
+    maxStudents: 32,
+    maxClasses: 1,
+  };
+}
+
+export default async function handler(req: any, res: any) {
+  if (req.method !== 'POST') {
+    return json(res, 405, { error: 'Metode permintaan tidak diizinkan. Gunakan POST.' });
+  }
+
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || '';
+
+  const body = req.body || {};
+  const action = body.action;
+
+  // Fallback jika kredensial server belum tersedia (mode simulasi/preview)
+  if (!url || !serviceKey) {
+    if (action === 'lookup_school') {
+      return json(res, 200, {
+        ok: true,
+        schools: [
+          {
+            id: 'mock-school-1',
+            name: 'SDN Cibubur 01',
+            npsn: '20100123',
+            jenjang: 'SD',
+            alamat: 'Jl. Raya Lapangan Tembak No. 1, Jakarta Timur',
+            classes: [
+              { id: 'mock-cls-1', name: 'Kelas 1A', grade: 1 },
+              { id: 'mock-cls-2', name: 'Kelas 2A', grade: 2 },
+              { id: 'mock-cls-3', name: 'Kelas 3A', grade: 3 },
+              { id: 'mock-cls-4', name: 'Kelas 4A', grade: 4 },
+              { id: 'mock-cls-5', name: 'Kelas 5A', grade: 5 },
+              { id: 'mock-cls-6', name: 'Kelas 6A', grade: 6 },
+            ],
+          },
+        ],
+      });
+    }
+    return json(res, 200, {
+      ok: true,
+      success: true,
+      message: 'Onboarding berhasil diselesaikan (Mode Preview).',
+      userId: body.userId || 'mock-user-id',
+      schoolId: body.schoolId || 'mock-school-id',
+    });
+  }
+
+  const db = createClient(url, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  const normalizeTeacherRole = (value: unknown): 'WALI KELAS' | 'GURU MAPEL' | 'OTHER' => {
+    const v = String(value || '').trim().toUpperCase();
+    if (v.includes('WALI KELAS')) return 'WALI KELAS';
+    if (v.includes('GURU MAPEL')) return 'GURU MAPEL';
+    return 'OTHER';
+  };
+
+  // Guru dan Akun sengaja dipisahkan. profiles.id adalah ID akun/Auth,
+  // sedangkan teachers.id adalah ID master guru yang independen.
+  const getAcademicYear = async (schoolId: string, fallback = '2026/2027') => {
+    const { data } = await db.from('school_profile').select('tahun_pelajaran').eq('school_id', schoolId).maybeSingle();
+    return String(data?.tahun_pelajaran || fallback).trim() || fallback;
+  };
+  const assignHomeroom = async (schoolId: string, teacherId: string, classId: string | null, actorUserId: string) => {
+    const academicYear = await getAcademicYear(schoolId);
+    const { error } = await db.rpc('assign_homeroom_teacher', {
+      p_school_id: schoolId, p_teacher_id: teacherId, p_class_id: classId,
+      p_academic_year: academicYear, p_actor_user_id: actorUserId,
+    });
+    if (error) throw error;
+    return academicYear;
+  };
+  const assignSubject = async (schoolId: string, subjectId: string, teacherId: string, classIds: string[], actorUserId: string) => {
+    const academicYear = await getAcademicYear(schoolId);
+    const { error } = await db.rpc('replace_subject_assignment', {
+      p_school_id: schoolId, p_subject_id: subjectId, p_teacher_id: teacherId,
+      p_class_ids: [...new Set(classIds)], p_academic_year: academicYear, p_actor_user_id: actorUserId,
+    });
+    if (error) throw error;
+    return academicYear;
+  };
+
+  const ensureTeacherForAccount = async (opts: {
+    profileId: string;
+    schoolId: string;
+    nama: string;
+    nip?: string | null;
+    jenisKelamin?: 'L' | 'P';
+    tugasUtama?: string;
+    tugas_utama?: string;
+  }) => {
+    const { data: profile, error: profileReadError } = await db
+      .from('profiles')
+      .select('id,teacher_id,school_id')
+      .eq('id', opts.profileId)
+      .maybeSingle();
+    if (profileReadError) throw profileReadError;
+
+    let teacherId = profile?.teacher_id || null;
+    if (teacherId) {
+      const { data: existingTeacher, error: teacherReadError } = await db
+        .from('teachers').select('*').eq('id', teacherId).maybeSingle();
+      if (teacherReadError) throw teacherReadError;
+      // Hanya perbarui guru yang ada jika memang berada pada school_id yang sama.
+      // JANGAN PERNAH mengubah school_id guru dari sekolah lain, karena melanggar constraint database
+      // "Profile dan guru harus berada pada sekolah yang sama" dan merusak data sekolah asal.
+      if (existingTeacher && existingTeacher.school_id === opts.schoolId) {
+        const { data: updatedTeacher, error } = await db.from('teachers').update({
+          nama: opts.nama,
+          nip: (opts.nip || existingTeacher.nip || '').trim() || null,
+          jenis_kelamin: opts.jenisKelamin || existingTeacher.jenis_kelamin || 'L',
+          tugas_utama: opts.tugas_utama || opts.tugasUtama || null,
+        }).eq('id', teacherId).select().single();
+        if (error) throw error;
+        return updatedTeacher;
+      }
+    }
+
+    // Reuse master guru yang sudah ada di opts.schoolId berdasarkan school_id + NIP.
+    const normalizedNip = String(opts.nip || '').trim();
+    if (normalizedNip && normalizedNip !== '-') {
+      const { data: existingByNip, error: nipLookupError } = await db
+        .from('teachers').select('*').eq('school_id', opts.schoolId).eq('nip', normalizedNip).maybeSingle();
+      if (nipLookupError) throw nipLookupError;
+      if (existingByNip) {
+        const updateFields: any = {};
+        if (opts.tugas_utama || opts.tugasUtama) updateFields.tugas_utama = opts.tugas_utama || opts.tugasUtama;
+        if (opts.nama && opts.nama !== 'Pengguna' && opts.nama !== 'Guru') updateFields.nama = opts.nama;
+        if (Object.keys(updateFields).length > 0) {
+          await db.from('teachers').update(updateFields).eq('id', existingByNip.id);
+          Object.assign(existingByNip, updateFields);
+        }
+        return existingByNip;
+      }
+    }
+
+    // Reuse master guru di opts.schoolId berdasarkan Nama
+    if (opts.nama) {
+      const { data: existingByName } = await db
+        .from('teachers').select('*').eq('school_id', opts.schoolId).ilike('nama', opts.nama.trim()).maybeSingle();
+      if (existingByName) {
+        const updateFields: any = {};
+        if (opts.tugas_utama || opts.tugasUtama) updateFields.tugas_utama = opts.tugas_utama || opts.tugasUtama;
+        if (Object.keys(updateFields).length > 0) {
+          await db.from('teachers').update(updateFields).eq('id', existingByName.id);
+          Object.assign(existingByName, updateFields);
+        }
+        return existingByName;
+      }
+    }
+
+    // Buat data guru baru khusus untuk target ruang kerja (opts.schoolId)
+    const { data: insertedTeacher, error: insertError } = await db.from('teachers').insert({
+      school_id: opts.schoolId,
+      nama: opts.nama,
+      nip: normalizedNip && normalizedNip !== '-' ? normalizedNip : null,
+      jenis_kelamin: opts.jenisKelamin || 'L',
+      tugas_utama: opts.tugas_utama || opts.tugasUtama || null,
+    }).select().single();
+    if (insertError) throw insertError;
+
+    return insertedTeacher;
+  };
+
+  try {
+    // -------------------------------------------------------------
+    // 1. LOOKUP SEKOLAH / KODE UNDANGAN / NPSN (PUBLIC)
+    // -------------------------------------------------------------
+    if (action === 'lookup_school' || action === 'lookup_school_code') {
+      const rawQuery = String(body.code || body.query || '').trim();
+      if (!rawQuery) {
+        return json(res, 400, { error: 'Masukkan kode sekolah, NPSN, atau nama sekolah.' });
+      }
+
+      // Bersihkan awalan SCH- jika ada agar pengguna yang memasukkan format lama tetap terlayani
+      const strippedQuery = rawQuery.toUpperCase().replace(/^SCH-?/i, '').trim();
+      const cleanCode = strippedQuery.replace(/[^A-Z0-9]/g, '');
+      const cleanDigits = rawQuery.replace(/\D/g, '');
+
+      // Cari di tabel schools
+      let schQuery = db.from('schools').select('id, name, npsn, code, plan, status, workspace_type');
+      if (cleanDigits.length >= 4) {
+        schQuery = schQuery.or(`code.ilike.%${cleanCode}%,code.ilike.%${strippedQuery}%,code.ilike.%${rawQuery}%,name.ilike.%${rawQuery}%,npsn.ilike.%${cleanDigits}%`);
+      } else {
+        schQuery = schQuery.or(`code.ilike.%${cleanCode}%,code.ilike.%${strippedQuery}%,code.ilike.%${rawQuery}%,name.ilike.%${rawQuery}%`);
+      }
+      const { data: matchedSchools } = await schQuery.limit(15);
+
+      // Cari di school_profile
+      let spQuery = db
+        .from('school_profile')
+        .select('school_id, nama_sekolah, npsn, jenjang, alamat, tahun_pelajaran');
+
+      if (cleanDigits.length >= 3) {
+        spQuery = spQuery.or(`npsn.ilike.%${cleanDigits}%,nama_sekolah.ilike.%${rawQuery}%`);
+      } else {
+        spQuery = spQuery.ilike('nama_sekolah', `%${rawQuery}%`);
+      }
+      const { data: matchedProfiles } = await spQuery.limit(15);
+
+      const schoolMap = new Map<string, any>();
+
+      for (const sc of matchedSchools || []) {
+        if (!sc.id) continue;
+        const normalizedCode = sc.code ? String(sc.code).replace(/^SCH-?/i, '').trim().toUpperCase() : '';
+        const fallbackCode = normalizedCode || sc.npsn || sc.id.slice(0, 8).toUpperCase();
+        schoolMap.set(sc.id, {
+          id: sc.id,
+          name: sc.name || 'Sekolah Terdaftar',
+          code: fallbackCode,
+          npsn: sc.npsn || '',
+          jenjang: 'SD',
+          alamat: '',
+        });
+      }
+
+      for (const sp of matchedProfiles || []) {
+        if (!sp.school_id) continue;
+        const existing = schoolMap.get(sp.school_id);
+        const normalizedCode = existing?.code ? String(existing.code).replace(/^SCH-?/i, '').trim().toUpperCase() : '';
+        const fallbackCode = normalizedCode || sp.npsn || sp.school_id.slice(0, 8).toUpperCase();
+        schoolMap.set(sp.school_id, {
+          id: sp.school_id,
+          name: sp.nama_sekolah || existing?.name || 'Sekolah Terdaftar',
+          code: fallbackCode,
+          npsn: sp.npsn || existing?.npsn || '',
+          jenjang: sp.jenjang || existing?.jenjang || 'SD',
+          alamat: sp.alamat || existing?.alamat || '',
+        });
+      }
+
+      const schools = [];
+      for (const [, sc] of schoolMap) {
+        const { data: cls } = await db
+          .from('classes')
+          .select('id, name, grade, academic_year')
+          .eq('school_id', sc.id)
+          .order('grade')
+          .order('name');
+
+        schools.push({
+          id: sc.id,
+          name: sc.name,
+          code: sc.code,
+          npsn: sc.npsn,
+          jenjang: sc.jenjang || 'SD',
+          alamat: sc.alamat,
+          classes: cls || [],
+        });
+      }
+
+      return json(res, 200, { ok: true, schools });
+    }
+
+    // -------------------------------------------------------------
+    // 2. LOOKUP DATA SISWA BERDASARKAN NISN (PUBLIC)
+    // -------------------------------------------------------------
+    if (action === 'lookup_student') {
+      const nisn = String(body.nisn || '').replace(/\D/g, '').trim();
+      const schoolId = body.schoolId || null;
+
+      if (!nisn || nisn.length < 5) {
+        return json(res, 400, { error: 'Masukkan minimal 5-10 digit NISN yang valid.' });
+      }
+
+      let stuQuery = db
+        .from('students')
+        .select('id, nisn, nama, gender, class_id, school_id, classes:class_id(id, name, grade)')
+        .eq('nisn', nisn);
+
+      if (schoolId) {
+        stuQuery = stuQuery.eq('school_id', schoolId);
+      }
+
+      const { data: studentRows, error: sErr } = await stuQuery.limit(1);
+      if (sErr) throw sErr;
+
+      const student = studentRows?.[0];
+      if (!student) {
+        return json(res, 404, {
+          error: 'Data siswa belum ditemukan. Silakan hubungi wali kelas atau administrator sekolah.',
+        });
+      }
+
+      const { data: sp } = await db
+        .from('school_profile')
+        .select('nama_sekolah, npsn')
+        .eq('school_id', student.school_id)
+        .maybeSingle();
+
+      return json(res, 200, {
+        ok: true,
+        student: {
+          id: student.id,
+          nisn: student.nisn,
+          nama: student.nama,
+          gender: student.gender,
+          schoolId: student.school_id,
+          schoolName: sp?.nama_sekolah || 'Sekolah Terdaftar',
+          npsn: sp?.npsn || '',
+          classId: student.class_id,
+          className: (student.classes as any)?.name || 'Kelas Terdaftar',
+        },
+      });
+    }
+
+    // -------------------------------------------------------------
+    // CHANGE OWN PASSWORD & MARK PASSWORD CHANGED
+    // -------------------------------------------------------------
+    if (action === 'change_own_password' || action === 'mark_password_changed') {
+      const userToken = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+      if (!userToken) {
+        return json(res, 401, { error: 'Sesi login diperlukan.' });
+      }
+
+      let userId: string | null = null;
+      const { data: userAuth, error: userAuthError } = await db.auth.getUser(userToken);
+      if (userAuth?.user) {
+        userId = userAuth.user.id;
+      } else {
+        // Fallback jika token baru saja ter-refresh atau ter-invalitasi setelah pembaruan password auth
+        try {
+          const parts = userToken.split('.');
+          if (parts.length === 3) {
+            const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
+            if (payload?.sub) {
+              userId = payload.sub;
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (!userId && body.userId) {
+        userId = String(body.userId).trim();
+      }
+
+      if (!userId) {
+        return json(res, 401, { error: 'Sesi login tidak valid atau telah kedaluwarsa.' });
+      }
+
+      const newPassword = body.password ? String(body.password) : '';
+
+      // 1. Jika ada password baru yang diberikan, perbarui akun auth via admin service role
+      if (newPassword) {
+        if (newPassword.length < 8) {
+          return json(res, 400, { error: 'Password minimal 8 karakter.' });
+        }
+        const { error: pwdErr } = await db.auth.admin.updateUserById(userId, {
+          password: newPassword,
+          user_metadata: { must_change_password: false },
+        });
+        if (pwdErr) {
+          console.warn('Gagal updateUserById di auth admin:', pwdErr.message);
+          // Jika error bukan fatal atau password sudah terupdate di client, tetap lanjutkan update profile
+        }
+      }
+
+      // 2. Pastikan must_change_password bernilai false pada tabel profiles
+      const { error: profErr } = await db
+        .from('profiles')
+        .update({ must_change_password: false })
+        .eq('id', userId);
+
+      if (profErr) {
+        console.error('Gagal update must_change_password pada profiles:', profErr);
+        return json(res, 400, { error: profErr.message || 'Gagal memperbarui status password pada profil.' });
+      }
+
+      return json(res, 200, { ok: true, success: true, message: 'Password berhasil diperbarui.' });
+    }
+
+    // -------------------------------------------------------------
+    // 3. GET USER WORKSPACES
+    // -------------------------------------------------------------
+    if (action === 'get_user_workspaces') {
+      const workspaceToken = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+      if (!workspaceToken) {
+        return json(res, 401, { error: 'Sesi login diperlukan untuk membaca ruang kerja.' });
+      }
+      const { data: workspaceAuth, error: workspaceAuthError } = await db.auth.getUser(workspaceToken);
+      if (workspaceAuthError || !workspaceAuth.user) {
+        return json(res, 401, { error: 'Sesi login tidak valid atau telah kedaluwarsa.' });
+      }
+      const userId = workspaceAuth.user.id;
+
+      const { data: profile } = await db.from('profiles').select('*').eq('id', userId).maybeSingle();
+      
+      let workspaces: any[] = [];
+      const visitedSchoolIds = new Set<string>();
+
+      // 1. Ambil sekolah yang dimiliki (owned) oleh user
+      const { data: ownedSchools } = await db
+        .from('schools')
+        .select('*')
+        .eq('owner_id', userId)
+        .order('created_at', { ascending: false });
+
+      // 2. Kumpulkan seluruh record guru yang terkait dengan akun ini
+      // (Berdasarkan teacher_id aktif, NIP profil/username, dan Nama)
+      const allTeacherRecords: any[] = [];
+      const seenTeacherIds = new Set<string>();
+
+      if (profile?.teacher_id) {
+        const { data: currentTeacher } = await db
+          .from('teachers')
+          .select('id, school_id, nama, nip, tugas_utama')
+          .eq('id', profile.teacher_id)
+          .maybeSingle();
+        if (currentTeacher) {
+          allTeacherRecords.push(currentTeacher);
+          seenTeacherIds.add(currentTeacher.id);
+        }
+      }
+
+      // Cari berdasarkan NIP resmi (minimal 16 digit dan bukan placeholder)
+      const rawNip = String((profile as any)?.nip || profile?.username || workspaceAuth.user.user_metadata?.nip || '').trim();
+      const cleanNip = rawNip.replace(/[^0-9]/g, '');
+      if (cleanNip.length >= 16 && rawNip !== '-') {
+        const { data: teachersByNip } = await db
+          .from('teachers')
+          .select('id, school_id, nama, nip, tugas_utama')
+          .eq('nip', cleanNip);
+        for (const t of teachersByNip || []) {
+          if (!seenTeacherIds.has(t.id)) {
+            seenTeacherIds.add(t.id);
+            allTeacherRecords.push(t);
+          }
+        }
+      }
+
+      const isPersonalProfile =
+        profile?.workspace_type === 'personal' ||
+        (profile as any)?.registration_mode === 'personal';
+
+      // Kumpulkan seluruh kandidat school ID yang sah dan terverifikasi untuk user ini
+      const candidateSchoolIds: string[] = [];
+      const addCandidate = (id?: string | null) => {
+        const s = String(id || '').trim();
+        if (s && s !== 'null' && s !== 'undefined' && !candidateSchoolIds.includes(s)) {
+          candidateSchoolIds.push(s);
+        }
+      };
+
+      // 1. Dari profile aktif
+      addCandidate(profile?.school_id);
+
+      // 2. Dari owned schools (mis. ruang kerja individu atau sekolah milik user ini)
+      for (const s of ownedSchools || []) {
+        addCandidate(s.id);
+      }
+
+      // 3. Dari data guru resmi di mana akun ini tertaut
+      for (const t of allTeacherRecords) {
+        addCandidate(t.school_id);
+      }
+
+      // 4. Dari auth user metadata:
+      // Hanya sertakan personal_workspace_id jika ada
+      addCandidate(workspaceAuth.user.user_metadata?.personal_workspace_id);
+
+      // Hanya izinkan school_workspace_id jika profil bukan akun khusus personal
+      if (!isPersonalProfile) {
+        addCandidate(workspaceAuth.user.user_metadata?.school_workspace_id);
+        addCandidate(workspaceAuth.user.user_metadata?.linked_school_id);
+      }
+
+      for (const sId of candidateSchoolIds) {
+        if (!sId || visitedSchoolIds.has(sId)) continue;
+        visitedSchoolIds.add(sId);
+
+        const { data: school } = await db.from('schools').select('*').eq('id', sId).maybeSingle();
+        if (!school) continue;
+        const { data: sp } = await db.from('school_profile').select('*').eq('school_id', sId).maybeSingle();
+
+        let schoolCode = school?.code ? String(school.code).replace(/^SCH-?/i, '').trim().toUpperCase() : '';
+        if (school && !schoolCode) {
+          schoolCode = generateSchoolInviteCode();
+          try {
+            await db.from('schools').update({ code: schoolCode }).eq('id', sId);
+          } catch (_) {}
+        }
+
+        const isPersonal =
+          school?.workspace_type === 'personal' ||
+          (school as any)?.is_personal === true ||
+          (sId === profile?.school_id && isPersonalProfile) ||
+          school?.plan === 'mulai' ||
+          school?.plan === 'teacher' ||
+          school?.plan === 'guru';
+
+        // ISOLASI DATA KETAT:
+        // Jika sekolah adalah institusi (bukan ruang kerja individu),
+        // pastikan user memiliki hak akses resmi yang sah ke sekolah tersebut:
+        // - Pemilik sekolah (owner_id)
+        // - Atau profile.school_id sesuai DAN bukan mode personal
+        // - Atau akun memiliki record guru resmi (allTeacherRecords) di sekolah tersebut
+        if (!isPersonal) {
+          const isLegitimateSchoolMember =
+            school.owner_id === userId ||
+            (sId === profile?.school_id && !isPersonalProfile) ||
+            allTeacherRecords.some((t: any) => t.school_id === sId);
+
+          if (!isLegitimateSchoolMember) {
+            // Tolak sekolah yang tidak memiliki relasi resmi dengan user!
+            continue;
+          }
+        }
+
+        const teacherForSchool = allTeacherRecords.find((t: any) => t.school_id === sId);
+        const academicYear = String(sp?.tahun_pelajaran || '2026/2027').trim() || '2026/2027';
+        let assignmentRole: 'WALI KELAS' | 'GURU MAPEL' | 'OTHER' = 'OTHER';
+
+        if (!isPersonal && teacherForSchool) {
+          const { data: waliAssignments } = await db
+            .from('classes')
+            .select('id')
+            .eq('school_id', sId)
+            .eq('academic_year', academicYear)
+            .eq('wali_kelas_teacher_id', teacherForSchool.id)
+            .limit(1);
+          if (waliAssignments?.length) assignmentRole = 'WALI KELAS';
+
+          const { data: subjectAssignments } = await db
+            .from('subject_teacher_assignments')
+            .select('subject_id')
+            .eq('school_id', sId)
+            .eq('academic_year', academicYear)
+            .eq('teacher_id', teacherForSchool.id)
+            .limit(1);
+          if (subjectAssignments?.length) {
+            if (assignmentRole !== 'WALI KELAS') {
+              assignmentRole = 'GURU MAPEL';
+            }
+          }
+
+          // Fallback tugas utama guru jika belum ada assignment rombel tahun aktif
+          if (assignmentRole === 'OTHER' && teacherForSchool.tugas_utama) {
+            const tu = String(teacherForSchool.tugas_utama).toLowerCase();
+            if (tu.includes('wali')) assignmentRole = 'WALI KELAS';
+            else if (tu.includes('mapel')) assignmentRole = 'GURU MAPEL';
+          }
+        }
+
+        const profileRole = sId === profile?.school_id ? String(profile?.role || '').toUpperCase() : '';
+        const nonTeacherRole = ['SUPER_ADMIN','ADMIN','KEPALA SEKOLAH','SISWA'].includes(profileRole) ? profileRole : '';
+        
+        let userRole = nonTeacherRole;
+        if (!userRole) {
+          if (assignmentRole !== 'OTHER') {
+            userRole = assignmentRole;
+          } else if (isPersonal) {
+            userRole = profileRole || 'WALI KELAS';
+          } else if (teacherForSchool) {
+            userRole = teacherForSchool.tugas_utama?.toLowerCase()?.includes('mapel') ? 'GURU MAPEL' : 'WALI KELAS';
+          } else if (school.owner_id === userId) {
+            userRole = 'ADMIN';
+          }
+        }
+
+        if (!userRole) continue;
+
+        workspaces.push({
+          id: `ws-mem-${userId}-${sId}`,
+          userId: userId,
+          workspaceId: sId,
+          workspaceCode: schoolCode || null,
+          role: userRole,
+          workspaceName: isPersonal ? 'Ruang Kerja Individu' : (school?.name || sp?.nama_sekolah || 'Ruang Kerja Sekolah'),
+          workspaceType: isPersonal ? 'personal' : 'school',
+          registrationMode: isPersonal ? 'personal' : 'school',
+          npsn: isPersonal ? null : (school?.npsn || sp?.npsn || null),
+          subscriptionPlan: school?.plan || (isPersonal ? 'teacher' : 'sekolah'),
+          subscriptionExpiresAt: school?.subscription_expires_at || null,
+          status: school?.status || 'active',
+          joinedAt: school?.created_at || profile?.created_at || new Date().toISOString(),
+        });
+
+        // Simpan referensi ruang kerja ke auth user_metadata sesuai jenisnya
+        if (!isPersonal) {
+          try {
+            await db.auth.admin.updateUserById(userId, {
+              user_metadata: {
+                ...(workspaceAuth.user.user_metadata || {}),
+                school_workspace_id: sId,
+                school_workspace_role: userRole,
+                school_workspace_name: school?.name || sp?.nama_sekolah || 'Ruang Kerja Sekolah',
+              }
+            });
+          } catch (_) {}
+        } else {
+          try {
+            await db.auth.admin.updateUserById(userId, {
+              user_metadata: {
+                ...(workspaceAuth.user.user_metadata || {}),
+                personal_workspace_id: sId,
+                workspace_type: 'personal',
+              }
+            });
+          } catch (_) {}
+        }
+      }
+
+      // OPSI B (Kunci Total): Jika salah satu ruang kerja sekolah tempat pengguna bernaung sedang aktif Paket Sekolah Pro,
+      // maka ruang kerja individu tidak ditawarkan/dinonaktifkan (seluruh aktivitas guru wajib 100% di Ruang Kerja Sekolah).
+      const nowCheck = new Date();
+      const hasActiveSchoolPro = workspaces.some((w) => {
+        if (w.workspaceType === 'personal' || w.workspaceType === 'individu') return false;
+        const plan = String(w.subscriptionPlan || '').toLowerCase();
+        const isSchoolPlan = plan === 'school' || plan === 'sekolah_pro' || plan === 'sekolah';
+        const isNotSuspended = w.status !== 'suspended' && w.status !== 'inactive';
+        const isNotExpired = !w.subscriptionExpiresAt || new Date(w.subscriptionExpiresAt) > nowCheck;
+        return isSchoolPlan && isNotSuspended && isNotExpired;
+      });
+
+      if (hasActiveSchoolPro) {
+        workspaces = workspaces.filter(
+          (w) => w.workspaceType !== 'personal' && w.workspaceType !== 'individu'
+        );
+      }
+
+      return json(res, 200, {
+        ok: true,
+        success: true,
+        workspaces,
+        profile: profile || null,
+        userMetadata: workspaceAuth.user.user_metadata || null,
+      });
+    }
+
+    // -------------------------------------------------------------
+    // 3.1. CREATE FRESH PERSONAL WORKSPACE
+    // -------------------------------------------------------------
+    if (action === 'create_personal_workspace') {
+      const personalToken = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+      if (!personalToken) {
+        return json(res, 401, { error: 'Sesi login diperlukan untuk membuat ruang kerja individu.' });
+      }
+      const { data: personalAuth, error: personalAuthError } = await db.auth.getUser(personalToken);
+      if (personalAuthError || !personalAuth.user) {
+        return json(res, 401, { error: 'Sesi login tidak valid atau telah kedaluwarsa.' });
+      }
+      const userId = personalAuth.user.id;
+      const fullName = String(body.fullName || body.name || '').trim() || 'Pendidik';
+      const nip = String(body.nip || '-').trim();
+      let linkedTeacher: any = null;
+
+      const { data: currentProfile, error: currentProfileError } = await db
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+      if (currentProfileError) throw currentProfileError;
+      const role = normalizeTeacherRole(currentProfile?.role);
+      if (!['WALI KELAS', 'GURU MAPEL'].includes(role)) {
+        return json(res, 403, { error: 'Ruang kerja individu guru hanya dapat dibuat setelah role guru ditetapkan melalui onboarding/assignment yang valid.' });
+      }
+
+      // Catat sekolah institusi sebelumnya jika ada agar tidak hilang saat beralih ke individu
+      const previousSchoolId = currentProfile?.school_id;
+      if (previousSchoolId) {
+        const { data: prevSchool } = await db
+          .from('schools')
+          .select('id, name, plan, status, subscription_expires_at, workspace_type, is_personal')
+          .eq('id', previousSchoolId)
+          .maybeSingle();
+        if (prevSchool && prevSchool.workspace_type !== 'personal' && !prevSchool.is_personal) {
+          const isSchoolPlan = ['school', 'sekolah_pro', 'sekolah'].includes(prevSchool.plan);
+          const isNotSuspended = prevSchool.status !== 'suspended' && prevSchool.status !== 'inactive';
+          const isNotExpired = !prevSchool.subscription_expires_at || new Date(prevSchool.subscription_expires_at) > new Date();
+          if (isSchoolPlan && isNotSuspended && isNotExpired) {
+            return json(res, 403, {
+              error: `Sekolah Anda (${prevSchool.name || 'Sekolah Anda'}) sedang aktif berlangganan Paket Sekolah Pro. Seluruh aktivitas guru dipusatkan pada Ruang Kerja Sekolah.`,
+            });
+          }
+
+          try {
+            await db.auth.admin.updateUserById(userId, {
+              user_metadata: {
+                ...(personalAuth.user.user_metadata || {}),
+                school_workspace_id: previousSchoolId,
+                school_workspace_role: role,
+                school_workspace_name: prevSchool.name || 'Ruang Kerja Sekolah',
+              },
+            });
+          } catch (_) {}
+        }
+      }
+
+      // Periksa apakah user sudah memiliki ruang kerja individu
+      const { data: existingPersonal } = await db
+        .from('schools')
+        .select('*')
+        .eq('owner_id', userId)
+        .or('workspace_type.eq.personal,is_personal.eq.true,plan.eq.teacher,plan.eq.mulai')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existingPersonal) {
+        if (role === 'WALI KELAS' || role === 'GURU MAPEL') {
+          linkedTeacher = await ensureTeacherForAccount({ profileId: userId, schoolId: existingPersonal.id, nama: fullName, nip, jenisKelamin: 'L', tugasUtama: role === 'WALI KELAS' ? 'Wali Kelas' : 'Guru Mapel' });
+        }
+        await db.from('profiles').update({
+          school_id: existingPersonal.id,
+          teacher_id: linkedTeacher?.id || null,
+          workspace_type: 'personal',
+        }).eq('id', userId);
+
+        const wsObj = {
+          id: `ws-mem-${userId}-${existingPersonal.id}`,
+          userId,
+          workspaceId: existingPersonal.id,
+          workspaceCode: existingPersonal.code ? String(existingPersonal.code).replace(/^SCH-?/i, '').trim().toUpperCase() : null,
+          role: role as any,
+          workspaceName: 'Ruang Kerja Individu',
+          workspaceType: 'personal',
+          registrationMode: 'personal',
+          npsn: null,
+          subscriptionPlan: existingPersonal.plan || 'teacher',
+          joinedAt: existingPersonal.created_at || new Date().toISOString(),
+        };
+
+        return json(res, 200, { ok: true, success: true, workspace: wsObj, isNew: false });
+      }
+
+      // Buat Ruang Kerja Individu baru dengan data fresh (kosong)
+      const trial = calculateGuruProTrialPeriod();
+      const inviteCode = generateSchoolInviteCode();
+      const { data: newSchool, error: schoolErr } = await db.from('schools').insert({
+        name: 'Ruang Kerja Individu',
+        code: inviteCode,
+        plan: trial.plan,
+        status: 'active',
+        workspace_type: 'personal',
+        is_personal: true,
+        owner_id: userId,
+        subscription_started_at: trial.startedAt,
+        subscription_expires_at: trial.expiresAt,
+        notes: trial.notes,
+        max_teachers: trial.maxTeachers,
+        max_students: trial.maxStudents,
+        max_classes: trial.maxClasses,
+      }).select().single();
+
+      if (schoolErr || !newSchool) {
+        return json(res, 500, { error: schoolErr?.message || 'Gagal membuat ruang kerja individu baru.' });
+      }
+
+      // Inisialisasi school_profile kosong (fresh workspace)
+      await db.from('school_profile').upsert({
+        school_id: newSchool.id,
+        nama_sekolah: '',
+        npsn: '',
+        jenjang: 'SD',
+        nama_wali_kelas: role === 'WALI KELAS' ? fullName : '',
+        nip_wali_kelas: role === 'WALI KELAS' ? nip : '',
+        tahun_pelajaran: '2026/2027',
+        semester: '1',
+        kelas: '',
+      }, { onConflict: 'school_id' });
+
+      await db.from('system_config').upsert({
+        school_id: newSchool.id,
+        app_title: 'Kawacanaan Presensi',
+        app_subtitle: '',
+      }, { onConflict: 'school_id' });
+
+      // Daftarkan data guru untuk user ini di ruang kerja individu
+      linkedTeacher = await ensureTeacherForAccount({ profileId: userId, schoolId: newSchool.id, nama: fullName, nip, jenisKelamin: 'L', tugasUtama: role === 'WALI KELAS' ? 'Wali Kelas' : 'Guru Mapel' });
+
+      // Update profil aktif secara atomik
+      await db.from('profiles').update({
+        school_id: newSchool.id,
+        teacher_id: linkedTeacher?.id || null,
+        workspace_type: 'personal',
+      }).eq('id', userId);
+
+      const wsObj = {
+        id: `ws-mem-${userId}-${newSchool.id}`,
+        userId,
+        workspaceId: newSchool.id,
+        workspaceCode: inviteCode,
+        role: role as any,
+        workspaceName: 'Ruang Kerja Individu',
+        workspaceType: 'personal',
+        registrationMode: 'personal',
+        npsn: null,
+        subscriptionPlan: 'teacher',
+        joinedAt: new Date().toISOString(),
+      };
+
+      return json(res, 200, { ok: true, success: true, workspace: wsObj, isNew: true });
+    }
+
+    // -------------------------------------------------------------
+    // 3.1b. SWITCH ACTIVE WORKSPACE ATOMICALLY
+    // -------------------------------------------------------------
+    if (action === 'switch_workspace') {
+      const switchToken = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+      if (!switchToken) {
+        return json(res, 401, { error: 'Sesi login diperlukan untuk beralih ruang kerja.' });
+      }
+      const { data: switchAuth, error: switchAuthErr } = await db.auth.getUser(switchToken);
+      if (switchAuthErr || !switchAuth.user) {
+        return json(res, 401, { error: 'Sesi login tidak valid atau telah kedaluwarsa.' });
+      }
+      const userId = switchAuth.user.id;
+      const targetWorkspaceId = String(body.workspace_id || body.workspaceId || '').trim();
+      if (!targetWorkspaceId) {
+        return json(res, 400, { error: 'Target workspace_id wajib disertakan.' });
+      }
+
+      // Ambil data sekolah target
+      const { data: targetSchool, error: schoolErr } = await db
+        .from('schools')
+        .select('*')
+        .eq('id', targetWorkspaceId)
+        .maybeSingle();
+      if (schoolErr || !targetSchool) {
+        return json(res, 404, { error: 'Ruang kerja target tidak ditemukan.' });
+      }
+
+      const isPersonal =
+        targetSchool.workspace_type === 'personal' ||
+        targetSchool.is_personal === true ||
+        targetSchool.plan === 'teacher' ||
+        targetSchool.plan === 'mulai' ||
+        targetSchool.owner_id === userId;
+
+      const { data: currentProfile } = await db
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+
+      // OPSI B (Kunci Total): Jika target adalah ruang kerja individu, periksa apakah sekolah aktif Paket Sekolah Pro
+      if (isPersonal) {
+        let activeSchoolPro = false;
+        let schoolName = '';
+        const now = new Date();
+
+        if (currentProfile?.school_id && currentProfile.school_id !== targetWorkspaceId) {
+          const { data: userSchool } = await db
+            .from('schools')
+            .select('name, plan, status, subscription_expires_at')
+            .eq('id', currentProfile.school_id)
+            .maybeSingle();
+
+          if (userSchool) {
+            const isPro = ['school', 'sekolah_pro', 'sekolah'].includes(userSchool.plan);
+            const isNotSuspended = userSchool.status !== 'suspended' && userSchool.status !== 'inactive';
+            const isNotExpired = !userSchool.subscription_expires_at || new Date(userSchool.subscription_expires_at) > now;
+            if (isPro && isNotSuspended && isNotExpired) {
+              activeSchoolPro = true;
+              schoolName = userSchool.name || 'sekolah Anda';
+            }
+          }
+        }
+
+        if (activeSchoolPro) {
+          return json(res, 403, {
+            error: `Sekolah Anda (${schoolName}) sedang aktif berlangganan Paket Sekolah Pro. Akses Ruang Kerja Individu dinonaktifkan dan seluruh aktivitas guru dipusatkan di Ruang Kerja Sekolah.`,
+          });
+        }
+      }
+
+      const fullName = currentProfile?.name || currentProfile?.username || 'Pendidik';
+      const nip = currentProfile?.nip || null;
+
+      // PERLINDUNGAN KEAMANAN: Blokir eskalasi peran ke SUPER_ADMIN
+      const isCallerSuperAdmin = currentProfile?.role === 'SUPER_ADMIN';
+      const requestedRole = body.role ? String(body.role).toUpperCase().trim() : '';
+      if (requestedRole === 'SUPER_ADMIN' && !isCallerSuperAdmin) {
+        return json(res, 403, { error: 'Aksi ditolak: Penetapan hak akses SUPER_ADMIN tidak diizinkan.' });
+      }
+
+      // Validasi keanggotaan sah pada workspace target (mencegah BOLA / cross-tenant hopping)
+      const isOwner = targetSchool.owner_id === userId;
+      const isAlreadyInSchool = currentProfile?.school_id === targetWorkspaceId;
+
+      let isTeacherInSchool = false;
+      let existingTeacherRole: string | null = null;
+      if (currentProfile?.teacher_id) {
+        const { data: tRow } = await db
+          .from('teachers')
+          .select('id, tugas_utama')
+          .eq('school_id', targetWorkspaceId)
+          .eq('id', currentProfile.teacher_id)
+          .maybeSingle();
+        if (tRow) {
+          isTeacherInSchool = true;
+          existingTeacherRole = tRow.tugas_utama === 'Wali Kelas' ? 'WALI KELAS' : 'GURU MAPEL';
+        }
+      }
+      if (!isTeacherInSchool) {
+        const { data: tRow2 } = await db
+          .from('teachers')
+          .select('id, tugas_utama')
+          .eq('school_id', targetWorkspaceId)
+          .or(`profile_id.eq.${userId},email.eq.${switchAuth.user.email || 'none'}`)
+          .maybeSingle();
+        if (tRow2) {
+          isTeacherInSchool = true;
+          existingTeacherRole = tRow2.tugas_utama === 'Wali Kelas' ? 'WALI KELAS' : 'GURU MAPEL';
+        }
+      }
+
+      let isStudentInSchool = false;
+      if (currentProfile?.student_id) {
+        const { data: sRow } = await db
+          .from('students')
+          .select('id')
+          .eq('school_id', targetWorkspaceId)
+          .eq('id', currentProfile.student_id)
+          .maybeSingle();
+        if (sRow) isStudentInSchool = true;
+      }
+
+      // Akses hanya sah jika pengguna adalah pemilik, sudah terdaftar di sekolah, guru, siswa, atau Super Admin
+      const isAuthorizedMember = isPersonal ? isOwner : (isCallerSuperAdmin || isOwner || isAlreadyInSchool || isTeacherInSchool || isStudentInSchool);
+      if (!isAuthorizedMember) {
+        return json(res, 403, { error: 'Akses ditolak: Anda belum terdaftar sebagai anggota yang sah di sekolah ini.' });
+      }
+
+      // Tentukan peran secara authoritative (tidak mempercayai body.role secara buta)
+      let targetRole = 'WALI KELAS';
+      if (isCallerSuperAdmin) {
+        targetRole = 'SUPER_ADMIN';
+      } else if (isPersonal) {
+        const validPersonalRoles = ['WALI KELAS', 'GURU MAPEL'];
+        targetRole = validPersonalRoles.includes(requestedRole) ? requestedRole : (validPersonalRoles.includes(currentProfile?.role) ? currentProfile.role : 'WALI KELAS');
+      } else {
+        if (isOwner) {
+          targetRole = requestedRole === 'KEPALA SEKOLAH' ? 'KEPALA SEKOLAH' : 'ADMIN';
+        } else if (isStudentInSchool || currentProfile?.role === 'SISWA') {
+          targetRole = 'SISWA';
+        } else if (isTeacherInSchool) {
+          targetRole = existingTeacherRole || (['WALI KELAS', 'GURU MAPEL'].includes(requestedRole) ? requestedRole : 'WALI KELAS');
+        } else {
+          const allowedRoles = ['ADMIN', 'KEPALA SEKOLAH', 'WALI KELAS', 'GURU MAPEL'];
+          targetRole = allowedRoles.includes(currentProfile?.role) ? currentProfile.role : 'WALI KELAS';
+        }
+      }
+
+      let linkedTeacher: any = null;
+      if (['WALI KELAS', 'GURU MAPEL'].includes(targetRole)) {
+        try {
+          linkedTeacher = await ensureTeacherForAccount({
+            profileId: userId,
+            schoolId: targetWorkspaceId,
+            nama: fullName,
+            nip,
+            jenisKelamin: 'L',
+            tugasUtama: targetRole === 'WALI KELAS' ? 'Wali Kelas' : 'Guru Mapel',
+          });
+        } catch (ensureErr: any) {
+          console.warn('[switch_workspace] ensureTeacherForAccount warning:', ensureErr?.message);
+        }
+      }
+
+      // Update profil secara atomik: school_id dan teacher_id di-update bersamaan!
+      const profileUpdates: any = {
+        school_id: targetWorkspaceId,
+        teacher_id: linkedTeacher?.id || null,
+        workspace_type: isPersonal ? 'personal' : 'school',
+      };
+      if (targetRole) {
+        profileUpdates.role = targetRole;
+      }
+
+      const { error: profileUpdateErr } = await db
+        .from('profiles')
+        .update(profileUpdates)
+        .eq('id', userId);
+
+      if (profileUpdateErr) {
+        console.error('[switch_workspace] profile update error:', profileUpdateErr);
+        return json(res, 500, { error: `Gagal memperbarui profil ruang kerja: ${profileUpdateErr.message}` });
+      }
+
+      const { data: sp } = await db
+        .from('school_profile')
+        .select('nama_sekolah, npsn')
+        .eq('school_id', targetWorkspaceId)
+        .maybeSingle();
+
+      const wsObj = {
+        id: `ws-mem-${userId}-${targetWorkspaceId}`,
+        userId,
+        workspaceId: targetWorkspaceId,
+        workspaceCode: targetSchool.code ? String(targetSchool.code).replace(/^SCH-?/i, '').trim().toUpperCase() : null,
+        role: targetRole,
+        workspaceName: isPersonal ? 'Ruang Kerja Individu' : (targetSchool.name || sp?.nama_sekolah || 'Ruang Kerja Sekolah'),
+        workspaceType: isPersonal ? 'personal' : 'school',
+        registrationMode: isPersonal ? 'personal' : 'school',
+        npsn: targetSchool.npsn || sp?.npsn || null,
+        subscriptionPlan: targetSchool.plan || (isPersonal ? 'teacher' : 'sekolah'),
+        joinedAt: targetSchool.created_at || new Date().toISOString(),
+      };
+
+      // Simpan status ruang kerja di user_metadata Supabase Auth agar awet
+      try {
+        const currentMeta = switchAuth.user.user_metadata || {};
+        if (!isPersonal) {
+          await db.auth.admin.updateUserById(userId, {
+            user_metadata: {
+              ...currentMeta,
+              school_workspace_id: targetWorkspaceId,
+              school_workspace_role: targetRole,
+              school_workspace_name: wsObj.workspaceName,
+            },
+          });
+        } else {
+          await db.auth.admin.updateUserById(userId, {
+            user_metadata: {
+              ...currentMeta,
+              personal_workspace_id: targetWorkspaceId,
+            },
+          });
+        }
+      } catch (_) {}
+
+      return json(res, 200, { ok: true, success: true, workspace: wsObj, teacher: linkedTeacher });
+    }
+
+    // -------------------------------------------------------------
+    // 3.2. JOIN SCHOOL WORKSPACE VIA CODE
+    // -------------------------------------------------------------
+    if (action === 'join_school_workspace') {
+      const joinToken = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+      if (!joinToken) {
+        return json(res, 401, { error: 'Sesi login diperlukan untuk bergabung ke sekolah.' });
+      }
+      const { data: joinAuth, error: joinAuthError } = await db.auth.getUser(joinToken);
+      if (joinAuthError || !joinAuth.user) {
+        return json(res, 401, { error: 'Sesi login tidak valid atau telah kedaluwarsa.' });
+      }
+      const authenticatedUserId = joinAuth.user.id;
+      const userId = String(body.user_id || body.userId || '').trim();
+      if (userId && userId !== authenticatedUserId) {
+        return json(res, 403, { error: 'User ID tidak sesuai dengan sesi login.' });
+      }
+      const rawCode = String(body.code || body.schoolCode || body.schoolId || '').trim();
+      const effectiveUserId = authenticatedUserId;
+      const role = String(body.role || '').toUpperCase();
+      const teacherName = String(body.teacherName || body.name || '').trim();
+      const nip = String(body.nip || '-').trim();
+      const classId = body.classId || null;
+      const className = body.className || null;
+      const grade = Number(body.grade || 5);
+      const subjectName = String(body.subjectName || '').trim();
+      const classIds: string[] = Array.from(new Set<string>((Array.isArray(body.classIds) ? body.classIds : []).map((v: any) => String(v)).filter(Boolean)));
+
+      if (!rawCode) {
+        return json(res, 400, { error: 'User ID dan Kode Sekolah wajib disertakan.' });
+      }
+
+      const strippedCode = rawCode.toUpperCase().replace(/^SCH-?/i, '').trim();
+      const cleanCode = strippedCode.replace(/[^A-Z0-9]/g, '');
+
+      // Cari sekolah target berdasarkan kode atau ID
+      let schQuery = db.from('schools').select('*');
+      if (cleanCode.length >= 4) {
+        schQuery = schQuery.or(`code.ilike.%${cleanCode}%,code.ilike.%${strippedCode}%,id.eq.${rawCode}`);
+      } else {
+        schQuery = schQuery.or(`code.ilike.%${strippedCode}%,id.eq.${rawCode}`);
+      }
+      let { data: targetSchool } = await schQuery.limit(1).maybeSingle();
+
+      if (!targetSchool) {
+        const { data: sp } = await db
+          .from('school_profile')
+          .select('school_id')
+          .or(`npsn.eq.${rawCode}`)
+          .limit(1)
+          .maybeSingle();
+
+        if (sp?.school_id) {
+          const { data: sch } = await db.from('schools').select('*').eq('id', sp.school_id).maybeSingle();
+          targetSchool = sch;
+        }
+      }
+
+      if (!targetSchool) {
+        return json(res, 404, { error: 'Kode sekolah tidak valid atau sekolah tidak ditemukan. Silakan periksa kembali kode sekolah dari administrator.' });
+      }
+
+      const schoolId = targetSchool.id;
+
+      if (!['WALI KELAS', 'GURU MAPEL'].includes(role)) {
+        return json(res, 400, { error: 'Role join sekolah tidak valid.' });
+      }
+
+      const { data: currentProfile, error: currentProfileErr } = await db.from('profiles').select('role, teacher_id').eq('id', effectiveUserId).maybeSingle();
+      if (currentProfileErr) throw currentProfileErr;
+      if (currentProfile?.role) {
+        const currentRole = normalizeTeacherRole(currentProfile.role);
+        if ((currentRole === 'WALI KELAS' || currentRole === 'GURU MAPEL') && currentRole !== role) {
+          return json(res, 409, { error: `Akun ini sudah memiliki role ${currentRole === 'WALI KELAS' ? 'Wali Kelas' : 'Guru Mapel'} dan tidak dapat bergabung sebagai ${role === 'WALI KELAS' ? 'Wali Kelas' : 'Guru Mapel'}.` });
+        }
+      }
+      if (role === 'GURU MAPEL' && classIds.length === 0) {
+        const { data: anyCls } = await db.from('classes').select('id').eq('school_id', schoolId).limit(1);
+        if (anyCls && anyCls.length > 0) {
+          return json(res, 400, { error: 'Guru Mapel wajib memilih minimal satu kelas yang diajar.' });
+        }
+      }
+
+      const linkedTeacher = (role === 'WALI KELAS' || role === 'GURU MAPEL')
+        ? await ensureTeacherForAccount({ profileId: effectiveUserId, schoolId, nama: teacherName || 'Guru', nip, jenisKelamin: 'L', tugasUtama: role === 'WALI KELAS' ? 'Wali Kelas' : 'Guru Mapel' })
+        : null;
+
+      // Handle penugasan rombel/kelas
+      let targetClassId = classId;
+      if (role === 'WALI KELAS') {
+        if (className && (!targetClassId || targetClassId === '__NEW_CLASS__')) {
+          const { data: newCls, error: clsErr } = await db.from('classes').insert({
+            school_id: schoolId, name: className, grade, academic_year: await getAcademicYear(schoolId), wali_kelas_teacher_id: linkedTeacher.id,
+          }).select('id').single();
+          if (clsErr) throw clsErr;
+          targetClassId = newCls.id;
+        } else if (targetClassId) {
+          const { data: cls, error: clsErr } = await db.from('classes').select('id').eq('id', targetClassId).eq('school_id', schoolId).maybeSingle();
+          if (clsErr) throw clsErr;
+          if (!cls) throw new Error('Kelas yang dipilih tidak ditemukan di sekolah tersebut.');
+          await assignHomeroom(schoolId, linkedTeacher.id, targetClassId, effectiveUserId);
+        }
+      } else {
+        if (classIds.length > 0) {
+          const { data: validClasses, error: classErr } = await db.from('classes').select('id').eq('school_id', schoolId).in('id', classIds);
+          if (classErr) throw classErr;
+          if ((validClasses || []).length !== classIds.length) throw new Error('Ada kelas Guru Mapel yang tidak berasal dari sekolah yang dipilih.');
+        }
+        const subjectLabel = subjectName || 'Guru Mapel';
+        const { data: existingSub } = await db.from('subjects').select('id').eq('school_id', schoolId).ilike('name', subjectLabel).maybeSingle();
+        let subjectRow = existingSub;
+        if (!subjectRow) {
+          const { data: createdSub, error: subjectErr } = await db.from('subjects').insert({ school_id: schoolId, name: subjectLabel, code: subjectLabel.slice(0, 4).toUpperCase(), is_specialized: true }).select('id').single();
+          if (subjectErr) throw subjectErr;
+          subjectRow = createdSub;
+        }
+        await assignSubject(schoolId, subjectRow.id, linkedTeacher.id, classIds, effectiveUserId);
+      }
+
+
+      // Update profil aktif ke ruang kerja sekolah
+      await db.from('profiles').update({
+        school_id: schoolId,
+        teacher_id: linkedTeacher?.id || null,
+        role: role as any,
+        workspace_type: 'school',
+      }).eq('id', effectiveUserId);
+
+      const { data: sp } = await db.from('school_profile').select('nama_sekolah, npsn').eq('school_id', schoolId).maybeSingle();
+
+      const wsObj = {
+        id: `ws-mem-${effectiveUserId}-${schoolId}`,
+        userId: effectiveUserId,
+        workspaceId: schoolId,
+        workspaceCode: targetSchool.code ? String(targetSchool.code).replace(/^SCH-?/i, '').trim().toUpperCase() : null,
+        role: role as any,
+        workspaceName: targetSchool.name || sp?.nama_sekolah || 'Ruang Kerja Sekolah',
+        workspaceType: 'school',
+        registrationMode: 'school',
+        npsn: targetSchool.npsn || sp?.npsn || null,
+        subscriptionPlan: targetSchool.plan || 'sekolah',
+        joinedAt: new Date().toISOString(),
+      };
+
+      try {
+        await db.auth.admin.updateUserById(effectiveUserId, {
+          user_metadata: {
+            ...(joinAuth.user.user_metadata || {}),
+            school_workspace_id: schoolId,
+            school_workspace_role: role,
+            school_workspace_name: wsObj.workspaceName,
+          },
+        });
+      } catch (_) {}
+
+      return json(res, 200, {
+        ok: true,
+        success: true,
+        message: `Berhasil terhubung ke Ruang Kerja Sekolah: ${wsObj.workspaceName}!`,
+        workspace: wsObj,
+        school: targetSchool,
+      });
+    }
+
+    // -------------------------------------------------------------
+    // 3.5. SCHOOL PROFILE MANAGEMENT (SAVE & GET)
+    // -------------------------------------------------------------
+    if (action === 'save_school_profile' || action === 'update_school_profile') {
+      const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+      if (!token) {
+        return json(res, 401, { error: 'Sesi login diperlukan untuk memperbarui profil sekolah.' });
+      }
+      const { data: authData, error: authErr } = await db.auth.getUser(token);
+      if (authErr || !authData?.user) {
+        return json(res, 401, { error: 'Sesi login tidak valid atau telah kedaluwarsa.' });
+      }
+      const callerUserId = authData.user.id;
+      const { data: callerProf } = await db.from('profiles').select('id, role, school_id').eq('id', callerUserId).maybeSingle();
+
+      let schoolId = body.schoolId || body.school_id || callerProf?.school_id || null;
+      if (!schoolId) {
+        return json(res, 400, { error: 'ID ruang kerja/sekolah wajib disertakan.' });
+      }
+
+      // Verifikasi hak akses: SUPER_ADMIN, atau Admin/Kepala Sekolah/Guru dari sekolah terkait, atau pemilik sekolah
+      const isSuper = callerProf?.role === 'SUPER_ADMIN';
+      const isSameSchool = callerProf?.school_id === schoolId;
+      let isOwner = false;
+      if (!isSuper && !isSameSchool) {
+        const { data: sch } = await db.from('schools').select('owner_id, workspace_type, is_personal').eq('id', schoolId).maybeSingle();
+        if (sch && (sch.owner_id === callerUserId || sch.is_personal === true || sch.workspace_type === 'personal')) {
+          isOwner = true;
+        }
+      }
+
+      if (!isSuper && !isSameSchool && !isOwner) {
+        return json(res, 403, { error: 'Anda tidak memiliki hak akses untuk memperbarui profil sekolah ini.' });
+      }
+
+      const namaSekolah = String(body.namaSekolah || body.nama_sekolah || '').trim();
+      const npsn = String(body.npsn || '').trim();
+      const jenjang = String(body.jenjang || 'SD/MI').trim();
+      const alamat = body.alamat || '';
+      const tahunPelajaran = String(body.tahunPelajaran || body.tahun_pelajaran || '2025/2026').trim();
+      const semester = String(body.semester || '1 (Ganjil)').trim();
+      const kelas = String(body.kelas || '').trim();
+      const namaKepalaSekolah = String(body.namaKepalaSekolah || body.nama_kepala_sekolah || '').trim();
+      const nipKepalaSekolah = String(body.nipKepalaSekolah || body.nip_kepala_sekolah || '').trim();
+      const namaWaliKelas = String(body.namaWaliKelas || body.nama_wali_kelas || '').trim();
+      const nipWaliKelas = String(body.nipWaliKelas || body.nip_wali_kelas || '').trim();
+
+      // 1. Simpan ke tabel school_profile secara aman dan kompatibel dengan semua versi schema
+      const safeProfilePayload: any = {
+        school_id: schoolId,
+        nama_sekolah: namaSekolah,
+        npsn: npsn || null,
+        alamat,
+        tahun_pelajaran: tahunPelajaran,
+        semester,
+        kelas,
+        nama_kepala_sekolah: namaKepalaSekolah,
+        nip_kepala_sekolah: nipKepalaSekolah,
+      };
+
+      let spData = null;
+      try {
+        // Cek keberadaan record terlebih dahulu untuk menghindari kegagalan unique constraint
+        const { data: existingSp } = await db.from('school_profile').select('id, school_id').eq('school_id', schoolId).maybeSingle();
+        if (existingSp?.id) {
+          const { data: updatedSp, error: updateErr } = await db.from('school_profile').update(safeProfilePayload).eq('id', existingSp.id).select().maybeSingle();
+          if (!updateErr && updatedSp) {
+            spData = updatedSp;
+          } else {
+            const { error: updateBySchoolErr } = await db.from('school_profile').update(safeProfilePayload).eq('school_id', schoolId);
+            if (!updateBySchoolErr) spData = { ...existingSp, ...safeProfilePayload };
+          }
+        } else {
+          const { data: insertedSp, error: insertErr } = await db.from('school_profile').insert(safeProfilePayload).select().maybeSingle();
+          if (!insertErr && insertedSp) {
+            spData = insertedSp;
+          } else {
+            // Coba upsert dengan onConflict jika insert gagal
+            const { data: upsertedSp } = await db.from('school_profile').upsert(safeProfilePayload, { onConflict: 'school_id' }).select().maybeSingle();
+            spData = upsertedSp || safeProfilePayload;
+          }
+        }
+      } catch (upsertErr: any) {
+        console.warn('Upsert school_profile error:', upsertErr?.message);
+        try {
+          await db.from('school_profile').upsert(safeProfilePayload, { onConflict: 'school_id' });
+        } catch (_) {}
+      }
+
+      // 2. Terintegrasi penuh dengan data Superadmin di tabel `schools`
+      const schoolUpdate: any = {};
+      if (namaSekolah) {
+        schoolUpdate.name = namaSekolah;
+      }
+      if (npsn) {
+        schoolUpdate.npsn = npsn;
+      }
+      if (Object.keys(schoolUpdate).length > 0) {
+        try {
+          await db.from('schools').update(schoolUpdate).eq('id', schoolId);
+        } catch (schErr: any) {
+          console.warn('Update schools table warning:', schErr?.message);
+        }
+      }
+
+      return json(res, 200, {
+        ok: true,
+        success: true,
+        message: 'Identitas satuan pendidikan berhasil disimpan dan terintegrasi.',
+        profile: spData || safeProfilePayload,
+      });
+    }
+
+    if (action === 'get_school_profile') {
+      const schoolId = body.schoolId || body.school_id;
+      if (!schoolId) {
+        return json(res, 400, { error: 'ID sekolah wajib disertakan.' });
+      }
+      let [{ data: sp }, { data: sch }] = await Promise.all([
+        db.from('school_profile').select('*').eq('school_id', schoolId).maybeSingle(),
+        db.from('schools').select('id, name, npsn, code, plan, status, workspace_type, is_personal').eq('id', schoolId).maybeSingle()
+      ]);
+
+      let schoolCode = sch?.code ? String(sch.code).replace(/^SCH-?/i, '').trim().toUpperCase() : '';
+      if (sch && !schoolCode) {
+        schoolCode = generateSchoolInviteCode();
+        try {
+          await db.from('schools').update({ code: schoolCode }).eq('id', schoolId);
+          if (sch) sch.code = schoolCode;
+        } catch (_) {}
+      }
+
+      return json(res, 200, {
+        ok: true,
+        profile: sp ? { ...sp, kode_sekolah: schoolCode, kodeSekolah: schoolCode } : null,
+        school: sch ? { ...sch, code: schoolCode } : null
+      });
+    }
+
+    // -------------------------------------------------------------
+    // 3B. GET SCHOOL MASTER DATA & USER RECONCILIATION
+    // Authoritative service-role endpoint for syncing Admin Sekolah data
+    // with Wali Kelas & Guru Mapel accounts
+    // -------------------------------------------------------------
+    if (action === 'get_school_master_data' || action === 'sync_school_user_data') {
+      const schoolId = String(body.schoolId || body.school_id || '').trim();
+      const userId = String(body.userId || body.user_id || '').trim();
+      if (!schoolId) {
+        return json(res, 400, { error: 'ID sekolah wajib disertakan.' });
+      }
+
+      // Ambil seluruh data master sekolah secara authoritative (Service Role)
+      const [
+        { data: sp },
+        { data: sch },
+        { data: teachersList },
+        { data: classesList },
+        { data: studentsList },
+        { data: subjectsList },
+        { data: teacherAssignments },
+        { data: classAssignments },
+        { data: scheduleDays },
+        { data: attendanceList },
+        { data: effectiveDaysList },
+        { data: eventsList },
+      ] = await Promise.all([
+        db.from('school_profile').select('*').eq('school_id', schoolId).maybeSingle(),
+        db.from('schools').select('id, name, npsn, code, plan, status, workspace_type, is_personal').eq('id', schoolId).maybeSingle(),
+        db.from('teachers').select('*').eq('school_id', schoolId).order('nama'),
+        db.from('classes').select('*, wali:wali_kelas_teacher_id(id,nama)').eq('school_id', schoolId).order('grade').order('name'),
+        db.from('students').select('*, classes:class_id(id,name,grade,academic_year)').eq('school_id', schoolId).order('nama'),
+        db.from('subjects').select('*').eq('school_id', schoolId).order('name'),
+        db.from('subject_teacher_assignments').select('subject_id, teacher_id, academic_year').eq('school_id', schoolId),
+        db.from('subject_class_assignments').select('subject_id, class_id, academic_year').eq('school_id', schoolId),
+        db.from('subject_schedule_days').select('subject_id, day_of_week, lesson_period').eq('school_id', schoolId),
+        db.from('attendance_records').select('*').eq('school_id', schoolId),
+        db.from('effective_days').select('*').eq('school_id', schoolId),
+        db.from('academic_events').select('*').eq('school_id', schoolId),
+      ]);
+
+      const allTeachers = teachersList || [];
+      const allClasses = classesList || [];
+      const allSubjects = subjectsList || [];
+
+      let callerProfile: any = null;
+      let matchedTeacher: any = null;
+      let resolvedClassIds: string[] = [];
+
+      if (userId) {
+        const { data: prof } = await db.from('profiles').select('*').eq('id', userId).maybeSingle();
+        callerProfile = prof;
+      }
+
+      if (callerProfile) {
+        const normalize = (s: string) =>
+          String(s || '')
+            .toLowerCase()
+            .replace(/\b(dr|dra|drs|h|hj|prof|ir)\b\.?/gi, '')
+            .replace(/,\s*(s\.pd|m\.pd|s\.pd\.i|m\.pd\.i|s\.ag|m\.ag|s\.si|m\.si|s\.kom|m\.kom|s\.e|m\.m|gr|b\.a|m\.a)\.?/gi, '')
+            .replace(/\b(s\.pd|m\.pd|s\.pd\.i|m\.pd\.i|s\.ag|m\.ag|s\.si|m\.si|s\.kom|m\.kom|s\.e|m\.m|gr)\b/gi, '')
+            .replace(/[^a-z0-9]/gi, '')
+            .trim();
+        const normNip = (s: string) => String(s || '').replace(/\D/g, '').trim();
+
+        // 1. Cari teacher yang cocok berdasarkan ID
+        if (callerProfile.teacher_id) {
+          matchedTeacher = allTeachers.find((t: any) => t.id === callerProfile.teacher_id);
+        }
+
+        // 2. Cari berdasarkan NIP / Username jika berformat angka NIP
+        if (!matchedTeacher && callerProfile.username) {
+          const userNip = normNip(callerProfile.username);
+          if (userNip && userNip.length >= 8) {
+            matchedTeacher = allTeachers.find((t: any) => normNip(t.nip) === userNip);
+          }
+        }
+
+        if (!matchedTeacher && callerProfile.nip) {
+          const profNip = normNip(callerProfile.nip);
+          if (profNip) {
+            matchedTeacher = allTeachers.find((t: any) => normNip(t.nip) === profNip);
+          }
+        }
+
+        // 3. Cari berdasarkan kemiripan nama
+        if (!matchedTeacher && callerProfile.name) {
+          const cleanCallerName = normalize(callerProfile.name);
+          matchedTeacher = allTeachers.find((t: any) => {
+            const cleanTName = normalize(t.nama);
+            return cleanTName === cleanCallerName || (cleanCallerName.length >= 4 && cleanTName.includes(cleanCallerName)) || (cleanTName.length >= 4 && cleanCallerName.includes(cleanTName));
+          });
+        }
+
+        // 4. Cek apakah ada data wali kelas di school_profile
+        if (!matchedTeacher && sp?.nama_wali_kelas && callerProfile.name) {
+          if (normalize(sp.nama_wali_kelas) === normalize(callerProfile.name)) {
+            matchedTeacher = allTeachers.find((t: any) => normalize(t.nama) === normalize(sp.nama_wali_kelas));
+          }
+        }
+
+        // Auto-create teacher record jika belum ada di database untuk role WALI KELAS atau GURU MAPEL
+        if (!matchedTeacher && (callerProfile.role === 'WALI KELAS' || callerProfile.role === 'GURU MAPEL')) {
+          try {
+            const userNip = normNip(callerProfile.username);
+            const resolvedNip = userNip && userNip.length >= 8 ? callerProfile.username.trim() : (callerProfile.nip || null);
+            const isWali = callerProfile.role === 'WALI KELAS';
+            const teacherName = (callerProfile.name && callerProfile.name !== 'Pengguna' && callerProfile.name !== 'Guru')
+              ? callerProfile.name
+              : (callerProfile.username || (isWali ? 'Wali Kelas' : 'Guru Mapel'));
+            const { data: insertedT, error: insTErr } = await db.from('teachers').insert({
+              school_id: schoolId,
+              nama: teacherName,
+              nip: resolvedNip,
+              tugas_utama: isWali ? 'Wali Kelas' : 'Guru Mapel',
+              jenis_kelamin: 'L',
+            }).select().single();
+
+            if (!insTErr && insertedT) {
+              matchedTeacher = insertedT;
+              allTeachers.push(insertedT);
+            }
+          } catch (err: any) {
+            console.warn('[onboarding] auto-create teacher error:', err?.message);
+          }
+        }
+
+        // Jika guru ditemukan, lakukan auto-link ke akun profile agar relasi teacher_id terhubung
+        if (matchedTeacher) {
+          const updates: any = {};
+          if (callerProfile.teacher_id !== matchedTeacher.id) {
+            updates.teacher_id = matchedTeacher.id;
+          }
+          if (callerProfile.school_id !== schoolId) {
+            updates.school_id = schoolId;
+          }
+          if (Object.keys(updates).length > 0) {
+            try {
+              if (updates.teacher_id && !updates.school_id && callerProfile.school_id !== schoolId) {
+                updates.school_id = schoolId;
+              }
+              const { error: profileLinkError } = await db.from('profiles').update(updates).eq('id', callerProfile.id);
+              if (profileLinkError) {
+                console.warn('[onboarding] link profile ke teacher_id gagal:', profileLinkError.message);
+              } else {
+                callerProfile = { ...callerProfile, ...updates };
+              }
+            } catch (err: any) {
+              console.warn('[onboarding] link profile exception:', err?.message);
+            }
+          }
+        }
+
+        // 5. Resolusi Kelas untuk WALI KELAS (Eksklusif: 1 Guru = 1 Rombel Binaan)
+        if (callerProfile.role === 'WALI KELAS') {
+          // Tentukan rombel binaan tunggal berdasarkan prioritas:
+          // 1. class_ids resmi dari profil akun (hasil input Admin)
+          // 2. Relasi ID guru pada tabel classes
+          // 3. Nama wali kelas pada tabel classes
+          // 4. Fallback school_profile.kelas
+          let chosenClass: any = null;
+
+          if (Array.isArray(callerProfile.class_ids) && callerProfile.class_ids.length > 0) {
+            chosenClass = allClasses.find((c: any) => callerProfile.class_ids.includes(c.id));
+          }
+
+          if (!chosenClass && matchedTeacher) {
+            chosenClass = allClasses.find((c: any) => c.wali_kelas_teacher_id === matchedTeacher.id);
+          }
+
+          if (!chosenClass) {
+            chosenClass = allClasses.find((c: any) => {
+              if (!c.wali_kelas_name) return false;
+              return (
+                normalize(c.wali_kelas_name) === normalize(callerProfile.name) ||
+                (matchedTeacher && normalize(c.wali_kelas_name) === normalize(matchedTeacher.nama))
+              );
+            });
+          }
+
+          if (!chosenClass && sp?.kelas) {
+            chosenClass = allClasses.find((c: any) => normalize(c.name) === normalize(sp.kelas));
+          }
+
+          if (chosenClass && matchedTeacher) {
+            // Update rombel yang sah menjadi milik guru ini
+            if (chosenClass.wali_kelas_teacher_id !== matchedTeacher.id) {
+              try {
+                await db.from('classes').update({
+                  wali_kelas_teacher_id: matchedTeacher.id,
+                }).eq('id', chosenClass.id);
+                chosenClass.wali_kelas_teacher_id = matchedTeacher.id;
+              } catch (_) {}
+            }
+
+            // Lepaskan dan bersihkan rombel lain jika sebelumnya masih terkait ke guru ini
+            for (const otherCls of allClasses) {
+              if (otherCls.id !== chosenClass.id) {
+                const wasAssignedToThisTeacher =
+                  otherCls.wali_kelas_teacher_id === matchedTeacher.id;
+
+                if (wasAssignedToThisTeacher) {
+                  try {
+                    await db.from('classes').update({
+                      wali_kelas_teacher_id: null,
+                    }).eq('id', otherCls.id);
+                    otherCls.wali_kelas_teacher_id = null;
+                  } catch (_) {}
+                }
+              }
+            }
+
+            resolvedClassIds = [chosenClass.id];
+
+            // Pastikan class_ids pada akun profil pengguna hanya berisi rombel tunggal ini
+            if (!Array.isArray(callerProfile.class_ids) || callerProfile.class_ids.length !== 1 || callerProfile.class_ids[0] !== chosenClass.id) {
+              try {
+                await db.from('profiles').update({
+                  class_ids: [chosenClass.id],
+                }).eq('id', callerProfile.id);
+                callerProfile.class_ids = [chosenClass.id];
+              } catch (_) {}
+            }
+          } else if (chosenClass) {
+            resolvedClassIds = [chosenClass.id];
+          } else {
+            resolvedClassIds = [];
+          }
+        } else if (callerProfile.role === 'GURU MAPEL') {
+          // 6. Resolusi Kelas untuk GURU MAPEL
+          const classIdSet = new Set<string>();
+          const matchedSubjectIds = new Set<string>();
+
+          allSubjects.forEach((s: any) => {
+            const isMatch =
+              (matchedTeacher && s.teacher_id === matchedTeacher.id) ||
+              (callerProfile.teacher_id && s.teacher_id === callerProfile.teacher_id) ||
+              (callerProfile.subject_id && s.id === callerProfile.subject_id) ||
+              (s.teacher_name && callerProfile.name && normalize(s.teacher_name) === normalize(callerProfile.name)) ||
+              (matchedTeacher && s.teacher_name && normalize(s.teacher_name) === normalize(matchedTeacher.nama));
+
+            if (isMatch) {
+              matchedSubjectIds.add(s.id);
+              if (Array.isArray(s.target_class_ids)) {
+                s.target_class_ids.forEach((cid: string) => classIdSet.add(cid));
+              }
+            }
+          });
+
+          // Cek subject_teacher_assignments
+          const tId = matchedTeacher?.id || callerProfile.teacher_id;
+          if (tId) {
+            (teacherAssignments || []).forEach((ta: any) => {
+              if (ta.teacher_id === tId) {
+                matchedSubjectIds.add(ta.subject_id);
+              }
+            });
+          }
+
+          // Cek subject_class_assignments
+          (classAssignments || []).forEach((ca: any) => {
+            if (matchedSubjectIds.has(ca.subject_id)) {
+              classIdSet.add(ca.class_id);
+            }
+          });
+
+          // Cek penugasan eksplisit di profile jika ada
+          if (Array.isArray(callerProfile.class_ids)) {
+            callerProfile.class_ids.forEach((cid: string) => classIdSet.add(cid));
+          }
+
+          // Jika guru mapel juga memiliki penugasan wali kelas
+          if (tId) {
+            allClasses
+              .filter((c: any) => c.wali_kelas_teacher_id === tId)
+              .forEach((c: any) => classIdSet.add(c.id));
+          }
+
+          // Fallback cerdas: Jika belum ada pembatasan mapel spesifik dari Admin,
+          // berikan akses ke seluruh kelas sekolah agar data referensi dan siswa tidak kosong
+          if (classIdSet.size === 0 && allClasses.length > 0) {
+            allClasses.forEach((c: any) => classIdSet.add(c.id));
+          }
+
+          resolvedClassIds = Array.from(classIdSet);
+        }
+      }
+
+      let schoolCode = sch?.code ? String(sch.code).replace(/^SCH-?/i, '').trim().toUpperCase() : '';
+
+      return json(res, 200, {
+        ok: true,
+        success: true,
+        school: sch ? { ...sch, code: schoolCode } : null,
+        schoolProfile: sp ? { ...sp, kode_sekolah: schoolCode, kodeSekolah: schoolCode } : null,
+        teachers: allTeachers,
+        classes: allClasses,
+        students: studentsList || [],
+        subjects: allSubjects,
+        subjectTeacherAssignments: teacherAssignments || [],
+        subjectClassAssignments: classAssignments || [],
+        subjectScheduleDays: scheduleDays || [],
+        attendanceRecords: attendanceList || [],
+        effectiveDays: effectiveDaysList || [],
+        academicEvents: eventsList || [],
+        callerProfile,
+        matchedTeacher,
+        resolvedClassIds,
+      });
+    }
+
+    // -------------------------------------------------------------
+    // 4. AUTHENTICATED ACTIONS: ONBOARDING DARI GOOGLE SSO & SESI AKTIF
+    // -------------------------------------------------------------
+    const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+
+    // -------------------------------------------------------------
+    // A. REGISTER & ONBOARD (NON-GOOGLE NEW USER FORM)
+    // -------------------------------------------------------------
+    if (action === 'register_and_onboard') {
+      const fullName = String(body.fullName || '').trim();
+      const username = String(body.username || '').trim().toLowerCase();
+      const password = String(body.password || '');
+      const email = String(body.email || '').trim().toLowerCase();
+      const role = String(body.role || '').toUpperCase();
+      const mode = String(body.mode || 'school');
+      const schoolId = body.schoolId || null;
+      const nip = String(body.nip || '-').trim();
+      const gender = body.gender === 'P' ? 'P' : 'L';
+      const phone = String(body.phone || '-').trim();
+      const employmentStatus = String(body.employmentStatus || 'PNS').trim();
+
+      if (!['WALI KELAS', 'GURU MAPEL', 'SISWA'].includes(role)) {
+        return json(res, 400, { error: 'Role onboarding tidak valid.' });
+      }
+      if (role === 'GURU MAPEL' && mode === 'school' && (!Array.isArray(body.classIds) || body.classIds.length === 0)) {
+        return json(res, 400, { error: 'Guru Mapel wajib memilih minimal satu kelas yang diajar.' });
+      }
+
+      if (!fullName || !username || !password) {
+        return json(res, 400, { error: 'Nama lengkap, username, dan kata sandi wajib diisi.' });
+      }
+
+      const { data: existingUser } = await db.from('profiles').select('id').eq('username', username).maybeSingle();
+      if (existingUser) {
+        return json(res, 400, { error: 'Username sudah digunakan. Silakan pilih username lain.' });
+      }
+
+      const authEmail = email || `${username}@login.edushift.local`;
+      const { data: authData, error: authErr } = await db.auth.admin.createUser({
+        email: authEmail,
+        password,
+        email_confirm: true,
+        user_metadata: { name: fullName, username },
+      });
+
+      if (authErr || !authData.user) {
+        return json(res, 400, { error: authErr?.message || 'Gagal mendaftarkan akun di sistem autentikasi.' });
+      }
+
+      const newUserId = authData.user.id;
+      let finalSchoolId = schoolId;
+      let createdTeacher: any = null;
+      let newSchoolRecord: any = null;
+      let wsName = '';
+
+      if (mode === 'personal' || !finalSchoolId) {
+        const isPersonal = mode === 'personal';
+        wsName = isPersonal ? 'Ruang Kerja Individu' : String(body.workspaceName || `Ruang Kerja ${fullName}`).trim();
+        const trial = calculateGuruProTrialPeriod();
+        const inviteCode = generateSchoolInviteCode();
+        const isTeacherPro = body.plan === 'teacher' || body.plan === 'guru_pro';
+        const initialPlan = isTeacherPro ? 'guru_pro' : trial.plan;
+        const initialMaxClasses = isTeacherPro ? 5 : trial.maxClasses;
+        const initialMaxStudents = isTeacherPro ? 150 : trial.maxStudents;
+        const { data: newSchool, error: schoolErr } = await db.from('schools').insert({
+          name: wsName,
+          code: inviteCode,
+          plan: initialPlan,
+          status: 'active',
+          workspace_type: 'personal',
+          is_personal: true,
+          owner_id: newUserId,
+          subscription_started_at: trial.startedAt,
+          subscription_expires_at: trial.expiresAt,
+          notes: isTeacherPro ? '[Paket Guru Pro: Ruang Kerja Individu]' : trial.notes,
+          max_teachers: trial.maxTeachers,
+          max_students: initialMaxStudents,
+          max_classes: initialMaxClasses,
+        }).select('id, code, name').single();
+
+        if (schoolErr) throw schoolErr;
+        newSchoolRecord = newSchool;
+        finalSchoolId = newSchool.id;
+
+        // Untuk Ruang Kerja Individu baru, nama satuan pendidikan tetap KOSONG (tidak diisi otomatis oleh sistem)
+        await db.from('school_profile').upsert({
+          school_id: finalSchoolId,
+          nama_sekolah: isPersonal ? '' : wsName,
+          npsn: '',
+          jenjang: 'SD',
+          nama_wali_kelas: role === 'WALI KELAS' ? fullName : '',
+          nip_wali_kelas: role === 'WALI KELAS' ? nip : '',
+          tahun_pelajaran: '2026/2027',
+          semester: '1',
+          kelas: '',
+        }, { onConflict: 'school_id' });
+
+        await db.from('system_config').upsert({
+          school_id: finalSchoolId,
+          app_title: 'Kawacanaan Presensi',
+          app_subtitle: isPersonal ? '' : wsName,
+        }, { onConflict: 'school_id' });
+
+        // Kelas untuk sekolah diproses setelah teacher berhasil dibuat.
+      }
+
+      if (role === 'WALI KELAS' || role === 'GURU MAPEL') {
+        createdTeacher = await ensureTeacherForAccount({
+          profileId: newUserId,
+          schoolId: finalSchoolId,
+          nama: fullName,
+          nip,
+          jenisKelamin: gender,
+          tugasUtama: role === 'WALI KELAS' ? 'Wali Kelas' : (body.tugasUtama || 'Guru Mapel'),
+          tugas_utama: role === 'WALI KELAS' ? 'Wali Kelas' : (body.tugasUtama || 'Guru Mapel'),
+        });
+
+        if (role === 'WALI KELAS') {
+          const requestedClassId = body.classId && body.classId !== '__NEW_CLASS__' ? String(body.classId) : null;
+          let targetClassId = requestedClassId;
+          if (!targetClassId) {
+            const clsName = String(body.className || (body.grade ? `Kelas ${body.grade}` : 'Kelas 1')).trim();
+            const clsGrade = Number(body.grade || 1);
+            const { data: newCls, error: clsErr } = await db.from('classes').insert({
+              school_id: finalSchoolId,
+              name: clsName,
+              grade: clsGrade,
+              academic_year: await getAcademicYear(finalSchoolId),
+              wali_kelas_teacher_id: createdTeacher.id
+            }).select('id').single();
+            if (clsErr) {
+              console.warn('[register_and_onboard] Warning: Failed to create class:', clsErr.message);
+            } else {
+              targetClassId = newCls?.id;
+            }
+          } else {
+            const { data: cls, error: clsErr } = await db.from('classes').select('id').eq('id', targetClassId).eq('school_id', finalSchoolId).maybeSingle();
+            if (clsErr) throw clsErr;
+            if (!cls) throw new Error('Kelas yang dipilih tidak ditemukan di sekolah tersebut.');
+            await assignHomeroom(finalSchoolId, createdTeacher.id, targetClassId, newUserId);
+          }
+        }
+
+        if (role === 'GURU MAPEL') {
+          const subjectLabel = String(body.subjectName || 'Guru Mapel').trim();
+          const { data: existingSub } = await db.from('subjects').select('id').eq('school_id', finalSchoolId).ilike('name', subjectLabel).maybeSingle();
+          let subjectRow = existingSub;
+          if (!subjectRow) {
+            const { data: createdSub, error: subjectErr } = await db.from('subjects').insert({
+              school_id: finalSchoolId,
+              name: subjectLabel,
+              code: subjectLabel.slice(0, 4).toUpperCase(),
+              is_specialized: true
+            }).select('id').single();
+            if (subjectErr) {
+              console.warn('[register_and_onboard] Warning: Failed to create subject:', subjectErr.message);
+            } else {
+              subjectRow = createdSub;
+            }
+          }
+
+          if (mode === 'personal') {
+            const { data: personalCls } = await db.from('classes').insert({
+              school_id: finalSchoolId,
+              name: 'Kelas 1',
+              grade: 1,
+              academic_year: await getAcademicYear(finalSchoolId),
+            }).select('id').single();
+
+            if (personalCls && subjectRow) {
+              await assignSubject(finalSchoolId, subjectRow.id, createdTeacher.id, [personalCls.id], newUserId);
+            }
+          } else {
+            const classIds: string[] = Array.from(new Set<string>((Array.isArray(body.classIds) ? body.classIds : []).map((v: any) => String(v)).filter(Boolean)));
+            const { data: validClasses, error: classErr } = await db.from('classes').select('id').eq('school_id', finalSchoolId).in('id', classIds);
+            if (classErr) throw classErr;
+            if ((validClasses || []).length !== classIds.length) throw new Error('Ada kelas Guru Mapel yang tidak berasal dari sekolah yang dipilih.');
+            if (subjectRow) {
+              await assignSubject(finalSchoolId, subjectRow.id, createdTeacher.id, classIds, newUserId);
+            }
+          }
+        }
+      }
+
+      // Upsert profile
+      await db.from('profiles').upsert({
+        id: newUserId,
+        school_id: finalSchoolId,
+        teacher_id: (role === 'WALI KELAS' || role === 'GURU MAPEL') ? createdTeacher.id : null,
+        name: fullName,
+        username,
+        email: authEmail,
+        role: role as any,
+        is_active: true,
+        must_change_password: false,
+        student_id: body.studentId || null,
+      });
+
+      // Update user_metadata pada akun autentikasi agar secara permanen terikat ke ruang kerjanya
+      try {
+        await db.auth.admin.updateUserById(newUserId, {
+          user_metadata: {
+            name: fullName,
+            username,
+            registration_mode: mode === 'personal' ? 'personal' : 'school',
+            workspace_type: mode === 'personal' ? 'personal' : 'school',
+            school_id: finalSchoolId,
+            ...(mode === 'personal'
+              ? {
+                  personal_workspace_id: finalSchoolId,
+                  personal_workspace_name: 'Ruang Kerja Individu',
+                }
+              : {
+                  school_workspace_id: finalSchoolId,
+                  school_workspace_role: role,
+                }),
+          },
+        });
+      } catch (_) {}
+
+      return json(res, 200, {
+        ok: true,
+        success: true,
+        message: 'Pendaftaran akun dan ruang kerja berhasil!',
+        userId: newUserId,
+        email: authEmail,
+        schoolId: finalSchoolId,
+        schoolCode: newSchoolRecord?.code || null,
+        schoolName: wsName || 'Ruang Kerja Individu',
+      });
+    }
+
+    // -------------------------------------------------------------
+    // B. GOOGLE SSO ACTIONS (WAJIB ADA TOKEN SESI LOGIN)
+    // -------------------------------------------------------------
+    if (!token) {
+      return json(res, 401, { error: 'Sesi login Google tidak ditemukan. Silakan masuk kembali.' });
+    }
+
+    const { data: authData, error: authError } = await db.auth.getUser(token);
+    if (authError || !authData.user) {
+      return json(res, 401, { error: 'Sesi login tidak valid atau telah kedaluwarsa.' });
+    }
+
+    const callerUser = authData.user;
+    const userEmail = callerUser.email || '';
+
+    const assertExistingProfileRole = async (requestedRole: 'WALI KELAS' | 'GURU MAPEL') => {
+      const { data: existingProfile, error } = await db.from('profiles').select('role').eq('id', callerUser.id).maybeSingle();
+      if (error) throw error;
+      if (existingProfile?.role) {
+        const existingRole = normalizeTeacherRole(existingProfile.role);
+        if ((existingRole === 'WALI KELAS' || existingRole === 'GURU MAPEL') && existingRole !== requestedRole) {
+          throw new Error(`Akun ini sudah memiliki role ${existingRole === 'WALI KELAS' ? 'Wali Kelas' : 'Guru Mapel'} dan tidak dapat berpindah role.`);
+        }
+      }
+    };
+    const rawMeta = callerUser.user_metadata || {};
+    const defaultName = rawMeta.full_name || rawMeta.name || userEmail.split('@')[0] || 'Pengguna';
+    const defaultUsername = userEmail ? userEmail.split('@')[0].toLowerCase().replace(/[^a-z0-9._-]/g, '') : `user.${callerUser.id.slice(0, 8)}`;
+
+    // -------------------------------------------------------------
+    // ONBOARD WALI KELAS
+    // -------------------------------------------------------------
+    if (action === 'onboard_homeroom') {
+      const mode = body.mode === 'personal' ? 'personal' : 'school';
+      const teacherName = String(body.teacherName || defaultName).trim();
+      const nip = String(body.nip || '-').trim();
+      const gender = body.gender === 'P' ? 'P' : 'L';
+      const phone = String(body.phone || '-').trim();
+      const employmentStatus = String(body.employmentStatus || 'PNS').trim();
+      await assertExistingProfileRole('WALI KELAS');
+
+      let targetSchoolId = body.schoolId || null;
+      let linkedTeacher: any = null;
+
+      if (mode === 'personal' || !targetSchoolId) {
+        const isPersonal = mode === 'personal';
+        const wsName = isPersonal
+          ? 'Ruang Kerja Individu'
+          : String(body.workspaceName || `Ruang Kerja Sekolah ${teacherName}`).trim();
+        const trial = calculateGuruProTrialPeriod();
+        const inviteCode = generateSchoolInviteCode();
+        const { data: newSchool, error: schoolErr } = await db.from('schools').insert({
+          name: wsName,
+          code: inviteCode,
+          plan: isPersonal ? trial.plan : 'sekolah',
+          status: 'active',
+          workspace_type: isPersonal ? 'personal' : 'school',
+          is_personal: isPersonal,
+          owner_id: callerUser.id,
+          subscription_started_at: trial.startedAt,
+          subscription_expires_at: trial.expiresAt,
+          notes: isPersonal ? trial.notes : 'Ruang Kerja Sekolah (Google SSO)',
+          max_teachers: isPersonal ? trial.maxTeachers : 100,
+          max_students: isPersonal ? trial.maxStudents : 1000,
+          max_classes: isPersonal ? trial.maxClasses : 50,
+        }).select('id').single();
+
+        if (schoolErr) throw schoolErr;
+        targetSchoolId = newSchool.id;
+        linkedTeacher = await ensureTeacherForAccount({ profileId: callerUser.id, schoolId: targetSchoolId, nama: teacherName, nip, jenisKelamin: gender, tugasUtama: 'Wali Kelas' });
+
+        // Ruang kerja individu: nama satuan pendidikan dibiarkan kosong agar diisi sendiri oleh guru/wali kelas
+        await db.from('school_profile').upsert({
+          school_id: targetSchoolId,
+          nama_sekolah: isPersonal ? '' : wsName,
+          npsn: '',
+          jenjang: 'SD',
+          nama_wali_kelas: teacherName,
+          nip_wali_kelas: nip,
+          tahun_pelajaran: '2026/2027',
+          semester: '1',
+          kelas: '',
+        }, { onConflict: 'school_id' });
+
+        await db.from('system_config').upsert({
+          school_id: targetSchoolId,
+          app_title: 'Kawacanaan Presensi',
+          app_subtitle: isPersonal ? '' : wsName,
+        }, { onConflict: 'school_id' });
+
+        // Ruang kerja individu (personal): Jangan buat kelas default.
+        // Biarkan data kelas kosong agar pengguna menginput sendiri di Data Referensi -> Data Kelas.
+        if (!isPersonal && body.className) {
+          const clsName = String(body.className).trim();
+          const clsGrade = Number(body.grade || 1);
+          const { error: clsErr } = await db.from('classes').insert({
+            school_id: targetSchoolId,
+            name: clsName,
+            grade: clsGrade,
+            academic_year: await getAcademicYear(targetSchoolId),
+            wali_kelas_teacher_id: linkedTeacher.id,
+          });
+          if (clsErr) throw clsErr;
+        }
+      } else {
+        linkedTeacher = await ensureTeacherForAccount({ profileId: callerUser.id, schoolId: targetSchoolId, nama: teacherName, nip, jenisKelamin: gender, tugasUtama: 'Wali Kelas' });
+        // Mode School
+        let targetClassId = body.classId || null;
+        if (!targetClassId || targetClassId === '__NEW_CLASS__') {
+          const clsName = String(body.className || 'Kelas 5').trim();
+          const clsGrade = Number(body.grade || 5);
+          const { data: newCls } = await db.from('classes').insert({
+            school_id: targetSchoolId,
+            name: clsName,
+            grade: clsGrade,
+            academic_year: await getAcademicYear(targetSchoolId),
+            wali_kelas_teacher_id: linkedTeacher.id,
+          }).select('id').single();
+
+          if (newCls) targetClassId = newCls.id;
+        } else {
+          await assignHomeroom(targetSchoolId, linkedTeacher.id, targetClassId, callerUser.id);
+        }
+
+      }
+
+      // Upsert profile dengan penanganan robust
+      const { data: existingProf } = await db.from('profiles').select('id, username').eq('id', callerUser.id).maybeSingle();
+      const finalUsername = existingProf?.username || defaultUsername;
+
+      const profilePayload: any = {
+        id: callerUser.id,
+        school_id: targetSchoolId,
+        teacher_id: linkedTeacher.id,
+        name: teacherName,
+        username: finalUsername,
+        email: userEmail,
+        role: 'WALI KELAS',
+        is_active: true,
+        must_change_password: false,
+      };
+
+      const { error: profErr } = await db.from('profiles').upsert(profilePayload, { onConflict: 'id' });
+      if (profErr) {
+        console.error('Error upserting profile in onboard_homeroom:', profErr);
+        const { error: fallbackProfileErr } = await db.from('profiles').update({
+          school_id: targetSchoolId, name: teacherName, role: 'WALI KELAS', is_active: true,
+        }).eq('id', callerUser.id);
+        if (fallbackProfileErr) throw new Error(`Gagal menyimpan profil Wali Kelas: ${fallbackProfileErr.message}`);
+      }
+
+      try {
+        await db.from('profiles').update({
+          is_google_auth: true, auth_provider: 'google',
+        }).eq('id', callerUser.id);
+        await db.auth.admin.updateUserById(callerUser.id, {
+          user_metadata: {
+            workspace_type: mode === 'personal' ? 'personal' : 'school',
+            registration_mode: mode === 'personal' ? 'personal' : 'school',
+          }
+        });
+      } catch (_) {}
+
+      // Upsert teacher record
+
+      return json(res, 200, {
+        ok: true,
+        success: true,
+        message: 'Ruang kerja Wali Kelas berhasil diaktifkan!',
+        userId: callerUser.id,
+        schoolId: targetSchoolId,
+      });
+    }
+
+    // -------------------------------------------------------------
+    // ONBOARD GURU MAPEL
+    // -------------------------------------------------------------
+    if (action === 'onboard_subject_teacher') {
+      const mode = body.mode === 'personal' ? 'personal' : 'school';
+      const teacherName = String(body.teacherName || defaultName).trim();
+      const nip = String(body.nip || '-').trim();
+      const gender = body.gender === 'P' ? 'P' : 'L';
+      const phone = String(body.phone || '-').trim();
+      const employmentStatus = String(body.employmentStatus || 'PNS').trim();
+      const subjectName = String(body.subjectName || 'Pendidikan Jasmani / Agama').trim();
+      await assertExistingProfileRole('GURU MAPEL');
+
+      let targetSchoolId = body.schoolId || null;
+      let linkedTeacher: any = null;
+
+      if (mode === 'personal' || !targetSchoolId) {
+        const isPersonal = mode === 'personal';
+        const wsName = isPersonal
+          ? 'Ruang Kerja Individu'
+          : String(body.workspaceName || `Ruang Kerja Sekolah ${teacherName}`).trim();
+        const trial = calculateGuruProTrialPeriod();
+        const inviteCode = generateSchoolInviteCode();
+        const { data: newSchool, error: schoolErr } = await db.from('schools').insert({
+          name: wsName,
+          code: inviteCode,
+          plan: isPersonal ? trial.plan : 'sekolah',
+          status: 'active',
+          workspace_type: isPersonal ? 'personal' : 'school',
+          is_personal: isPersonal,
+          owner_id: callerUser.id,
+          subscription_started_at: trial.startedAt,
+          subscription_expires_at: trial.expiresAt,
+          notes: isPersonal ? trial.notes : 'Ruang Kerja Sekolah (Google SSO)',
+          max_teachers: isPersonal ? trial.maxTeachers : 100,
+          max_students: isPersonal ? trial.maxStudents : 1000,
+          max_classes: isPersonal ? trial.maxClasses : 50,
+        }).select('id').single();
+
+        if (schoolErr) throw schoolErr;
+        targetSchoolId = newSchool.id;
+        linkedTeacher = await ensureTeacherForAccount({ profileId: callerUser.id, schoolId: targetSchoolId, nama: teacherName, nip, jenisKelamin: gender, tugasUtama: 'Guru Mapel' });
+
+        await db.from('school_profile').upsert({
+          school_id: targetSchoolId,
+          nama_sekolah: isPersonal ? '' : wsName,
+          npsn: '',
+          jenjang: 'SD',
+          tahun_pelajaran: '2026/2027',
+          semester: '1',
+          kelas: '',
+        }, { onConflict: 'school_id' });
+
+        await db.from('system_config').upsert({
+          school_id: targetSchoolId,
+          app_title: 'Kawacanaan Presensi',
+          app_subtitle: isPersonal ? '' : wsName,
+        }, { onConflict: 'school_id' });
+
+        // Ruang kerja individu (personal): Jangan buat kelas default.
+        // Biarkan data kelas kosong agar pengguna menginput sendiri di Data Referensi -> Data Kelas.
+        if (!isPersonal && body.className) {
+          const clsName = String(body.className).trim();
+          const clsGrade = Number(body.grade || 1);
+
+          const { error: clsErr } = await db.from('classes').insert({
+            school_id: targetSchoolId,
+            name: clsName,
+            grade: clsGrade,
+            academic_year: await getAcademicYear(targetSchoolId),
+          });
+          if (clsErr) throw clsErr;
+
+        }
+      }
+
+      if (!linkedTeacher) linkedTeacher = await ensureTeacherForAccount({ profileId: callerUser.id, schoolId: targetSchoolId, nama: teacherName, nip, jenisKelamin: gender, tugasUtama: 'Guru Mapel' });
+
+      // Upsert profile dengan penanganan robust
+      const { data: existingProf } = await db.from('profiles').select('id, username').eq('id', callerUser.id).maybeSingle();
+      const finalUsername = existingProf?.username || defaultUsername;
+
+      const profilePayload: any = {
+        id: callerUser.id,
+        school_id: targetSchoolId,
+        teacher_id: linkedTeacher.id,
+        name: teacherName,
+        username: finalUsername,
+        email: userEmail,
+        role: 'GURU MAPEL',
+        is_active: true,
+        must_change_password: false,
+      };
+
+      const { error: profErr } = await db.from('profiles').upsert(profilePayload, { onConflict: 'id' });
+      if (profErr) {
+        console.error('Error upserting profile in onboard_subject_teacher:', profErr);
+        const { error: fallbackProfileErr } = await db.from('profiles').update({
+          school_id: targetSchoolId, name: teacherName, role: 'GURU MAPEL', is_active: true,
+        }).eq('id', callerUser.id);
+        if (fallbackProfileErr) throw new Error(`Gagal menyimpan profil Guru Mapel: ${fallbackProfileErr.message}`);
+      }
+
+      try {
+        await db.from('profiles').update({
+          is_google_auth: true, auth_provider: 'google',
+        }).eq('id', callerUser.id);
+        await db.auth.admin.updateUserById(callerUser.id, {
+          user_metadata: {
+            workspace_type: mode === 'personal' ? 'personal' : 'school',
+            registration_mode: mode === 'personal' ? 'personal' : 'school',
+          }
+        });
+      } catch (_) {}
+
+      // Upsert teacher record
+      // Upsert subject record
+      const { data: existingSub } = await db.from('subjects').select('id').eq('school_id', targetSchoolId).ilike('name', subjectName).maybeSingle();
+      let subjectRow = existingSub;
+      if (!subjectRow) {
+        const { data: createdSubject, error: subjectCreateError } = await db.from('subjects').insert({
+          school_id: targetSchoolId,
+          name: subjectName,
+          code: String(subjectName || '').slice(0, 4).toUpperCase(),
+          is_specialized: true,
+        }).select('id').single();
+        if (subjectCreateError) throw subjectCreateError;
+        subjectRow = createdSubject;
+      }
+      if (linkedTeacher?.id && subjectRow?.id) {
+        const classIds: string[] = mode === 'school' ? Array.from(new Set<string>((Array.isArray(body.classIds) ? body.classIds : []).map((v: any) => String(v)).filter(Boolean))) : [];
+        if (mode === 'school' && classIds.length === 0) throw new Error('Guru Mapel wajib memilih minimal satu kelas yang diajar.');
+        await assignSubject(targetSchoolId, subjectRow.id, linkedTeacher.id, classIds, callerUser.id);
+      }
+
+      return json(res, 200, {
+        ok: true,
+        success: true,
+        message: 'Ruang kerja Guru Mata Pelajaran berhasil diaktifkan!',
+        userId: callerUser.id,
+        schoolId: targetSchoolId,
+      });
+    }
+
+    // -------------------------------------------------------------
+    // ONBOARD SISWA
+    // -------------------------------------------------------------
+    if (action === 'onboard_student') {
+      const targetSchoolId = body.schoolId;
+      const targetClassId = body.classId;
+      const studentName = String(body.studentName || defaultName).trim();
+      const gender = body.gender === 'P' ? 'P' : 'L';
+      const nisn = String(body.nisn || '').replace(/\D/g, '').trim();
+
+      if (!targetSchoolId || !targetClassId) {
+        return json(res, 400, { error: 'Sekolah dan kelas wajib dipilih.' });
+      }
+
+      // Cari atau buat data siswa di tabel students
+      let studentId: string | null = null;
+      if (nisn) {
+        const { data: matchedStudent } = await db.from('students').select('id').eq('school_id', targetSchoolId).eq('nisn', nisn).maybeSingle();
+        if (matchedStudent) {
+          studentId = matchedStudent.id;
+        }
+      }
+
+      if (!studentId) {
+        const fallbackNisn = nisn || `S${Date.now().toString().slice(-8)}`;
+        const { data: newStudent, error: stuErr } = await db.from('students').insert({
+          school_id: targetSchoolId,
+          class_id: targetClassId,
+          nama: studentName,
+          gender,
+          nisn: fallbackNisn,
+        }).select('id').single();
+
+        if (stuErr) throw stuErr;
+        studentId = newStudent.id;
+      }
+
+      // Upsert profile siswa
+      await db.from('profiles').upsert({
+        id: callerUser.id,
+        school_id: targetSchoolId,
+        name: studentName,
+        username: defaultUsername,
+        email: userEmail,
+        role: 'SISWA',
+        student_id: studentId,
+        is_active: true,
+        is_google_auth: true,
+        auth_provider: 'google',
+        must_change_password: false,
+      });
+
+      return json(res, 200, {
+        ok: true,
+        success: true,
+        message: 'Pendaftaran akun siswa berhasil! Membuka Portal Siswa...',
+        userId: callerUser.id,
+        schoolId: targetSchoolId,
+      });
+    }
+
+    // -------------------------------------------------------------
+    // DELETE TEACHER (HAPUS DATA GURU & SINKRONISASI DATABASE)
+    // -------------------------------------------------------------
+    if (action === 'delete_teacher') {
+      const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+      if (!token) return json(res, 401, { error: 'Sesi login diperlukan untuk menghapus data guru.' });
+      const { data: authData, error: authErr } = await db.auth.getUser(token);
+      if (authErr || !authData?.user) return json(res, 401, { error: 'Sesi login tidak valid atau telah kedaluwarsa.' });
+
+      const teacherId = body.teacherId || body.id;
+      let schoolId = body.schoolId || null;
+      const teacherName = body.teacherName || null;
+
+      if (!teacherId && !teacherName) {
+        return json(res, 400, { error: 'ID guru atau nama guru wajib disertakan.' });
+      }
+
+      const callerUserId = authData.user.id;
+      const { data: callerProf } = await db.from('profiles').select('id, role, school_id').eq('id', callerUserId).maybeSingle();
+      const isSuper = callerProf?.role === 'SUPER_ADMIN';
+
+      if (teacherId && !schoolId) {
+        const { data: tch } = await db.from('teachers').select('school_id').eq('id', teacherId).maybeSingle();
+        schoolId = tch?.school_id || null;
+      }
+      if (!schoolId) {
+        schoolId = callerProf?.school_id || null;
+      }
+
+      const isSameSchoolAdmin = schoolId && callerProf?.school_id === schoolId && ['ADMIN', 'KEPALA SEKOLAH'].includes(callerProf?.role);
+      let isOwner = false;
+      if (!isSuper && !isSameSchoolAdmin && schoolId) {
+        const { data: sch } = await db.from('schools').select('owner_id, workspace_type, is_personal').eq('id', schoolId).maybeSingle();
+        if (sch && (sch.owner_id === callerUserId || sch.workspace_type === 'personal' || sch.is_personal === true)) {
+          isOwner = true;
+        }
+      }
+
+      if (!isSuper && !isSameSchoolAdmin && !isOwner) {
+        return json(res, 403, { error: 'Akses ditolak: Hanya Administrator atau Kepala Sekolah yang dapat menghapus data guru.' });
+      }
+
+      // 1. Hapus dari tabel teachers
+      if (teacherId) {
+        await db.from('teachers').delete().eq('id', teacherId);
+      }
+      if (schoolId && teacherName) {
+        await db.from('teachers').delete().eq('school_id', schoolId).eq('nama', teacherName);
+      }
+
+      // 2. Hapus penugasan di classes
+      if (teacherId) {
+        await db.from('classes').update({ wali_kelas_teacher_id: null }).eq('wali_kelas_teacher_id', teacherId);
+      }
+      if (schoolId && teacherName) {
+        await db.from('school_profile').update({ nama_wali_kelas: '', nip_wali_kelas: '' }).eq('school_id', schoolId).eq('nama_wali_kelas', teacherName);
+      }
+
+      // 3. Hapus seluruh penugasan guru secara terpadu (teacher_assignments & subject_teacher_assignments)
+      if (teacherId) {
+        await Promise.all([
+          db.from('teacher_assignments').delete().eq('teacher_id', teacherId),
+          db.from('subject_teacher_assignments').delete().eq('teacher_id', teacherId),
+          db.from('teacher_class_assignments').delete().eq('teacher_id', teacherId),
+        ]);
+      }
+
+      return json(res, 200, {
+        ok: true,
+        success: true,
+        message: 'Data guru berhasil dihapus dari database.',
+      });
+    }
+
+    // -------------------------------------------------------------
+    // SAVE TEACHER (TAMBAH / PERBARUI DATA GURU)
+    // -------------------------------------------------------------
+    if (action === 'save_teacher') {
+      const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+      if (!token) return json(res, 401, { error: 'Sesi login diperlukan untuk menyimpan data guru.' });
+      const { data: authData, error: authErr } = await db.auth.getUser(token);
+      if (authErr || !authData?.user) return json(res, 401, { error: 'Sesi login tidak valid atau telah kedaluwarsa.' });
+
+      const teacherId = body.teacherId || body.id;
+      let schoolId = body.schoolId || null;
+      const nama = String(body.nama || '').trim();
+      const nip = String(body.nip || '').trim();
+      const jenisKelamin = body.jenisKelamin || 'L';
+      const tugasUtama = String(body.tugasUtama || body.tugas_utama || 'Wali Kelas').trim();
+
+      if (!nama) {
+        return json(res, 400, { error: 'Nama guru wajib diisi.' });
+      }
+
+      const callerUserId = authData.user.id;
+      const { data: callerProf } = await db.from('profiles').select('id, role, school_id').eq('id', callerUserId).maybeSingle();
+      const isSuper = callerProf?.role === 'SUPER_ADMIN';
+
+      if (teacherId && !schoolId) {
+        const { data: tch } = await db.from('teachers').select('school_id').eq('id', teacherId).maybeSingle();
+        schoolId = tch?.school_id || null;
+      }
+      if (!schoolId) {
+        schoolId = callerProf?.school_id || null;
+      }
+
+      const isSameSchoolAdmin = schoolId && callerProf?.school_id === schoolId && ['ADMIN', 'KEPALA SEKOLAH', 'WALI KELAS'].includes(callerProf?.role);
+      let isOwner = false;
+      if (!isSuper && !isSameSchoolAdmin && schoolId) {
+        const { data: sch } = await db.from('schools').select('owner_id, workspace_type, is_personal').eq('id', schoolId).maybeSingle();
+        if (sch && (sch.owner_id === callerUserId || sch.workspace_type === 'personal' || sch.is_personal === true)) {
+          isOwner = true;
+        }
+      }
+
+      if (!isSuper && !isSameSchoolAdmin && !isOwner) {
+        return json(res, 403, { error: 'Akses ditolak: Anda tidak memiliki hak akses untuk mengelola data guru di sekolah ini.' });
+      }
+
+      if (teacherId) {
+        const { data: updated, error: uErr } = await db
+          .from('teachers')
+          .update({
+            nama,
+            nip: nip || null,
+            jenis_kelamin: jenisKelamin,
+            tugas_utama: tugasUtama || null,
+          })
+          .eq('id', teacherId)
+          .select()
+          .maybeSingle();
+
+        if (uErr) {
+          console.error('Error updating teacher in onboarding:', uErr);
+          return json(res, 500, { error: `Gagal memperbarui data guru: ${uErr.message}` });
+        }
+
+        if (updated) {
+          // Sinkronkan nama profil yang tertaut ke teacher ini jika ada
+          try {
+            await db.from('profiles').update({ name: nama }).eq('teacher_id', teacherId);
+            if (schoolId && tugasUtama === 'Wali Kelas') {
+              await db.from('school_profile').update({
+                nama_wali_kelas: nama,
+                nip_wali_kelas: nip || null,
+              }).eq('school_id', schoolId);
+            }
+          } catch (_) {}
+
+          return json(res, 200, {
+            ok: true,
+            success: true,
+            teacher: { ...updated, tugas_utama: updated.tugas_utama },
+            teacherId: updated.id,
+          });
+        }
+      }
+
+      const { data: inserted, error: iErr } = await db
+        .from('teachers')
+        .insert({
+          nama,
+          nip: nip || null,
+          jenis_kelamin: jenisKelamin,
+          tugas_utama: tugasUtama || null,
+          school_id: schoolId,
+        })
+        .select()
+        .maybeSingle();
+
+      if (iErr) {
+        console.error('Error inserting teacher in onboarding:', iErr);
+        return json(res, 500, { error: `Gagal menambahkan data guru: ${iErr.message}` });
+      }
+
+      return json(res, 200, {
+        ok: true,
+        success: true,
+        teacher: { ...(inserted || {}), tugas_utama: inserted?.tugas_utama || tugasUtama },
+        teacherId: inserted?.id,
+      });
+    }
+
+    // -------------------------------------------------------------
+    // SAVE STUDENT (TAMBAH / PERBARUI DATA SISWA)
+    // -------------------------------------------------------------
+    if (action === 'save_student') {
+      const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+      if (!token) return json(res, 401, { error: 'Sesi login diperlukan untuk menyimpan data siswa.' });
+      const { data: authData, error: authErr } = await db.auth.getUser(token);
+      if (authErr || !authData?.user) return json(res, 401, { error: 'Sesi login tidak valid atau telah kedaluwarsa.' });
+
+      const callerUserId = authData.user.id;
+      const { data: callerProf } = await db.from('profiles').select('id, role, school_id').eq('id', callerUserId).maybeSingle();
+      const isSuper = callerProf?.role === 'SUPER_ADMIN';
+
+      const studentId = body.studentId || body.id || null;
+      let schoolId = body.schoolId || body.school_id || callerProf?.school_id || null;
+      const nama = String(body.nama || '').trim();
+      let gender: 'L' | 'P' = String(body.gender || 'L').toUpperCase() === 'P' ? 'P' : 'L';
+
+      if (!nama) {
+        return json(res, 400, { error: 'Nama lengkap siswa wajib diisi.' });
+      }
+
+      if (!schoolId) {
+        schoolId = callerProf?.school_id || authData.user.user_metadata?.school_id || authData.user.user_metadata?.school_workspace_id;
+      }
+
+      if (!schoolId) {
+        return json(res, 400, { error: 'ID sekolah / ruang kerja wajib disertakan.' });
+      }
+
+      const isSameSchoolUser = callerProf?.school_id === schoolId;
+      let isOwner = false;
+      if (!isSuper && !isSameSchoolUser) {
+        const { data: sch } = await db.from('schools').select('owner_id, workspace_type, is_personal').eq('id', schoolId).maybeSingle();
+        if (sch && (sch.owner_id === callerUserId || sch.workspace_type === 'personal' || sch.is_personal === true)) {
+          isOwner = true;
+        }
+      }
+
+      if (!isSuper && !isSameSchoolUser && !isOwner) {
+        return json(res, 403, { error: 'Akses ditolak: Anda tidak memiliki hak akses untuk mengelola data siswa di sekolah ini.' });
+      }
+
+      let classId = body.classId || body.class_id || null;
+      if (!classId) {
+        const { data: existingClass } = await db
+          .from('classes')
+          .select('id')
+          .eq('school_id', schoolId)
+          .limit(1)
+          .maybeSingle();
+
+        if (existingClass?.id) {
+          classId = existingClass.id;
+        } else {
+          const { data: newCls } = await db
+            .from('classes')
+            .insert({
+              school_id: schoolId,
+              name: 'Kelas 1',
+              grade: 1,
+              academic_year: '2026/2027',
+            })
+            .select('id')
+            .maybeSingle();
+          classId = newCls?.id || null;
+        }
+      }
+
+      let nisn = String(body.nisn || '').trim();
+      if (!nisn || nisn === '-') {
+        nisn = '99' + Math.floor(10000000 + Math.random() * 90000000);
+      }
+
+      let studentRow: any = null;
+      if (studentId) {
+        const { data: updated, error: uErr } = await db
+          .from('students')
+          .update({
+            nama,
+            gender,
+            nisn,
+            class_id: classId,
+          })
+          .eq('id', studentId)
+          .eq('school_id', schoolId)
+          .select('*, classes:class_id(id,name)')
+          .maybeSingle();
+
+        if (uErr) {
+          console.error('Error updating student in onboarding:', uErr);
+          return json(res, 500, { error: `Gagal memperbarui data siswa: ${uErr.message}` });
+        }
+        studentRow = updated;
+      } else {
+        const { data: inserted, error: iErr } = await db
+          .from('students')
+          .insert({
+            school_id: schoolId,
+            class_id: classId,
+            nama,
+            gender,
+            nisn,
+          })
+          .select('*, classes:class_id(id,name)')
+          .maybeSingle();
+
+        if (iErr) {
+          console.error('Error inserting student in onboarding:', iErr);
+          return json(res, 500, { error: `Gagal menambahkan data siswa: ${iErr.message}` });
+        }
+        studentRow = inserted;
+      }
+
+      return json(res, 200, {
+        ok: true,
+        success: true,
+        student: studentRow,
+        studentId: studentRow?.id,
+        message: `Data siswa ${nama} berhasil disimpan.`,
+      });
+    }
+
+    // -------------------------------------------------------------
+    // SAVE SYSTEM CONFIG (PENGATURAN SISTEM)
+    // -------------------------------------------------------------
+    if (action === 'save_system_config' || action === 'update_system_config') {
+      const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+      if (!token) return json(res, 401, { error: 'Sesi login diperlukan untuk menyimpan pengaturan sistem.' });
+      const { data: authData, error: authErr } = await db.auth.getUser(token);
+      if (authErr || !authData?.user) return json(res, 401, { error: 'Sesi login tidak valid atau telah kedaluwarsa.' });
+
+      const callerUserId = authData.user.id;
+      const { data: callerProf } = await db.from('profiles').select('id, role, school_id').eq('id', callerUserId).maybeSingle();
+      const isSuper = callerProf?.role === 'SUPER_ADMIN';
+
+      let schoolId = body.schoolId || body.school_id || callerProf?.school_id || null;
+      if (!schoolId) {
+        return json(res, 400, { error: 'ID ruang kerja / sekolah wajib disertakan.' });
+      }
+
+      const isSameSchoolAdmin = callerProf?.school_id === schoolId && ['ADMIN', 'KEPALA SEKOLAH'].includes(callerProf?.role);
+      let isOwner = false;
+      if (!isSuper && !isSameSchoolAdmin) {
+        const { data: sch } = await db.from('schools').select('owner_id, workspace_type, is_personal').eq('id', schoolId).maybeSingle();
+        if (sch && (sch.owner_id === callerUserId || sch.workspace_type === 'personal' || sch.is_personal === true)) {
+          isOwner = true;
+        }
+      }
+
+      if (!isSuper && !isSameSchoolAdmin && !isOwner) {
+        return json(res, 403, { error: 'Akses ditolak: Hanya Administrator Sekolah atau Pemilik yang dapat mengubah pengaturan sistem.' });
+      }
+
+      const payload: any = {
+        school_id: schoolId,
+        app_title: body.appTitle || body.app_title || 'Kawacanaan Presensi',
+        app_subtitle: body.appSubtitle !== undefined ? body.appSubtitle : (body.app_subtitle || ''),
+        footer_copyright: body.footerCopyright !== undefined ? body.footerCopyright : (body.footer_copyright || ''),
+        school_logo_url: body.schoolLogoUrl !== undefined ? body.schoolLogoUrl : (body.school_logo_url || ''),
+        letterhead_type: body.letterheadType || body.letterhead_type || 'standard_text',
+        letterhead_image_url: body.letterheadImageUrl !== undefined ? body.letterheadImageUrl : (body.letterhead_image_url || ''),
+        show_letterhead: body.showLetterhead !== undefined ? body.showLetterhead : (body.show_letterhead !== undefined ? body.show_letterhead : true),
+        default_check_in_time: body.defaultCheckInTime || body.default_check_in_time || '06:30',
+        default_check_out_time: body.defaultCheckOutTime || body.default_check_out_time || '12:20',
+        report_place: body.reportPlace !== undefined ? body.reportPlace : (body.report_place || ''),
+        report_date: body.reportDate !== undefined ? body.reportDate : (body.report_date || ''),
+        active_study_days: Array.isArray(body.activeStudyDays) ? body.activeStudyDays : (Array.isArray(body.active_study_days) ? body.active_study_days : [1, 2, 3, 4, 5]),
+        student_self_attendance_enabled: body.studentSelfAttendanceEnabled !== undefined ? body.studentSelfAttendanceEnabled : (body.student_self_attendance_enabled !== undefined ? body.student_self_attendance_enabled : false),
+        check_in_start_time: body.checkInStartTime || body.check_in_start_time || '06:00',
+        check_in_deadline_time: body.checkInDeadlineTime || body.check_in_deadline_time || '07:00',
+        check_out_start_time: body.checkOutStartTime || body.check_out_start_time || '12:30',
+        auto_mark_late: body.autoMarkLate !== undefined ? body.autoMarkLate : (body.auto_mark_late !== undefined ? body.auto_mark_late : true),
+      };
+
+      const { data: updatedConfig, error: cfgErr } = await db
+        .from('system_config')
+        .upsert(payload, { onConflict: 'school_id' })
+        .select()
+        .maybeSingle();
+
+      if (cfgErr) {
+        console.error('Error saving system_config in onboarding:', cfgErr);
+        return json(res, 500, { error: `Gagal menyimpan pengaturan sistem: ${cfgErr.message}` });
+      }
+
+      return json(res, 200, {
+        ok: true,
+        success: true,
+        config: updatedConfig || payload,
+      });
+    }
+
+    if (action === 'save_class') {
+      const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+      if (!token) return json(res, 401, { error: 'Sesi login diperlukan untuk menyimpan data rombel kelas.' });
+      const { data: authData, error: authErr } = await db.auth.getUser(token);
+      if (authErr || !authData?.user) return json(res, 401, { error: 'Sesi login tidak valid atau telah kedaluwarsa.' });
+
+      const callerUserId = authData.user.id;
+      const { data: callerProf } = await db.from('profiles').select('id, role, school_id').eq('id', callerUserId).maybeSingle();
+      const isSuper = callerProf?.role === 'SUPER_ADMIN';
+
+      const classId = body.classId || body.id;
+      const schoolId = body.schoolId || (body.school_id as string) || callerProf?.school_id || '';
+      const name = String(body.name || '').trim();
+      const grade = Number(body.grade) || 1;
+      const academicYear = String(body.academicYear || body.academic_year || '2026/2027').trim();
+      const waliKelasTeacherId = body.waliKelasTeacherId || null;
+
+      if (!schoolId) {
+        return json(res, 400, { error: 'ID sekolah / ruang kerja wajib tersedia.' });
+      }
+      if (!name) {
+        return json(res, 400, { error: 'Nama rombel kelas wajib diisi.' });
+      }
+
+      const isSameSchoolAuth = callerProf?.school_id === schoolId && ['ADMIN', 'KEPALA SEKOLAH', 'WALI KELAS', 'GURU MAPEL'].includes(callerProf?.role);
+      let isOwner = false;
+      if (!isSuper && !isSameSchoolAuth) {
+        const { data: sch } = await db.from('schools').select('owner_id, workspace_type, is_personal').eq('id', schoolId).maybeSingle();
+        if (sch && (sch.owner_id === callerUserId || sch.workspace_type === 'personal' || sch.is_personal === true)) {
+          isOwner = true;
+        }
+      }
+
+      if (!isSuper && !isSameSchoolAuth && !isOwner) {
+        return json(res, 403, { error: 'Akses ditolak: Anda tidak memiliki wewenang untuk mengelola rombel kelas di sekolah ini.' });
+      }
+
+      // Validasi duplikasi nama kelas di tahun ajaran yang sama
+      let dupQuery = db.from('classes')
+        .select('id')
+        .eq('school_id', schoolId)
+        .eq('academic_year', academicYear)
+        .ilike('name', name);
+      if (classId) {
+        dupQuery = dupQuery.neq('id', classId);
+      }
+      const { data: dup } = await dupQuery.maybeSingle();
+      if (dup) {
+        return json(res, 400, { error: `Rombel "${name}" sudah ada pada tahun ajaran ${academicYear}.` });
+      }
+
+      // Jika ada wali kelas, pastikan 1 guru = 1 rombel pada tahun ajaran yang sama
+      if (waliKelasTeacherId) {
+        let releaseQuery = db.from('classes')
+          .update({ wali_kelas_teacher_id: null })
+          .eq('school_id', schoolId)
+          .eq('academic_year', academicYear)
+          .eq('wali_kelas_teacher_id', waliKelasTeacherId);
+        if (classId) {
+          releaseQuery = releaseQuery.neq('id', classId);
+        }
+        await releaseQuery;
+
+        await db.from('profiles')
+          .update({ class_ids: classId ? [classId] : [] })
+          .eq('school_id', schoolId)
+          .eq('teacher_id', waliKelasTeacherId);
+      }
+
+      let classRow: any = null;
+      if (classId) {
+        const { data: updated, error: uErr } = await db.from('classes')
+          .update({
+            name,
+            grade,
+            academic_year: academicYear,
+            wali_kelas_teacher_id: waliKelasTeacherId,
+          })
+          .eq('id', classId)
+          .select('*, wali:wali_kelas_teacher_id(id,nama)')
+          .maybeSingle();
+        if (uErr) throw uErr;
+        classRow = updated;
+      } else {
+        const { data: inserted, error: iErr } = await db.from('classes')
+          .insert({
+            school_id: schoolId,
+            name,
+            grade,
+            academic_year: academicYear,
+            wali_kelas_teacher_id: waliKelasTeacherId,
+          })
+          .select('*, wali:wali_kelas_teacher_id(id,nama)')
+          .maybeSingle();
+        if (iErr) throw iErr;
+        classRow = inserted;
+        if (waliKelasTeacherId && classRow?.id) {
+          await db.from('profiles')
+            .update({ class_ids: [classRow.id] })
+            .eq('school_id', schoolId)
+            .eq('teacher_id', waliKelasTeacherId);
+        }
+      }
+
+      // Update school_profile.kelas jika ini ruang kerja personal
+      try {
+        const { data: schoolRow } = await db.from('schools').select('workspace_type,is_personal').eq('id', schoolId).maybeSingle();
+        if (schoolRow?.workspace_type === 'personal' || schoolRow?.is_personal) {
+          await db.from('school_profile').update({ kelas: name }).eq('school_id', schoolId);
+        }
+      } catch (_) {}
+
+      return json(res, 200, {
+        ok: true,
+        success: true,
+        class: classRow,
+      });
+    }
+
+    if (action === 'delete_class') {
+      const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+      if (!token) return json(res, 401, { error: 'Sesi login diperlukan untuk menghapus kelas.' });
+      const { data: authData, error: authErr } = await db.auth.getUser(token);
+      if (authErr || !authData?.user) return json(res, 401, { error: 'Sesi login tidak valid atau telah kedaluwarsa.' });
+
+      const callerUserId = authData.user.id;
+      const { data: callerProf } = await db.from('profiles').select('id, role, school_id').eq('id', callerUserId).maybeSingle();
+      const isSuper = callerProf?.role === 'SUPER_ADMIN';
+
+      const classId = body.classId || body.id;
+      let schoolId = body.schoolId || (body.school_id as string) || '';
+      if (!classId) return json(res, 400, { error: 'ID kelas wajib diisi.' });
+
+      if (!schoolId) {
+        const { data: cls } = await db.from('classes').select('school_id').eq('id', classId).maybeSingle();
+        schoolId = cls?.school_id || callerProf?.school_id || '';
+      }
+
+      const isSameSchoolAdmin = schoolId && callerProf?.school_id === schoolId && ['ADMIN', 'KEPALA SEKOLAH'].includes(callerProf?.role);
+      let isOwner = false;
+      if (!isSuper && !isSameSchoolAdmin && schoolId) {
+        const { data: sch } = await db.from('schools').select('owner_id, workspace_type, is_personal').eq('id', schoolId).maybeSingle();
+        if (sch && (sch.owner_id === callerUserId || sch.workspace_type === 'personal' || sch.is_personal === true)) {
+          isOwner = true;
+        }
+      }
+
+      if (!isSuper && !isSameSchoolAdmin && !isOwner) {
+        return json(res, 403, { error: 'Akses ditolak: Hanya Administrator atau Kepala Sekolah yang dapat menghapus rombel kelas.' });
+      }
+
+      const { data: stus } = await db.from('students').select('id').eq('class_id', classId).limit(1);
+      if (stus && stus.length > 0) {
+        return json(res, 400, { error: 'Tidak dapat menghapus kelas yang masih memiliki siswa.' });
+      }
+
+      const { error: dErr } = await db.from('classes').delete().eq('id', classId).eq('school_id', schoolId);
+      if (dErr) throw dErr;
+
+      return json(res, 200, { ok: true, success: true });
+    }
+
+    return json(res, 400, { error: `Aksi ${action} tidak dikenali.` });
+  } catch (err: any) {
+    console.error('Onboarding handler error:', err);
+    return json(res, 500, { error: err.message || 'Terjadi kesalahan pada server onboarding.' });
+  }
+}
